@@ -57,11 +57,12 @@
 #   works after rereadcfg
 #   DoCommand reimplemented
 #   Cleaned also the read function
+#   add raw as set command to execute a raw command on the telegram-cli 
+#   get msgid now implemented
 #   
 #
 ##############################################################################
 # TODO 
-# - getmessage für get function
 # - reopen connection command
 # - is a ready function needed --> check REMAINING
 # - reopen connection if needed
@@ -591,6 +592,21 @@ sub Telegram_SendMessage($$$)
 
 
 #####################################
+# INTERNAL: Function to get a message by id
+sub Telegram_GetMessage($$)
+{
+	my ( $hash, $msgid ) = @_;
+  my $name = $hash->{NAME};
+	
+  Log3 $name, 5, "Telegram_GetMessage $name: called ";
+    
+  my $cmd = "get_message $msgid";
+  
+  return Telegram_DoCommand( $hash, $cmd, undef );
+}
+
+
+#####################################
 # INTERNAL: Function to send a command handle result
 # Parameter
 #   hash
@@ -728,7 +744,7 @@ sub Telegram_getNextMessage($$)
   telegram-cli needs to run as a daemon listening on a tcp port to enable communication with FHEM. 
   <br><br>
   <code>
-    telegram-cli -k <path to key file e.g. tg-server.pub> -W -C -d -P <portnumber> [--accept-any-tcp] -L <logfile> -l 20 -N &
+    telegram-cli -k &lt;path to key file e.g. tg-server.pub&gt; -W -C -d -P &lt;portnumber&gt; [--accept-any-tcp] -L &lt;logfile&gt; -l 20 -N &
   </code>
   <br><br>
   <dl> 
@@ -763,7 +779,6 @@ sub Telegram_getNextMessage($$)
     <li>Message id handling is currently not yet implemented<br>This specifically means that messages received 
     during downtime of telegram-cli and / or fhem are not handled when fhem and telegram-cli are getting online again.</li> 
     <li>Running telegram-cli as a daemon with unix sockets is currently not supported</li> 
-    <li>Get function for message not yet implemented</li> 
     <li>Connection state is not handled</li> 
     <li>Ready function not implemented to handled remaining messages that need to be handled in the read function</li> 
     <li>... and a lot more</li> 
@@ -773,9 +788,8 @@ sub Telegram_getNextMessage($$)
   <a name="Telegramdefine"></a>
   <b>Define</b>
   <ul>
-    <code>define &lt;name&gt; Telegram  [&lt;hostname&gt;:]&lt;port&gt; </code><br><br>
+    <code>define &lt;name&gt; Telegram  [&lt;hostname&gt;:]&lt;port&gt; </code>
     <br><br>
-
     Defines a Telegram device either running locally on the fhem server host by specifying only a port number or remotely on a different host by specifying host and portnumber separated by a colon.
     
     Examples:

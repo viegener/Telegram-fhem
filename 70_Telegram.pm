@@ -56,6 +56,7 @@
 #
 #   works after rereadcfg
 #   DoCommand reimplemented
+#   Cleaned also the read function
 #   
 #
 ##############################################################################
@@ -143,7 +144,8 @@ sub Telegram_Parse($$$);
 #########################
 # Globals
 my %sets = (
-	"msg" => "textField"
+	"msg" => "textField",
+	"raw" => "textField"
 );
 
 my %gets = (
@@ -317,7 +319,14 @@ sub Telegram_Set($@)
     } else {
       $hash->{sentMsgResult} = "SUCCESS";
     }
+  } elsif($cmd eq 'raw') {
+    if ( $numberOfArgs < 2 ) {
+      return "Telegram_Set: Command $cmd, no raw command specified";
+    }
+    Log3 $name, 5, "Telegram_Set $name: start rawCommand :$arg: ";
+    $ret = Telegram_DoCommand( $hash, $arg, undef );
   }
+
   
   Log3 $name, 5, "Telegram_Set $name: done with $hash->{sentMsgResult}: ";
   return $ret
@@ -463,30 +472,16 @@ sub Telegram_Read($)
 
   Log3 $name, 5, "Telegram_Read $name: Full buffer :$buf: ";
 
-  # remove all inconsistent parts until a message with ANSWER starts
-  my $msg = '';
-#  Log3 $name, 5, "Telegram_Read $name: matches :$2:" if ( $buf =~ /^ANSWER\s(\d+)\n(.*)/s ) ;
-  while ( (length( $buf )>0) && ( $buf !~ /^ANSWER\s(\d+)\n(.*)$/s ) ) {
-    if ( $buf =~ /^[^\n]*\n(.*)$/s) {
-      $buf = $1;
-    } else {
-      $buf = '';
-    }
-    Log3 $name, 5, "Telegram_Read $name: Strip buffer to :$buf:";
+  my ( $msg, $rawMsg );
+  
+  ( $msg, $rawMsg, $buf ) = Telegram_getNextMessage( $hash, $buf );
+  if ( length($msg) == 0 ) {
+    # No msg found (garbage in the buffer) so try again
+    ( $msg, $rawMsg, $buf ) = Telegram_getNextMessage( $hash, $buf );
   }
 
-  # Split the message from the rest based on length of the Answer tag
-  if (length( $buf )>0) {
-    $buf =~ /^ANSWER\s(\d+)\n(.*)$/s;
-    my $count = $1;
-    $buf = $2;
-    
-    Log3 $name, 5, "Telegram_Read $name: found something in buffer with length $count";
-    if ( length($buf) > $count ) {
-      $msg = substr $buf, 0, $count;  
-      $buf = substr $buf, $count;
-    }
-  }
+  Log3 $name, 5, "Telegram_Read $name: parsed a message :".$msg.": ";
+  Log3 $name, 5, "Telegram_Read $name: and remaining :".$buf.": ";
 
   # Do we have a message found
   if (length( $msg )>0) {
@@ -496,8 +491,8 @@ sub Telegram_Read($)
     readingsBulkUpdate($hash, "lastmessage", $msg);				
 
     #55 [23:49]  First Last >>> test 5
-    # Ignore all none received messages
-    if ( $msg =~ /^(\d+)\s\[[^\]]+\]\s+([^\s][^>]*)\s>>>\s(.*)\n$/s  ) {
+    # Ignore all none received messages  // final \n is already removed
+    if ( $msg =~ /^(\d+)\s\[[^\]]+\]\s+([^\s][^>]*)\s>>>\s(.*)$/s  ) {
       my $mid = $1;
       my $mpeer = $2;
       my $mtext = $3;
@@ -517,7 +512,6 @@ sub Telegram_Read($)
 
   # store remaining message
   $hash->{REMAINING} =  $buf;
-  
   
 }
 
@@ -801,6 +795,7 @@ sub Telegram_getNextMessage($$)
     where &lt;what&gt; is one of
     <br><br>
     <li>msg &lt;text&gt;<br>Sends the given message to the currently defined default peer user</li>
+    <li>raw &lt;raw command&gt;<br>Sends the given ^raw command to the client</li>
   </ul>
   <br><br>
 

@@ -51,7 +51,7 @@
 #   document attr/set/get
 #   documentation on limitations
 # 0.2 2015-06-19 Running basic version with send and receive
-#
+#   corrections and stabilizations on message receive
 #
 ##############################################################################
 # TODO 
@@ -472,6 +472,7 @@ sub Telegram_Read($)
 
   # Split the message from the rest based on length of the Answer tag
   if (length( $buf )>0) {
+    $buf =~ /^ANSWER\s(\d+)\n(.*)$/s;
     my $count = $1;
     $buf = $2;
     
@@ -495,10 +496,11 @@ sub Telegram_Read($)
       my $mid = $1;
       my $mpeer = $2;
       my $mtext = $3;
+      Log3 $name, 5, "Telegram_Read $name: Found message $mid from $mpeer :$mtext:";
  
       readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});				
-      readingsBulkUpdate($hash, "prevMsgPeer", $hash->{READINGS}{mpeer}{VAL});				
-      readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{mtext}{VAL});				
+      readingsBulkUpdate($hash, "prevMsgPeer", $hash->{READINGS}{msgPeer}{VAL});				
+      readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
 
       readingsBulkUpdate($hash, "msgId", $mid);				
       readingsBulkUpdate($hash, "msgPeer", $mpeer);				

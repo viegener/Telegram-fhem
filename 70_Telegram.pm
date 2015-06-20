@@ -50,8 +50,13 @@
 #   document cli command
 #   document attr/set/get
 #   documentation on limitations
-# 0.2 2015-06-19 Running basic version with send and receive
+# 0.2a 2015-06-19 Running basic version with send and receive
 #   corrections and stabilizations on message receive
+# 0.2b 2015-06-20 Update 
+#
+#   works after rereadcfg
+#   DoCommand reimplemented
+#   
 #
 ##############################################################################
 # TODO 
@@ -415,7 +420,7 @@ sub Telegram_Shutdown($) {
 
   # send a quit but ignore return value
   $buf = Telegram_DoCommand( $hash, '', undef );
-  Log3 $name, 5, "Telegram_Shutdown $name: Done quit with return :$buf: ";
+  Log3 $name, 5, "Telegram_Shutdown $name: Done quit with return :".(defined($buf)?$buf:"undef").": ";
   
   return undef;
 }
@@ -557,12 +562,7 @@ sub Telegram_DoInit($)
   Log3 $name, 5, "Telegram_DoInit $name: Inital response is :".(defined($buf)?$buf:"undef").": ";
 
   # Send "main_session" ==> returns empty
-  $buf = Telegram_DoCommand( $hash, 'main_session', undef );
-  Log3 $name, 5, "Telegram_DoInit $name: Response on main_session is :".(defined($buf)?$buf:"undef").": ";
-  return "DoInit failed on main_session with return :".(defined($buf)?$buf:"undef").":" if ( defined($buf) && ( length($buf) > 0 ));
-  
-  # Send "help" ==> returns empty
-  $buf = Telegram_DoCommand( $hash, 'main_session', undef );
+  $buf = Telegram_DoCommand( $hash, 'main_session', '' );
   Log3 $name, 5, "Telegram_DoInit $name: Response on main_session is :".(defined($buf)?$buf:"undef").": ";
   return "DoInit failed on main_session with return :".(defined($buf)?$buf:"undef").":" if ( defined($buf) && ( length($buf) > 0 ));
   
@@ -601,8 +601,10 @@ sub Telegram_SendMessage($$$)
 # Parameter
 #   hash
 #   cmd - command line to be executed
-#   expect - expect response - undef : no check / <string> expect string after answer <n> for checking ok: 
-#   >>> returns : COMPLETE response on expect = undef / undef = string matched / response after answer <n> string else
+#   expect - 
+#        undef - means no parsing of result - Everything is returned
+#        true - parse for SUCCESS = undef / FAIL: = msg
+#        false - expect nothing - so return undef if nothing got / FAIL: = return this
 sub Telegram_DoCommand($$$)
 {
 	my ( $hash, $cmd, $expect ) = @_;
@@ -630,22 +632,79 @@ sub Telegram_DoCommand($$$)
   $buf = DevIo_SimpleReadWithTimeout($hash, 0.1);
   Log3 $name, 5, "Telegram_DoCommand $name: returned :".(defined($buf)?$buf:"undef").": ";
   
-  if ( defined( $expect ) ) {
-    ### check for correct response
-    # match for ANSWER <n>\n<real response>
-    if ( $buf =~ /^ANSWER\s(\d+)\n(.*)\n$/s ) {
-      # OK I got an answer
-      my $count = $1;
-      my $buf = $2;
-      
-      return $buf if ( length($buf) != ($count-1) );
-      
-      return undef if ( $buf =~ /^$expect/ );
-      
+  ### Attention this might contain multiple messages - so split into separate messages and just check for failure or success
+
+  # Return complete buffer if nothing expected
+  return $buf if ( ! defined( $expect ) );
+
+  my ( $msg, $rawMsg );
+
+  # Parse the different messages in the buffer
+  while ( length($buf) > 0 ) {
+    ( $msg, $rawMsg, $buf ) = Telegram_getNextMessage( $hash, $buf );
+    Log3 $name, 5, "Telegram_DoCommand $name: parsed a message :".$msg.": ";
+    Log3 $name, 5, "Telegram_DoCommand $name: and rawMsg :".$rawMsg.": ";
+    Log3 $name, 5, "Telegram_DoCommand $name: and remaining :".$buf.": ";
+    if ( length($msg) > 0 ) {
+      # Only FAIL / SUCCESS will be handled
+      if ( $msg =~ /^FAIL:/ ) {
+        $hash->{REMAINING} = $hash->{REMAINING}.$buf;
+        return $msg;
+      } elsif ( $msg =~ /^SUCCESS$/s ) {
+        $hash->{REMAINING} = $hash->{REMAINING}.$buf;
+        return undef;
+      } else {
+        $hash->{REMAINING} = $hash->{REMAINING}.$rawMsg;
+      }
+    } else {
+      $hash->{REMAINING} = $hash->{REMAINING}.$buf;
+      return $rawMsg;
     }
   }
+
+  # All messages handled no Failure or success received
+  if ( $expect ) {
+    return "NO RESULT";
+  }
   
-  return $buf;
+  return undef;
+}
+
+#####################################
+# INTERNAL: Function to split buffer into separate messages
+# Parameter
+#   hash
+#   buf
+# RETURNS
+#   msg - parsed message without ANSWER
+#   rawMsg - raw message 
+#   buf - remaining buffer after removing (raw)msg
+sub Telegram_getNextMessage($$)
+{
+	my ( $hash, $buf ) = @_;
+  my $name = $hash->{NAME};
+
+  if ( $buf =~ /^(ANSWER\s(\d+)\n)(.*\n)$/s ) {
+    # buffer starts with message
+      my $headMsg = $1;
+      my $count = $2;
+      my $rembuf = $3;
+    
+      # not enough characters in buffer / should not happen
+      return ( '', $rembuf, '' ) if ( length($rembuf) < $count );
+
+      my $msg = substr $rembuf, 0, $count-1; 
+      $rembuf = substr $rembuf, $count+1;
+      
+      return ( $msg, $headMsg.$msg."\n", $rembuf );
+  
+  }  elsif ( $buf =~ /^([Â]+)(ANSWER\s(\d+)\n(.*)\n)$/s ) {
+    # There seems to be some other message coming
+    return ( '', $1, $2 );
+  }
+
+  # No message found consider this all as raw
+  return ( '', $buf, '' );
 }
 
 
@@ -760,7 +819,8 @@ sub Telegram_DoCommand($$$)
   <b>Attributes</b>
   <br><br>
   <ul>
-    <li>defaultPeer &lt;name&gt;<br>Specify first name last name of the default peer to be used for sending messages</li> 
+    <li>defaultPeer &lt;name&gt;<br>Specify first name last name of the default peer to be used for sending messages. The peer should and can be given in the form of a firstname lastname separated by a space. 
+    The necessary underline will be automatically put into the string on usage</li> 
     <li>lastMsgId &lt;number&gt;<br>Specify the last message handled by Telegram.<br>NOTE: Not yet handled</li> 
     <li><a href="#verbose">verbose</a></li>
   </ul>

@@ -63,10 +63,15 @@
 #   added readyfn for handling remaining internal 
 # 0.3 2015-06-20 stabilized
 #   
+#   sent to any peer with set messageTo 
+#   reopen connection is done automatically through DevIo
+#   document telegram-cli command in more detail
+#   
+#
+#   
 #
 ##############################################################################
 # TODO 
-# - reopen connection command
 # - reopen connection if needed
 # - check state of connection
 # - handle Attr: lastMsgId
@@ -75,7 +80,6 @@
 ##############################################################################
 # Ideas / Future
 # - support unix socket also instead of port only
-# - if ever incomplete messages are received this needs to be incorporated into the return value handling
 # - allow multi parameter set for set <device> <peer> 
 # - start local telegram-cli as subprocess
 # - allow registration and configuration from module
@@ -148,6 +152,7 @@ sub Telegram_Parse($$$);
 # Globals
 my %sets = (
 	"message" => "textField",
+	"messageTo" => "textField",
 	"raw" => "textField"
 );
 
@@ -278,10 +283,6 @@ sub Telegram_Set($@)
 	return "Telegram_Set: No value specified for set" if ( $numberOfArgs < 1 );
 
 	my $cmd = shift @args;
-  my $arg = join(" ", @args );
-  if ( $numberOfArgs < 2 ) {
-    $arg = "";
-  }
 
   Log3 $name, 5, "Telegram_Set $name: Processing Telegram_Set( $cmd )";
 
@@ -313,6 +314,26 @@ sub Telegram_Set($@)
     }
     # should return undef if succesful
     Log3 $name, 5, "Telegram_Set $name: start message send ";
+    my $arg = join(" ", @args );
+    $ret = Telegram_SendMessage( $hash, $peer, $arg );
+
+    $hash->{sentMsgText} = $arg;
+    $hash->{sentMsgPeer} = $peer;
+    if ( defined($ret) ) {
+      $hash->{sentMsgResult} = $ret;
+    } else {
+      $hash->{sentMsgResult} = "SUCCESS";
+    }
+	} elsif($cmd eq 'messageTo') {
+    if ( $numberOfArgs < 3 ) {
+      return "Telegram_Set: Command $cmd, need to specify peer and text ";
+    }
+
+    # should return undef if succesful
+    my $peer = shift @args;
+    my $arg = join(" ", @args );
+
+    Log3 $name, 5, "Telegram_Set $name: start message send ";
     $ret = Telegram_SendMessage( $hash, $peer, $arg );
 
     $hash->{sentMsgText} = $arg;
@@ -326,12 +347,21 @@ sub Telegram_Set($@)
     if ( $numberOfArgs < 2 ) {
       return "Telegram_Set: Command $cmd, no raw command specified";
     }
+
+    my $arg = join(" ", @args );
     Log3 $name, 5, "Telegram_Set $name: start rawCommand :$arg: ";
     $ret = Telegram_DoCommand( $hash, $arg, undef );
+  } elsif($cmd eq 'debug') {
+    Log3 $name, 5, "Telegram_Set $name: start debug option ";
+    
+
   }
 
-  
-  Log3 $name, 5, "Telegram_Set $name: done with $hash->{sentMsgResult}: ";
+  if ( ! defined( $ret ) ) {
+    Log3 $name, 5, "Telegram_Set $name: $cmd done succesful: ";
+  } else {
+    Log3 $name, 5, "Telegram_Set $name: $cmd failed with :$ret: ";
+  }
   return $ret
 }
 
@@ -763,21 +793,36 @@ sub Telegram_getNextMessage($$)
   telegram-cli needs to run as a daemon listening on a tcp port to enable communication with FHEM. 
   <br><br>
   <code>
-    telegram-cli -k &lt;path to key file e.g. tg-server.pub&gt; -W -C -d -P &lt;portnumber&gt; [--accept-any-tcp] -L &lt;logfile&gt; -l 20 -N &
+    telegram-cli -k &lt;path to key file e.g. tg-server.pub&gt; -W -C -d -P &lt;portnumber&gt; [--accept-any-tcp] -L &lt;logfile&gt; -l 20 -N -R &
   </code>
   <br><br>
   <dl> 
-    <dt>keyfile</dt>
+    <dt>-C</dt>
+    <dd>REQUIRED: disable color output to avoid terminal color escape sequences in responses. Otherwise parser will fail on these</dd>
+    <dt>-d</dt>
+    <dd>REQUIRED: running telegram-cli as daemon (background process decoupled from terminal)</dd>
+    <dt>-k &lt;path to key file e.g. tg-server.pub&gt</dt>
     <dd>Path to the keyfile for telegram-cli, usually something like <code>tg-server.pub</code></dd>
-    <dt>portnumber</dt>
-    <dd>Port number on which the daemon should be listening e.g. 12345</dd>
+    <dt>-L &lt;logfile&gt;</dt>
+    <dd>Specify the path to the logfile for telegram-cli. This is especially helpful for debugging purposes and 
+      used in conjunction with the specifed log level e.g. (<code>-l 20</code>)</dd>
+    <dt>-l &lt;loglevel&gt;</dt>
+    <dd>numeric log level for output in log file</dd>
+    <dt>-N</dt>
+    <dd>REQUIRED: to be able to deal with msgIds</dd>
+    <dt>-P &lt;portnumber&gt;</dt>
+    <dd>REQUIRED: Port number on which the daemon should be listening e.g. 12345</dd>
+    <dt>-R</dt>
+    <dd>Readline disable to avoid logfile being filled with edit sequences</dd>
+    <dt>-v</dt>
+    <dd>More verbose output messages</dd>
+    <dt>-W</dt>
+    <dd>REQUIRED?: seems necessary to ensure communication with telegram server is correctly established</dd>
+
     <dt>--accept-any-tcp</dt>
     <dd>Allows the access to the daemon also from distant machines. This is only needed of the telegram-cli is not running on the same host than fhem.
       <br>
       ATTENTION: There is normally NO additional security requirement to access telegram-cli, so use this with care!</dd>
-    <dt>logfile</dt>
-    <dd>Specify the path to the logfile for telegram-cli. This is especially helpful for debugging purposes and 
-      used in conjunction with the specifed log level (<code>-l 20</code>)</dd>
   </dl>
   <br><br>
   More details to the command line parameters of telegram-cli can be found here: <a href="https://github.com/vysheng/tg/wiki/Telegram-CLI-Arguments>Telegram CLI Arguments</a>
@@ -785,7 +830,7 @@ sub Telegram_getNextMessage($$)
   In my environment, I could not run telegram-cli as part of normal raspbian startup as a daemon as described here:
    <a href="https://github.com/vysheng/tg/wiki/Running-Telegram-CLI-as-Daemon">Running Telegram CLI as Daemon</a> but rather start it currently manually as a background daemon process.
   <code>
-    telegram-cli -k tg-server.pub -W -C -d -P 12345 --accept-any-tcp -L test.log -l 20 -N &
+    telegram-cli -k tg-server.pub -W -C -d -P 12345 --accept-any-tcp -L telegram.log -l 20 -N -R -vvv &
   </code>
   <br><br>
   The Telegram module allows receiving of (text) messages to any peer (telegram user) and sends text messages to the default peer specified as attribute.
@@ -828,6 +873,8 @@ sub Telegram_getNextMessage($$)
     where &lt;what&gt; is one of
     <br><br>
     <li>message &lt;text&gt;<br>Sends the given message to the currently defined default peer user</li>
+    <li>messageTo &lt;peer&gt; &lt;text&gt;<br>Sends the given message to the given peer. 
+    Peer needs to be given without space or other separator, i.e. spaces should be replaced by underscore (e.g. first_last)</li>
     <li>raw &lt;raw command&gt;<br>Sends the given ^raw command to the client</li>
   </ul>
   <br><br>

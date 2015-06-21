@@ -59,12 +59,14 @@
 #   Cleaned also the read function
 #   add raw as set command to execute a raw command on the telegram-cli 
 #   get msgid now implemented
+#   renamed msg set/get into message (set) and msgById (get)
+#   added readyfn for handling remaining internal 
+# 0.3 2015-06-20 stabilized
 #   
 #
 ##############################################################################
 # TODO 
 # - reopen connection command
-# - is a ready function needed --> check REMAINING
 # - reopen connection if needed
 # - check state of connection
 # - handle Attr: lastMsgId
@@ -145,12 +147,12 @@ sub Telegram_Parse($$$);
 #########################
 # Globals
 my %sets = (
-	"msg" => "textField",
+	"message" => "textField",
 	"raw" => "textField"
 );
 
 my %gets = (
-	"msg" => "textField"
+	"msgById" => "textField"
 );
 
 
@@ -167,7 +169,7 @@ sub Telegram_Initialize($) {
 
 	$hash->{ReadFn}     = "Telegram_Read";
 	$hash->{WriteFn}    = "Telegram_Write";
-#	$hash->{ReadyFn}    = "Telegram_Ready";
+	$hash->{ReadyFn}    = "Telegram_Ready";
 
 	$hash->{DefFn}      = "Telegram_Define";
 	$hash->{UndefFn}    = "Telegram_Undef";
@@ -275,7 +277,7 @@ sub Telegram_Set($@)
 	my $numberOfArgs  = int(@args);
 	return "Telegram_Set: No value specified for set" if ( $numberOfArgs < 1 );
 
-	my $cmd = lc(shift @args);
+	my $cmd = shift @args;
   my $arg = join(" ", @args );
   if ( $numberOfArgs < 2 ) {
     $arg = "";
@@ -301,7 +303,7 @@ sub Telegram_Set($@)
 
   my $ret = undef;
   
-	if($cmd eq 'msg') {
+	if($cmd eq 'message') {
     if ( $numberOfArgs < 2 ) {
       return "Telegram_Set: Command $cmd, no text specified";
     }
@@ -345,7 +347,7 @@ sub Telegram_Get($@)
 	my $numberOfArgs  = int(@args);
 	return "Telegram_Get: No value specified for get" if ( $numberOfArgs < 1 );
 
-	my $cmd = lc($args[0]);
+	my $cmd = $args[0];
   my $arg = ($args[1] ? $args[1] : "");
 
   Log3 $name, 5, "Telegram_Get $name: Processing Telegram_Get( $cmd )";
@@ -369,7 +371,7 @@ sub Telegram_Get($@)
   
   my $ret = undef;
   
-	if($cmd eq 'msg') {
+	if($cmd eq 'msgById') {
     if ( $numberOfArgs != 2 ) {
       return "Telegram_Set: Command $cmd, no msg id specified";
     }
@@ -435,7 +437,24 @@ sub Telegram_Shutdown($) {
   return undef;
 }
 
-  
+#####################################
+sub Telegram_Ready($)
+{
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+
+  Log3 $name, 5, "Telegram_Ready $name: called ";
+
+  if($hash->{STATE} eq "disconnected") {
+    Log3 $name, 5, "Telegram $name: Telegram_Ready() state: disconnected -> DevIo_OpenDev";
+    return DevIo_OpenDev($hash, 1, "Telegram_DoInit");
+  }
+
+  return undef if( ! defined($hash->{REMAINING}) );
+
+  return ( length($hash->{REMAINING}) );
+}
+   
 #####################################
 # _Read is called when data is available on the corresponding file descriptor 
 # data to be read must be collected in hash until the data is complete
@@ -808,7 +827,7 @@ sub Telegram_getNextMessage($$)
     <br><br>
     where &lt;what&gt; is one of
     <br><br>
-    <li>msg &lt;text&gt;<br>Sends the given message to the currently defined default peer user</li>
+    <li>message &lt;text&gt;<br>Sends the given message to the currently defined default peer user</li>
     <li>raw &lt;raw command&gt;<br>Sends the given ^raw command to the client</li>
   </ul>
   <br><br>
@@ -820,7 +839,7 @@ sub Telegram_getNextMessage($$)
     <br><br>
     where &lt;what&gt; is one of
     <br><br>
-    <li>msg &lt;message id&gt;<br>Retrieves the message identifed by the corresponding message id</li>
+    <li>msgById &lt;message id&gt;<br>Retrieves the message identifed by the corresponding message id</li>
   </ul>
   <br><br>
 

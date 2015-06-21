@@ -20,14 +20,11 @@
 #
 ##############################################################################
 #	
-#  Telegram (c) Johannes Viegener / https://github.com/viegener
+#  Telegram (c) Johannes Viegener / https://github.com/viegener/Telegram-fhem
 #
 # This module handles receiving and sending messages to the messaging service telegram (see https://telegram.org/)
 # It works ONLY with a running telegram-cli (unofficial telegram cli client) --> see here https://github.com/vysheng/tg
 # telegram-cli needs to be configured and running as daemon local on the fhem host
-# ??? specify parameters
-#
-# Restriction: peer can be with or without spaces / spaces will be translated to _ (underline)
 #
 ##############################################################################
 # 0.0 2015-06-16 Started
@@ -66,14 +63,21 @@
 #   sent to any peer with set messageTo 
 #   reopen connection is done automatically through DevIo
 #   document telegram-cli command in more detail
-#   
-#
+#   added zDebug set for internal cleanup work (currently clean remaining)
+#   parse also secret chat messages
+#   request default peer to be given with underscore not space 
+#   Read will parse now all remaining messages and run multiple bulk updates in a row for each mesaage one
+#   lastMessage moved from Readings to Internals
+#   BUG resolved: messages are split wrongly (A of ANSWER might be cut)
+#   updated git hub link
+#   allow secret chat / new attr defaultSecret to send messages to defaultPeer via secret chat
+# 0.4 2015-06-22 SecretChat and general extensions and cleanup
 #   
 #
 ##############################################################################
 # TODO 
-# - reopen connection if needed
-# - check state of connection
+# - find way to enforce the handling of remaining messages
+# - extend telegram to restrict only to allowed peers
 # - handle Attr: lastMsgId
 # - read all unread messages from default peer on init
 #
@@ -88,44 +92,16 @@
 #
 ##############################################################################
 #	
-# define <name> Telegram  [<hostname>:]<port> 
-#	
-# Attr / Internal / Reading
-#   - Attr: lastMsgId
-#   - Attr: defaultPeer
+# Internals
 #   - Internal: sentMsgText
 #   - Internal: sentMsgResult
 #   - Internal: sentMsgPeer
-#   - Internal: sentMsgId????
+#   - Internal: sentMsgSecure
 #   - Internal: REMAINING - used for storing messages received intermediate
-#   - Reading: msgText
-#   - Reading: msgPeer
-#   - Reading: msgId
-#   - Reading: prevMsgText
-#   - Reading: prevMsgPeer
-#   - Reading: prevMsgId
+#   - Internal: lastmessage - last message handled in Read function
+#   - Internal: sentMsgId???
 # 
 ##############################################################################
-#
-# bin/telegram-cli -k tg-server.pub -W -C -d -P 12345 --accept-any-tcp -L test.log -l 20 -N &
-#
-#
-# main_session
-#ANSWER 65
-#User First Last online (was online [2015/06/18 23:53:53])
-#
-#ANSWER 41
-#55 [23:49]  First Last >>> test 5
-#
-#ANSWER 66
-#User First Last offline (was online [2015/06/18 23:49:08])
-#
-#mark_read First_Last
-#ANSWER 8
-#SUCCESS
-#
-
-
 
 package main;
 
@@ -152,6 +128,7 @@ sub Telegram_Parse($$$);
 # Globals
 my %sets = (
 	"message" => "textField",
+	"secretChat" => undef,
 	"messageTo" => "textField",
 	"raw" => "textField",
 	"zDebug" => "textField"
@@ -183,7 +160,7 @@ sub Telegram_Initialize($) {
 	$hash->{SetFn}      = "Telegram_Set";
   $hash->{ShutdownFn} = "Telegram_Shutdown"; 
 	$hash->{AttrFn}     = "Telegram_Attr";
-	$hash->{AttrList}   = "lastMsgId defaultPeer ".
+	$hash->{AttrList}   = "lastMsgId defaultPeer defaultSecret:0,1 ".
 						$readingFnAttributes;
 	
 }
@@ -318,13 +295,6 @@ sub Telegram_Set($@)
     my $arg = join(" ", @args );
     $ret = Telegram_SendMessage( $hash, $peer, $arg );
 
-    $hash->{sentMsgText} = $arg;
-    $hash->{sentMsgPeer} = $peer;
-    if ( defined($ret) ) {
-      $hash->{sentMsgResult} = $ret;
-    } else {
-      $hash->{sentMsgResult} = "SUCCESS";
-    }
 	} elsif($cmd eq 'messageTo') {
     if ( $numberOfArgs < 3 ) {
       return "Telegram_Set: Command $cmd, need to specify peer and text ";
@@ -337,13 +307,6 @@ sub Telegram_Set($@)
     Log3 $name, 5, "Telegram_Set $name: start message send ";
     $ret = Telegram_SendMessage( $hash, $peer, $arg );
 
-    $hash->{sentMsgText} = $arg;
-    $hash->{sentMsgPeer} = $peer;
-    if ( defined($ret) ) {
-      $hash->{sentMsgResult} = $ret;
-    } else {
-      $hash->{sentMsgResult} = "SUCCESS";
-    }
   } elsif($cmd eq 'raw') {
     if ( $numberOfArgs < 2 ) {
       return "Telegram_Set: Command $cmd, no raw command specified";
@@ -352,8 +315,22 @@ sub Telegram_Set($@)
     my $arg = join(" ", @args );
     Log3 $name, 5, "Telegram_Set $name: start rawCommand :$arg: ";
     $ret = Telegram_DoCommand( $hash, $arg, undef );
+  } elsif($cmd eq 'secretChat') {
+    if ( $numberOfArgs > 1 ) {
+      return "Telegram_Set: Command $cmd, no parameters allowed";
+    }
+    my $peer = AttrVal($name,'defaultPeer',undef);
+    if ( ! defined($peer) ) {
+      return "Telegram_Set: Command $cmd, requires defaultPeer being set";
+    }
+    Log3 $name, 5, "Telegram_Set $name: initiate secret chat with :$peer: ";
+    my $statement = "create_secret_chat ".$peer;
+    $ret = Telegram_DoCommand( $hash, $statement, undef );
   } elsif($cmd eq 'zDebug') {
     Log3 $name, 5, "Telegram_Set $name: start debug option ";
+#    delete( $hash->{READINGS}{lastmessage} );
+#    delete( $hash->{READINGS}{prevMsgSecret} );
+    $hash->{REMAINING} =  '';
   }
 
   if ( ! defined( $ret ) ) {
@@ -502,6 +479,24 @@ sub Telegram_Ready($)
 #ANSWER 8
 #SUCCESS
 #
+#ANSWER 60
+#806434894237732045 [16:51]  !_First_Last Â»Â»Â» Aaaa
+#
+#ANSWER 52
+#Secret chat !_First_Last updated access_hash
+#
+#ANSWER 57
+# Encrypted chat !_First_Last is now in wait state
+#
+#ANSWER 47
+#Secret chat !_First_Last updated status
+#
+#ANSWER 88
+#-6434729167215684422 [16:50]  !_First_Last First Last updated layer to 23
+#
+#ANSWER 63
+#-9199163497208231286 [16:50]  !_First_Last Â»Â»Â» Hallo
+#
 sub Telegram_Read($) 
 {
   my ($hash) = @_;
@@ -523,44 +518,66 @@ sub Telegram_Read($)
 
   my ( $msg, $rawMsg );
   
-  ( $msg, $rawMsg, $buf ) = Telegram_getNextMessage( $hash, $buf );
-  if ( length($msg) == 0 ) {
-    # No msg found (garbage in the buffer) so try again
+  while ( length( $buf ) > 0 ) {
+  
     ( $msg, $rawMsg, $buf ) = Telegram_getNextMessage( $hash, $buf );
-  }
-
-  Log3 $name, 5, "Telegram_Read $name: parsed a message :".$msg.": ";
-  Log3 $name, 5, "Telegram_Read $name: and remaining :".$buf.": ";
-
-  # Do we have a message found
-  if (length( $msg )>0) {
-    Log3 $name, 5, "Telegram_Read $name: message in buffer :$msg:";
-    readingsBeginUpdate($hash);
-
-    readingsBulkUpdate($hash, "lastmessage", $msg);				
-
-    #55 [23:49]  First Last >>> test 5
-    # Ignore all none received messages  // final \n is already removed
-    if ( $msg =~ /^(\d+)\s\[[^\]]+\]\s+([^\s][^>]*)\s>>>\s(.*)$/s  ) {
-      my $mid = $1;
-      my $mpeer = $2;
-      my $mtext = $3;
-      Log3 $name, 5, "Telegram_Read $name: Found message $mid from $mpeer :$mtext:";
- 
-      readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});				
-      readingsBulkUpdate($hash, "prevMsgPeer", $hash->{READINGS}{msgPeer}{VAL});				
-      readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
-
-      readingsBulkUpdate($hash, "msgId", $mid);				
-      readingsBulkUpdate($hash, "msgPeer", $mpeer);				
-      readingsBulkUpdate($hash, "msgText", $mtext);				
+    if ( length($msg) == 0 ) {
+      # No msg found (garbage in the buffer) so try again
+      ( $msg, $rawMsg, $buf ) = Telegram_getNextMessage( $hash, $buf );
     }
 
-    readingsEndUpdate($hash, 1);
-  }
+    Log3 $name, 5, "Telegram_Read $name: parsed a message :".$msg.": ";
+    Log3 $name, 5, "Telegram_Read $name: and remaining :".$buf.": ";
 
-  # store remaining message
-  $hash->{REMAINING} =  $buf;
+    # Do we have a message found
+    if (length( $msg )>0) {
+      Log3 $name, 5, "Telegram_Read $name: message in buffer :$msg:";
+      $hash->{lastmessage} = $msg;
+
+      #55 [23:49]  First Last >>> test 5
+      # Ignore all none received messages  // final \n is already removed
+      if ( $msg =~ /^(\d+)\s\[[^\]]+\]\s+([^\s][^>]*)\s>>>\s(.*)$/s  ) {
+        my $mid = $1;
+        my $mpeer = $2;
+        my $mtext = $3;
+        Log3 $name, 5, "Telegram_Read $name: Found message $mid from $mpeer :$mtext:";
+   
+        readingsBeginUpdate($hash);
+
+        readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});				
+        readingsBulkUpdate($hash, "prevMsgPeer", $hash->{READINGS}{msgPeer}{VAL});				
+        readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
+
+        readingsBulkUpdate($hash, "msgId", $mid);				
+        readingsBulkUpdate($hash, "msgPeer", $mpeer);				
+        readingsBulkUpdate($hash, "msgText", $mtext);				
+
+        readingsEndUpdate($hash, 1);
+
+      } elsif ( $msg =~ /^(-?\d+)\s\[[^\]]+\]\s+!_([^»]*)\s\»»»\s(.*)$/s  ) {
+        # secret chats have slightly different message format: can have a minus / !_ prefix on name and underscore between first and last / Â» instead of >
+        my $mid = $1;
+        my $mpeer = $2;
+        my $mtext = $3;
+        Log3 $name, 5, "Telegram_Read $name: Found secret message $mid from $mpeer :$mtext:";
+   
+        readingsBeginUpdate($hash);
+
+        readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});				
+        readingsBulkUpdate($hash, "prevMsgPeer", $hash->{READINGS}{msgPeer}{VAL});				
+        readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
+
+        readingsBulkUpdate($hash, "msgId", "secret");				
+        readingsBulkUpdate($hash, "msgPeer", $mpeer);				
+        readingsBulkUpdate($hash, "msgText", $mtext);				
+
+        readingsEndUpdate($hash, 1);
+
+      }
+
+    }
+
+  }
   
 }
 
@@ -633,9 +650,27 @@ sub Telegram_SendMessage($$$)
      $peer2 =~ s/^\s+|\s+$//g;
      $peer2 =~ s/ /_/g;
     
-  my $cmd = "msg $peer2 $msg";
   
-  return Telegram_DoCommand( $hash, $cmd, "SUCCESS" );
+  $hash->{sentMsgText} = $msg;
+  $hash->{sentMsgPeer} = $peer2;
+
+  my $defSec = AttrVal($name,'defaultSecret',0);
+  if ( $defSec ) {
+    $peer2 = "!_".$peer2;
+    $hash->{sentMsgSecure} = "secure";
+  } else {
+    $hash->{sentMsgSecure} = "normal";
+  }
+
+  my $cmd = "msg $peer2 $msg";
+  my $ret = Telegram_DoCommand( $hash, $cmd, "SUCCESS" );
+  if ( defined($ret) ) {
+    $hash->{sentMsgResult} = $ret;
+  } else {
+    $hash->{sentMsgResult} = "SUCCESS";
+  }
+
+  return $ret;
 }
 
 
@@ -742,7 +777,7 @@ sub Telegram_getNextMessage($$)
 	my ( $hash, $buf ) = @_;
   my $name = $hash->{NAME};
 
-  if ( $buf =~ /^(ANSWER\s(\d+)\n)(.*\n)$/s ) {
+  if ( $buf =~ /^(ANSWER\s(\d+)\n)(.*)$/s ) {
     # buffer starts with message
       my $headMsg = $1;
       my $count = $2;
@@ -756,7 +791,7 @@ sub Telegram_getNextMessage($$)
       
       return ( $msg, $headMsg.$msg."\n", $rembuf );
   
-  }  elsif ( $buf =~ /^([Â]+)(ANSWER\s(\d+)\n(.*)\n)$/s ) {
+  }  elsif ( $buf =~ /^([Â]+)(ANSWER\s(\d+)\n(.*\n))$/s ) {
     # There seems to be some other message coming
     return ( '', $1, $2 );
   }
@@ -842,9 +877,6 @@ sub Telegram_getNextMessage($$)
     <li>Message id handling is currently not yet implemented<br>This specifically means that messages received 
     during downtime of telegram-cli and / or fhem are not handled when fhem and telegram-cli are getting online again.</li> 
     <li>Running telegram-cli as a daemon with unix sockets is currently not supported</li> 
-    <li>Connection state is not handled</li> 
-    <li>Ready function not implemented to handled remaining messages that need to be handled in the read function</li> 
-    <li>... and a lot more</li> 
   </ul>
 
   <br><br>
@@ -893,8 +925,11 @@ sub Telegram_getNextMessage($$)
   <b>Attributes</b>
   <br><br>
   <ul>
-    <li>defaultPeer &lt;name&gt;<br>Specify first name last name of the default peer to be used for sending messages. The peer should and can be given in the form of a firstname lastname separated by a space. 
-    The necessary underline will be automatically put into the string on usage</li> 
+    <li>defaultPeer &lt;name&gt;<br>Specify first name last name of the default peer to be used for sending messages. The peer should and can be given in the form of a firstname_lastname. 
+    For scret communication will be the !_ automatically put as a prefix.</li> 
+    <li>defaultSecret<br>Use secret chat for communication with defaultPeer. 
+    LIMITATION: If no secret chat has been started with the corresponding peer, message send might fail. (see set secretChat)
+    </li> 
     <li>lastMsgId &lt;number&gt;<br>Specify the last message handled by Telegram.<br>NOTE: Not yet handled</li> 
     <li><a href="#verbose">verbose</a></li>
   </ul>
@@ -904,9 +939,11 @@ sub Telegram_getNextMessage($$)
   <b>Readings</b>
   <br><br>
   <ul>
-    <li>msgId &lt;text&gt;<br>The id of the last received message is stored in this reading.</li> 
+    <li>msgId &lt;text&gt;<br>The id of the last received message is stored in this reading. 
+    For secret chats a value of -1 will be given, since the msgIds of secret messages are not part of the consecutive numbering</li> 
     <li>msgPeer &lt;text&gt;<br>The sender of the last received message.</li> 
     <li>msgText &lt;text&gt;<br>The last received message text is stored in this reading.</li> 
+
     <li>prevMsgId &lt;text&gt;<br>The id of the SECOND last received message is stored in this reading.</li> 
     <li>prevMsgPeer &lt;text&gt;<br>The sender of the SECOND last received message.</li> 
     <li>prevMsgText &lt;text&gt;<br>The SECOND last received message text is stored in this reading.</li> 

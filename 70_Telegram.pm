@@ -153,7 +153,8 @@ sub Telegram_Parse($$$);
 my %sets = (
 	"message" => "textField",
 	"messageTo" => "textField",
-	"raw" => "textField"
+	"raw" => "textField",
+	"zDebug" => "textField"
 );
 
 my %gets = (
@@ -351,10 +352,8 @@ sub Telegram_Set($@)
     my $arg = join(" ", @args );
     Log3 $name, 5, "Telegram_Set $name: start rawCommand :$arg: ";
     $ret = Telegram_DoCommand( $hash, $arg, undef );
-  } elsif($cmd eq 'debug') {
+  } elsif($cmd eq 'zDebug') {
     Log3 $name, 5, "Telegram_Set $name: start debug option ";
-    
-
   }
 
   if ( ! defined( $ret ) ) {

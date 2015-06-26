@@ -73,10 +73,15 @@
 #   allow secret chat / new attr defaultSecret to send messages to defaultPeer via secret chat
 # 0.4 2015-06-22 SecretChat and general extensions and cleanup
 #   
+#   new set command sendPhoto to send images
+#
+#
 #
 ##############################################################################
 # TODO 
 # - find way to enforce the handling of remaining messages
+# - test bulk updates
+# - test add contact
 # - extend telegram to restrict only to allowed peers
 # - handle Attr: lastMsgId
 # - read all unread messages from default peer on init
@@ -131,6 +136,7 @@ my %sets = (
 	"secretChat" => undef,
 	"messageTo" => "textField",
 	"raw" => "textField",
+	"sendPhoto" => "textField",
 	"zDebug" => "textField"
 );
 
@@ -326,6 +332,31 @@ sub Telegram_Set($@)
     Log3 $name, 5, "Telegram_Set $name: initiate secret chat with :$peer: ";
     my $statement = "create_secret_chat ".$peer;
     $ret = Telegram_DoCommand( $hash, $statement, undef );
+
+  } elsif($cmd eq 'sendPhoto') {
+    if ( $numberOfArgs < 2 ) {
+      return "Telegram_Set: Command $cmd, need to specify filename ";
+    }
+
+    # should return undef if succesful
+    my $peer = AttrVal($name,'defaultPeer',undef);
+    if ( ! defined($peer) ) {
+      return "Telegram_Set: Command $cmd, requires defaultPeer being set";
+    }
+    my $arg = join(" ", @args );
+
+    Log3 $name, 5, "Telegram_Set $name: start photo send ";
+
+    my $peer2 = Telegram_convertpeer( $peer );
+
+    my $cmd = "send_photo $peer2 $arg";
+    my $ret = Telegram_DoCommand( $hash, $cmd, "SUCCESS" );
+    if ( defined($ret) ) {
+      $hash->{sentMsgResult} = $ret;
+    } else {
+      $hash->{sentMsgResult} = "SUCCESS";
+    }
+
   } elsif($cmd eq 'zDebug') {
     Log3 $name, 5, "Telegram_Set $name: start debug option ";
 #    delete( $hash->{READINGS}{lastmessage} );
@@ -636,6 +667,17 @@ sub Telegram_DoInit($)
   return undef;
 }
 
+sub Telegram_convertpeer($)
+{
+	my ( $peer ) = @_;
+
+  my $peer2 = $peer;
+     $peer2 =~ s/^\s+|\s+$//g;
+     $peer2 =~ s/ /_/g;
+
+  return $peer2;
+}
+
 #####################################
 # INTERNAL: Function to send a message to a peer and handle result
 sub Telegram_SendMessage($$$)
@@ -646,10 +688,7 @@ sub Telegram_SendMessage($$$)
   Log3 $name, 5, "Telegram_SendMessage $name: called ";
 
   # trim and convert spaces in peer to underline 
-  my $peer2 = $peer;
-     $peer2 =~ s/^\s+|\s+$//g;
-     $peer2 =~ s/ /_/g;
-    
+  my $peer2 = Telegram_convertpeer( $peer );
   
   $hash->{sentMsgText} = $msg;
   $hash->{sentMsgPeer} = $peer2;
@@ -722,7 +761,7 @@ sub Telegram_DoCommand($$$)
 
   Log3 $name, 5, "Telegram_DoCommand $name: send command DONE ";
 
-  $buf = DevIo_SimpleReadWithTimeout($hash, 0.1);
+  $buf = DevIo_SimpleReadWithTimeout($hash, 0.3);
   Log3 $name, 5, "Telegram_DoCommand $name: returned :".(defined($buf)?$buf:"undef").": ";
   
   ### Attention this might contain multiple messages - so split into separate messages and just check for failure or success
@@ -906,7 +945,11 @@ sub Telegram_getNextMessage($$)
     <li>message &lt;text&gt;<br>Sends the given message to the currently defined default peer user</li>
     <li>messageTo &lt;peer&gt; &lt;text&gt;<br>Sends the given message to the given peer. 
     Peer needs to be given without space or other separator, i.e. spaces should be replaced by underscore (e.g. first_last)</li>
-    <li>raw &lt;raw command&gt;<br>Sends the given ^raw command to the client</li>
+    <li>raw &lt;raw command&gt;<br>Sends the given raw command to the client</li>
+    <li>sendPhoto &lt;file&gt; [&lt;caption&gt;]<br>Sends a photo to the default peer. 
+    File is specifying a filename and path that is local to the directory in which telegram-cli process is started. 
+    So this might be a path on the remote host where telegram-cli is running and therefore not local to fhem.</li>
+
   </ul>
   <br><br>
 

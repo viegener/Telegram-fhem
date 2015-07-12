@@ -1,5 +1,4 @@
 ##############################################################################
-# $Id$
 #
 #     70_Telegram.pm
 #
@@ -76,14 +75,15 @@
 #   new set command sendPhoto to send images
 #   prepare new attributes for command handling on sent messages
 #   FIX read message routine, ensure remaining is updated
+#   enable commands through messages --> AnalyzeCommand
+#   restrict commands by peer
+#   restrict commands to trigger only
+# 0.5 2015-07-12 SecretChat and general extensions and cleanup
 #
 #
 #
 ##############################################################################
 # Extensions 
-# - enable commands through messages
-# - restrict commands by peer
-# - restrict commands  
 # - fix telegramd script to ensure port being shutdown
 # - test socket handling
 #
@@ -96,7 +96,6 @@
 # Ideas / Future
 # - allow multi parameter set for set <device> <peer> 
 # - start local telegram-cli as subprocess
-# - allow registration and configuration from module
 # - handled online / offline messages
 # - support presence messages
 #
@@ -171,7 +170,7 @@ sub Telegram_Initialize($) {
 	$hash->{SetFn}      = "Telegram_Set";
   $hash->{ShutdownFn} = "Telegram_Shutdown"; 
 	$hash->{AttrFn}     = "Telegram_Attr";
-	$hash->{AttrList}   = "lastMsgId defaultPeer defaultSecret:0,1 cmdKeyword cmdRestrictedPeer:0,1 cmdNotifyOnly:0,1".
+	$hash->{AttrList}   = "lastMsgId defaultPeer defaultSecret:0,1 cmdKeyword cmdRestrictedPeer:0,1 cmdTriggerOnly:0,1".
 						$readingFnAttributes;
 	
 }
@@ -463,8 +462,8 @@ sub Telegram_Attr(@) {
 		} elsif ($aName eq 'cmdRestrictedPeer') {
 			$attr{$name}{'cmdRestrictedPeer'} = ($aVal eq "1")? "1": "0";
 
-		} elsif ($aName eq 'cmdNotifyOnly') {
-			$attr{$name}{'cmdNotifyOnly'} = ($aVal eq "1")? "1": "0";
+		} elsif ($aName eq 'cmdTriggerOnly') {
+			$attr{$name}{'cmdTriggerOnly'} = ($aVal eq "1")? "1": "0";
 
     }
 	}
@@ -563,9 +562,12 @@ sub Telegram_Read($)
   $buf = $hash->{REMAINING}.$buf;
   $hash->{REMAINING} = $buf;
   
-  Log3 $name, 5, "Telegram_Read $name: Full buffer :$buf: ";
+#  Log3 $name, 5, "Telegram_Read $name: Full buffer :$buf: ";
 
   my ( $msg, $rawMsg );
+
+  # command key word aus Attribut holen
+  my $ck = AttrVal($name,'cmdKeyword',undef);
   
   while ( length( $buf ) > 0 ) {
   
@@ -576,11 +578,11 @@ sub Telegram_Read($)
     } else {
       Log3 $name, 5, "Telegram_Read $name: parsed a raw message :".$rawMsg.": ";
     }
-    Log3 $name, 5, "Telegram_Read $name: and remaining :".$buf.": ";
+#    Log3 $name, 5, "Telegram_Read $name: and remaining :".$buf.": ";
 
     # Do we have a message found
     if (length( $msg )>0) {
-      Log3 $name, 5, "Telegram_Read $name: message in buffer :$msg:";
+#      Log3 $name, 5, "Telegram_Read $name: message in buffer :$msg:";
       $hash->{lastmessage} = $msg;
 
       #55 [23:49]  First Last >>> test 5
@@ -601,6 +603,49 @@ sub Telegram_Read($)
         readingsBulkUpdate($hash, "msgText", $mtext);				
 
         readingsEndUpdate($hash, 1);
+
+        # Check for cmdKeyword
+        if ( defined( $ck ) ) {
+ #         Log3 $name, 5, "Telegram_Read $name: cmd keyword :".$ck.": ";
+
+          # trim whitespace from message text
+          $mtext =~ s/^\s+|\s+$//g;
+          
+          if ( index($mtext,$ck) == 0 ) {
+            # OK, cmdKeyword was found / extract cmd
+            my $cmd = substr( $mtext, length($ck) );
+            # trim also cmd
+            $cmd =~ s/^\s+|\s+$//g;
+
+            Log3 $name, 5, "Telegram_Read $name: cmd found :".$cmd.": ";
+            
+            # validate security criteria for commands
+            my $cp = AttrVal($name,'cmdRestrictedPeer','');
+            if ( ( $cp eq '' ) || ( $cp eq $mpeer ) ) {
+              # Either no peer defined or cmdpeer matches peer for message -> good to execute
+              my $cto = AttrVal($name,'cmdTriggerOnly',"0");
+              if ( $cto eq '1' ) {
+                $cmd = "trigger ".$cmd;
+              }
+              
+              my $ret = AnalyzeCommand( undef, $cmd, "" );
+              $ret = "" if ( ! defined($ret) );
+              
+              if ( length( $ret) == 0 ) {
+                $ret = "telegram fhem cmd :$cmd: result OK";
+              } else {
+                $ret = "telegram fhem cmd :$cmd: result :$ret:";
+              }
+              Log3 $name, 5, "Telegram_Read $name: cmd result :".$ret.": ";
+              AnalyzeCommand( undef, "set $name message $ret", "" );
+            } else {
+              # unauthorized fhem cmd
+              my $ret =  "UNAUTHORIZED: telegram fhem cmd :$cmd: from user :$mpeer:";
+            }
+
+          }
+
+        }
 
       }
 
@@ -987,10 +1032,23 @@ sub Telegram_getNextMessage($$)
   <b>Attributes</b>
   <br><br>
   <ul>
-    <li>defaultPeer &lt;name&gt;<br>Specify first name last name of the default peer to be used for sending messages. The peer should and can be given in the form of a firstname_lastname. 
+    <li>defaultPeer &lt;name&gt;<br>Specify first name last name of the default peer to be used for sending messages. The peer should be given in the form of a firstname_lastname. 
     For scret communication will be the !_ automatically put as a prefix.</li> 
     <li>defaultSecret<br>Use secret chat for communication with defaultPeer. 
     LIMITATION: If no secret chat has been started with the corresponding peer, message send might fail. (see set secretChat)
+    </li> 
+    <li>cmdKeyword &lt;keyword&gt;<br>Specify a specific text that needs to be sent to make the rest of the message being executed as a command. 
+      So if for example cmdKeyword is set to <code>ok fhem</code> then a message starting with this string will be executed as fhem command 
+        (see also cmdTriggerOnly).<br>
+        Example a message of <code>ok fhem attr telegram room IM</code> would execute the command  <code>attr telegram room IM</code> and set a device called telegram into room IM.
+        The result of the cmd is always sent as message to the defaultPeer 
+    </li> 
+
+    <li>cmdRestrictedPeer &lt;peername&gt;<br>Restrict the execution of commands only to messages sent from the the given peername 
+    (specified in the form of firstname_lastname). A message with the cmd and sender is sent to the default peer in case of another user trying to sent messages<br>
+    </li> 
+    <li>cmdTriggerOnly &lt;0 or 1&gt;<br>Restrict the execution of commands only to trigger command. If this attr is set (value 1), then only the name of the trigger even has to be given (i.e. without the preceding statement trigger). 
+          So if for example cmdKeyword is set to <code>ok fhem</code> and cmdTriggerOnly is set, then a message of <code>ok fhem someMacro</code> would execute the fhem command  <code>trigger someMacro</code>.
     </li> 
     <li>lastMsgId &lt;number&gt;<br>Specify the last message handled by Telegram.<br>NOTE: Not yet handled</li> 
     <li><a href="#verbose">verbose</a></li>

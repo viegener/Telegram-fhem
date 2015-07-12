@@ -74,13 +74,19 @@
 # 0.4 2015-06-22 SecretChat and general extensions and cleanup
 #   
 #   new set command sendPhoto to send images
+#   prepare new attributes for command handling on sent messages
+#   FIX read message routine, ensure remaining is updated
 #
 #
 #
 ##############################################################################
-# TODO 
-# - find way to enforce the handling of remaining messages
-# - test bulk updates
+# Extensions 
+# - enable commands through messages
+# - restrict commands by peer
+# - restrict commands  
+# - fix telegramd script to ensure port being shutdown
+# - test socket handling
+#
 # - test add contact
 # - extend telegram to restrict only to allowed peers
 # - handle Attr: lastMsgId
@@ -88,7 +94,6 @@
 #
 ##############################################################################
 # Ideas / Future
-# - support unix socket also instead of port only
 # - allow multi parameter set for set <device> <peer> 
 # - start local telegram-cli as subprocess
 # - allow registration and configuration from module
@@ -166,7 +171,7 @@ sub Telegram_Initialize($) {
 	$hash->{SetFn}      = "Telegram_Set";
   $hash->{ShutdownFn} = "Telegram_Shutdown"; 
 	$hash->{AttrFn}     = "Telegram_Attr";
-	$hash->{AttrList}   = "lastMsgId defaultPeer defaultSecret:0,1 ".
+	$hash->{AttrList}   = "lastMsgId defaultPeer defaultSecret:0,1 cmdKeyword cmdRestrictedPeer:0,1 cmdNotifyOnly:0,1".
 						$readingFnAttributes;
 	
 }
@@ -361,7 +366,7 @@ sub Telegram_Set($@)
     Log3 $name, 5, "Telegram_Set $name: start debug option ";
 #    delete( $hash->{READINGS}{lastmessage} );
 #    delete( $hash->{READINGS}{prevMsgSecret} );
-    $hash->{REMAINING} =  '';
+#    delete( $hash->{REMAININGOLD} );
   }
 
   if ( ! defined( $ret ) ) {
@@ -448,6 +453,18 @@ sub Telegram_Attr(@) {
 
 		} elsif ($aName eq 'defaultPeer') {
 			$attr{$name}{'defaultPeer'} = $aVal;
+
+		} elsif ($aName eq 'defaultSecret') {
+			$attr{$name}{'defaultSecret'} = ($aVal eq "1")? "1": "0";
+
+		} elsif ($aName eq 'cmdKeyword') {
+			$attr{$name}{'cmdKeyword'} = $aVal;
+
+		} elsif ($aName eq 'cmdRestrictedPeer') {
+			$attr{$name}{'cmdRestrictedPeer'} = ($aVal eq "1")? "1": "0";
+
+		} elsif ($aName eq 'cmdNotifyOnly') {
+			$attr{$name}{'cmdNotifyOnly'} = ($aVal eq "1")? "1": "0";
 
     }
 	}
@@ -544,7 +561,8 @@ sub Telegram_Read($)
   # append remaining content to buf
   $hash->{REMAINING} = '' if( ! defined($hash->{REMAINING}) );
   $buf = $hash->{REMAINING}.$buf;
-
+  $hash->{REMAINING} = $buf;
+  
   Log3 $name, 5, "Telegram_Read $name: Full buffer :$buf: ";
 
   my ( $msg, $rawMsg );
@@ -552,12 +570,12 @@ sub Telegram_Read($)
   while ( length( $buf ) > 0 ) {
   
     ( $msg, $rawMsg, $buf ) = Telegram_getNextMessage( $hash, $buf );
-    if ( length($msg) == 0 ) {
-      # No msg found (garbage in the buffer) so try again
-      ( $msg, $rawMsg, $buf ) = Telegram_getNextMessage( $hash, $buf );
-    }
 
-    Log3 $name, 5, "Telegram_Read $name: parsed a message :".$msg.": ";
+    if (length( $msg )>0) {
+      Log3 $name, 5, "Telegram_Read $name: parsed a message :".$msg.": ";
+    } else {
+      Log3 $name, 5, "Telegram_Read $name: parsed a raw message :".$rawMsg.": ";
+    }
     Log3 $name, 5, "Telegram_Read $name: and remaining :".$buf.": ";
 
     # Do we have a message found
@@ -567,10 +585,9 @@ sub Telegram_Read($)
 
       #55 [23:49]  First Last >>> test 5
       # Ignore all none received messages  // final \n is already removed
-      if ( $msg =~ /^(\d+)\s\[[^\]]+\]\s+([^\s][^>]*)\s>>>\s(.*)$/s  ) {
-        my $mid = $1;
-        my $mpeer = $2;
-        my $mtext = $3;
+      my ($mid, $mpeer, $mtext ) = Telegram_SplitMsg( $msg );
+      
+      if ( defined( $mid ) ) {
         Log3 $name, 5, "Telegram_Read $name: Found message $mid from $mpeer :$mtext:";
    
         readingsBeginUpdate($hash);
@@ -585,29 +602,11 @@ sub Telegram_Read($)
 
         readingsEndUpdate($hash, 1);
 
-      } elsif ( $msg =~ /^(-?\d+)\s\[[^\]]+\]\s+!_([^»]*)\s\»»»\s(.*)$/s  ) {
-        # secret chats have slightly different message format: can have a minus / !_ prefix on name and underscore between first and last / Â» instead of >
-        my $mid = $1;
-        my $mpeer = $2;
-        my $mtext = $3;
-        Log3 $name, 5, "Telegram_Read $name: Found secret message $mid from $mpeer :$mtext:";
-   
-        readingsBeginUpdate($hash);
-
-        readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});				
-        readingsBulkUpdate($hash, "prevMsgPeer", $hash->{READINGS}{msgPeer}{VAL});				
-        readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
-
-        readingsBulkUpdate($hash, "msgId", "secret");				
-        readingsBulkUpdate($hash, "msgPeer", $mpeer);				
-        readingsBulkUpdate($hash, "msgText", $mtext);				
-
-        readingsEndUpdate($hash, 1);
-
       }
 
     }
 
+    $hash->{REMAINING} = $buf;
   }
   
 }
@@ -635,6 +634,26 @@ sub Telegram_Write($$) {
 ##
 ##############################################################################
 ##############################################################################
+
+
+#####################################
+# split message into id peer and text
+# returns id, peer, msgtext
+sub Telegram_SplitMsg($)
+{
+	my ( $msg ) = @_;
+
+  if ( $msg =~ /^(\d+)\s\[[^\]]+\]\s+([^\s][^>]*)\s>>>\s(.*)$/s  ) {
+    return ( $1, $2, $3 );
+    
+  } elsif ( $msg =~ /^(-?\d+)\s\[[^\]]+\]\s+!_([^»]*)\s\»»»\s(.*)$/s  ) {
+    # secret chats have slightly different message format: can have a minus / !_ prefix on name and underscore between first and last / Â» instead of >
+    return ( $1, $2, $3 );
+  }
+
+  return undef;
+}
+
 
 #####################################
 # Initialize a connection to the telegram-cli
@@ -825,14 +844,14 @@ sub Telegram_getNextMessage($$)
       # not enough characters in buffer / should not happen
       return ( '', $rembuf, '' ) if ( length($rembuf) < $count );
 
-      my $msg = substr $rembuf, 0, $count-1; 
-      $rembuf = substr $rembuf, $count+1;
+      my $msg = substr( $rembuf, 0, ($count-1)); 
+      $rembuf = substr( $rembuf, ($count+1));
       
       return ( $msg, $headMsg.$msg."\n", $rembuf );
   
-  }  elsif ( $buf =~ /^([Â]+)(ANSWER\s(\d+)\n(.*\n))$/s ) {
-    # There seems to be some other message coming
-    return ( '', $1, $2 );
+  }  elsif ( $buf =~ /^(.*?)(ANSWER\s(\d+)\n(.*\n))$/s ) {
+    # There seems to be some other message coming ignore it
+    return ( '', $1."\n", $2 );
   }
 
   # No message found consider this all as raw

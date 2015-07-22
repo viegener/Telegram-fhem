@@ -80,15 +80,16 @@
 #   restrict commands to trigger only
 # 0.5 2015-07-12 SecretChat and general extensions and cleanup
 #
-#
+#   FIX call _Read in DoCommand to ensure other remaining pieces are read
+#   	was only worked off when new data was received from port
+#		Remove Read test on remaining
 #
 ##############################################################################
 # Extensions 
 # - fix telegramd script to ensure port being shutdown
 # - test socket handling
 #
-# - test add contact
-# - extend telegram to restrict only to allowed peers
+# - add contact
 # - handle Attr: lastMsgId
 # - read all unread messages from default peer on init
 #
@@ -96,7 +97,6 @@
 # Ideas / Future
 # - allow multi parameter set for set <device> <peer> 
 # - start local telegram-cli as subprocess
-# - handled online / offline messages
 # - support presence messages
 #
 ##############################################################################
@@ -128,7 +128,7 @@ sub Telegram_Undef($$);
 sub Telegram_Set($@);
 sub Telegram_Get($@);
 
-sub Telegram_Read($);
+sub Telegram_Read($;$);
 sub Telegram_Write($$);
 sub Telegram_Parse($$$);
 
@@ -494,6 +494,8 @@ sub Telegram_Shutdown($) {
 sub Telegram_Ready($)
 {
   my ($hash) = @_;
+  Log3 "tele", 5, "Telegram_Ready basic called ";
+
   my $name = $hash->{NAME};
 
   Log3 $name, 5, "Telegram_Ready $name: called ";
@@ -503,9 +505,10 @@ sub Telegram_Ready($)
     return DevIo_OpenDev($hash, 1, "Telegram_DoInit");
   }
 
-  return undef if( ! defined($hash->{REMAINING}) );
+	return undef;
+#  return undef if( ! defined($hash->{REMAINING}) );
 
-  return ( length($hash->{REMAINING}) );
+#  return ( length($hash->{REMAINING}) );
 }
    
 #####################################
@@ -544,25 +547,28 @@ sub Telegram_Ready($)
 #ANSWER 63
 #-9199163497208231286 [16:50]  !_First_Last Â»Â»Â» Hallo
 #
-sub Telegram_Read($) 
+sub Telegram_Read($;$) 
 {
-  my ($hash) = @_;
+  my ($hash, $noIO) = @_;
   my $name = $hash->{NAME};
-
-  Log3 $name, 5, "Telegram_Read $name: called ";
+	my $buf = '';
+		
+  Log3 $name, 5, "Telegram_Read $name: called with noIo defined: ".defined($noIO);
 
   # Read new data
-	my $buf = DevIo_SimpleRead($hash);
-  if ( $buf ) {
-    Log3 $name, 5, "Telegram_Read $name: New read :$buf: ";
-  }
+	if ( ! defined($noIO) ) {
+		$buf = DevIo_SimpleRead($hash);
+		if ( $buf ) {
+			Log3 $name, 5, "Telegram_Read $name: New read :$buf: ";
+		}
+	}
   
   # append remaining content to buf
   $hash->{REMAINING} = '' if( ! defined($hash->{REMAINING}) );
   $buf = $hash->{REMAINING}.$buf;
   $hash->{REMAINING} = $buf;
   
-#  Log3 $name, 5, "Telegram_Read $name: Full buffer :$buf: ";
+  Log3 $name, 5, "Telegram_Read $name: Full buffer :$buf: ";
 
   my ( $msg, $rawMsg );
 
@@ -579,6 +585,9 @@ sub Telegram_Read($)
       Log3 $name, 5, "Telegram_Read $name: parsed a raw message :".$rawMsg.": ";
     }
 #    Log3 $name, 5, "Telegram_Read $name: and remaining :".$buf.": ";
+
+		# update REMAINING for recursion
+    $hash->{REMAINING} = $buf;
 
     # Do we have a message found
     if (length( $msg )>0) {
@@ -651,7 +660,6 @@ sub Telegram_Read($)
 
     }
 
-    $hash->{REMAINING} = $buf;
   }
   
 }
@@ -833,7 +841,7 @@ sub Telegram_DoCommand($$$)
   # Return complete buffer if nothing expected
   return $buf if ( ! defined( $expect ) );
 
-  my ( $msg, $rawMsg );
+  my ( $msg, $rawMsg, $retValue );
 
   # Parse the different messages in the buffer
   while ( length($buf) > 0 ) {
@@ -842,24 +850,36 @@ sub Telegram_DoCommand($$$)
     Log3 $name, 5, "Telegram_DoCommand $name: and rawMsg :".$rawMsg.": ";
     Log3 $name, 5, "Telegram_DoCommand $name: and remaining :".$buf.": ";
     if ( length($msg) > 0 ) {
-      # Only FAIL / SUCCESS will be handled
+      # Only FAIL / SUCCESS will be handled (and removed)
       if ( $msg =~ /^FAIL:/ ) {
-        $hash->{REMAINING} = $hash->{REMAINING}.$buf;
-        return $msg;
+				$retValue = $msg;
+				last;
       } elsif ( $msg =~ /^SUCCESS$/s ) {
-        $hash->{REMAINING} = $hash->{REMAINING}.$buf;
-        return undef;
+				# reset $expect to make sure undef is returned
+				$expect = 0;
+				last;
       } else {
         $hash->{REMAINING} = $hash->{REMAINING}.$rawMsg;
       }
     } else {
-      $hash->{REMAINING} = $hash->{REMAINING}.$buf;
-      return $rawMsg;
+			$retValue = $rawMsg;
+			last;
     }
   }
 
-  # All messages handled no Failure or success received
-  if ( $expect ) {
+	# add remaining buf to remaining for further operation
+	$hash->{REMAINING} = $hash->{REMAINING}.$buf;
+	
+	# handle remaining buffer
+	if ( length($hash->{REMAINING}) > 0 ) {
+		# call read with noIO set
+		Telegram_Read( $hash, 1 );
+	}
+
+	# Result is in retValue / expect might be reset if success is received
+	if ( defined( $retValue ) ) {
+		return $retValue;
+  } elsif ( $expect ) {
     return "NO RESULT";
   }
   
@@ -890,7 +910,11 @@ sub Telegram_getNextMessage($$)
       return ( '', $rembuf, '' ) if ( length($rembuf) < $count );
 
       my $msg = substr( $rembuf, 0, ($count-1)); 
-      $rembuf = substr( $rembuf, ($count+1));
+			if ( $count == length($rembuf) ) {
+				$rembuf = '';
+			} else {
+				$rembuf = substr( $rembuf, ($count+1));
+		  }
       
       return ( $msg, $headMsg.$msg."\n", $rembuf );
   

@@ -83,9 +83,12 @@
 #   FIX call _Read in DoCommand to ensure other remaining pieces are read
 #   	was only worked off when new data was received from port
 #		Remove Read test on remaining
+#   Fix: restrictedPeer will lead to log message and is now allowing string value
+#   
 #
 ##############################################################################
 # Extensions 
+# - allow multiple restrictedPeers for cmds
 # - fix telegramd script to ensure port being shutdown
 # - test socket handling
 #
@@ -170,7 +173,7 @@ sub Telegram_Initialize($) {
 	$hash->{SetFn}      = "Telegram_Set";
   $hash->{ShutdownFn} = "Telegram_Shutdown"; 
 	$hash->{AttrFn}     = "Telegram_Attr";
-	$hash->{AttrList}   = "lastMsgId defaultPeer defaultSecret:0,1 cmdKeyword cmdRestrictedPeer:0,1 cmdTriggerOnly:0,1".
+	$hash->{AttrList}   = "lastMsgId defaultPeer defaultSecret:0,1 cmdKeyword cmdRestrictedPeer cmdTriggerOnly:0,1".
 						$readingFnAttributes;
 	
 }
@@ -460,7 +463,9 @@ sub Telegram_Attr(@) {
 			$attr{$name}{'cmdKeyword'} = $aVal;
 
 		} elsif ($aName eq 'cmdRestrictedPeer') {
-			$attr{$name}{'cmdRestrictedPeer'} = ($aVal eq "1")? "1": "0";
+      $aVal =~ s/^\s+|\s+$//g;
+      $aVal =~ s/ /_/g;
+      $attr{$name}{'cmdRestrictedPeer'} = $aVal;
 
 		} elsif ($aName eq 'cmdTriggerOnly') {
 			$attr{$name}{'cmdTriggerOnly'} = ($aVal eq "1")? "1": "0";
@@ -571,6 +576,9 @@ sub Telegram_Read($;$)
   Log3 $name, 5, "Telegram_Read $name: Full buffer :$buf: ";
 
   my ( $msg, $rawMsg );
+  
+  # undefined return value as default
+  my $ret;
 
   # command key word aus Attribut holen
   my $ck = AttrVal($name,'cmdKeyword',undef);
@@ -612,6 +620,11 @@ sub Telegram_Read($;$)
         readingsBulkUpdate($hash, "msgText", $mtext);				
 
         readingsEndUpdate($hash, 1);
+        
+        my $mpeernorm = $mpeer;
+        $mpeernorm =~ s/^\s+|\s+$//g;
+        $mpeernorm =~ s/ /_/g;
+
 
         # Check for cmdKeyword
         if ( defined( $ck ) ) {
@@ -630,16 +643,19 @@ sub Telegram_Read($;$)
             
             # validate security criteria for commands
             my $cp = AttrVal($name,'cmdRestrictedPeer','');
-            if ( ( $cp eq '' ) || ( $cp eq $mpeer ) ) {
+
+            if ( ( $cp eq '' ) || ( $cp eq $mpeernorm ) ) {
+              Log3 $name, 5, "Telegram_Read cmd correct peer ";
               # Either no peer defined or cmdpeer matches peer for message -> good to execute
               my $cto = AttrVal($name,'cmdTriggerOnly',"0");
               if ( $cto eq '1' ) {
                 $cmd = "trigger ".$cmd;
               }
               
+              Log3 $name, 5, "Telegram_Read final cmd for analyze :".$cmd.": ";
               my $ret = AnalyzeCommand( undef, $cmd, "" );
-              $ret = "" if ( ! defined($ret) );
-              
+              Log3 $name, 5, "Telegram_Read result for analyze :".$ret.": ";
+
               if ( length( $ret) == 0 ) {
                 $ret = "telegram fhem cmd :$cmd: result OK";
               } else {
@@ -649,7 +665,9 @@ sub Telegram_Read($;$)
               AnalyzeCommand( undef, "set $name message $ret", "" );
             } else {
               # unauthorized fhem cmd
-              my $ret =  "UNAUTHORIZED: telegram fhem cmd :$cmd: from user :$mpeer:";
+              Log3 $name, 1, "Telegram_Read unauthorized cmd from user :$mpeer:";
+              $ret = "" if ( ! defined( $ret ) );
+              $ret .=  "UNAUTHORIZED: telegram fhem cmd :$cmd: from user :$mpeer: \n";
             }
 
           }
@@ -660,6 +678,8 @@ sub Telegram_Read($;$)
 
     }
 
+    return $ret;
+    
   }
   
 }

@@ -678,10 +678,10 @@ sub Telegram_Read($;$)
 
     }
 
-    return $ret;
-    
   }
   
+  return $ret;
+    
 }
 
 #####################################

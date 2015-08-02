@@ -84,6 +84,8 @@
 #   	was only worked off when new data was received from port
 #		Remove Read test on remaining
 #   Fix: restrictedPeer will lead to log message and is now allowing string value
+#   format msgPeer  peer format with underscore to be reusable in msgTo
+#   prepare for dealing with numeric chat and user ids
 #   
 #
 ##############################################################################
@@ -173,7 +175,7 @@ sub Telegram_Initialize($) {
 	$hash->{SetFn}      = "Telegram_Set";
   $hash->{ShutdownFn} = "Telegram_Shutdown"; 
 	$hash->{AttrFn}     = "Telegram_Attr";
-	$hash->{AttrList}   = "lastMsgId defaultPeer defaultSecret:0,1 cmdKeyword cmdRestrictedPeer cmdTriggerOnly:0,1".
+	$hash->{AttrList}   = "lastMsgId defaultPeer defaultSecret:0,1 cmdKeyword cmdRestrictedPeer cmdTriggerOnly:0,1 cmdNumericIDs:0,1".
 						$readingFnAttributes;
 	
 }
@@ -470,6 +472,9 @@ sub Telegram_Attr(@) {
 		} elsif ($aName eq 'cmdTriggerOnly') {
 			$attr{$name}{'cmdTriggerOnly'} = ($aVal eq "1")? "1": "0";
 
+		} elsif ($aName eq 'cmdNumericIDs') {
+			$attr{$name}{'cmdNumericIDs'} = ($aVal eq "1")? "1": "0";
+
     }
 	}
 
@@ -609,6 +614,10 @@ sub Telegram_Read($;$)
       if ( defined( $mid ) ) {
         Log3 $name, 5, "Telegram_Read $name: Found message $mid from $mpeer :$mtext:";
    
+        my $mpeernorm = $mpeer;
+        $mpeernorm =~ s/^\s+|\s+$//g;
+        $mpeernorm =~ s/ /_/g;
+
         readingsBeginUpdate($hash);
 
         readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});				
@@ -616,15 +625,11 @@ sub Telegram_Read($;$)
         readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
 
         readingsBulkUpdate($hash, "msgId", $mid);				
-        readingsBulkUpdate($hash, "msgPeer", $mpeer);				
+        readingsBulkUpdate($hash, "msgPeer", $mpeernorm);				
         readingsBulkUpdate($hash, "msgText", $mtext);				
 
         readingsEndUpdate($hash, 1);
         
-        my $mpeernorm = $mpeer;
-        $mpeernorm =~ s/^\s+|\s+$//g;
-        $mpeernorm =~ s/ /_/g;
-
 
         # Check for cmdKeyword
         if ( defined( $ck ) ) {
@@ -685,8 +690,7 @@ sub Telegram_Read($;$)
 }
 
 #####################################
-# Initialize a connection to the telegram-cli
-# requires to ensure commands are accepted / set this as main_session, get last msg id 
+# Write a message to telegram as a command 
 sub Telegram_Write($$) {
   my ($hash,$msg) = @_;
   my $name = $hash->{NAME};
@@ -802,6 +806,21 @@ sub Telegram_SendMessage($$$)
   }
 
   return $ret;
+}
+
+
+#####################################
+# INTERNAL: Function to get the real name for a 
+sub Telegram_PeerToID($$)
+{
+	my ( $hash, $peer ) = @_;
+  my $name = $hash->{NAME};
+	
+  Log3 $name, 5, "Telegram_PeerToID $name: called ";
+
+  #????
+
+  return ;
 }
 
 

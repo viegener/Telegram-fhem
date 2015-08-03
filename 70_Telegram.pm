@@ -86,16 +86,20 @@
 #   Fix: restrictedPeer will lead to log message and is now allowing string value
 #   format msgPeer  peer format with underscore to be reusable in msgTo
 #   prepare for dealing with numeric chat and user ids
+#   only a simgle message and without preceding ANSWER and length (if complete) will be returned as results of raw commands (and other ocmmands)  
 #   
 #
 ##############################################################################
 # Extensions 
+# - on docommand only take the first message from return / rest put into remaining
 # - allow multiple restrictedPeers for cmds
+# - remove lastMsgId
+#
+#
 # - fix telegramd script to ensure port being shutdown
 # - test socket handling
 #
 # - add contact
-# - handle Attr: lastMsgId
 # - read all unread messages from default peer on init
 #
 ##############################################################################
@@ -864,7 +868,7 @@ sub Telegram_DoCommand($$$)
   $buf = DevIo_SimpleReadWithTimeout($hash, 0.01);
   if ( $buf ) {
     Log3 $name, 5, "Telegram_DoCommand $name: Remaining read :$buf: ";
-    $hash->{REMAINING} = $hash->{REMAINING}.$buf;
+    $hash->{REMAINING} .= $buf;
   }
   
   # Now write the message
@@ -877,9 +881,6 @@ sub Telegram_DoCommand($$$)
   
   ### Attention this might contain multiple messages - so split into separate messages and just check for failure or success
 
-  # Return complete buffer if nothing expected
-  return $buf if ( ! defined( $expect ) );
-
   my ( $msg, $rawMsg, $retValue );
 
   # Parse the different messages in the buffer
@@ -888,6 +889,18 @@ sub Telegram_DoCommand($$$)
     Log3 $name, 5, "Telegram_DoCommand $name: parsed a message :".$msg.": ";
     Log3 $name, 5, "Telegram_DoCommand $name: and rawMsg :".$rawMsg.": ";
     Log3 $name, 5, "Telegram_DoCommand $name: and remaining :".$buf.": ";
+
+    # Return complete first rawmsg or $msg if nothing expected
+    if ( ! defined( $expect ) ) {
+      $hash->{REMAINING} .= $buf;
+      if ( length($msg) > 0 ) {
+        $retValue = $msg;
+      } else {
+        $retValue = $rawMsg;
+      }
+      last;
+    }
+
     if ( length($msg) > 0 ) {
       # Only FAIL / SUCCESS will be handled (and removed)
       if ( $msg =~ /^FAIL:/ ) {
@@ -898,7 +911,7 @@ sub Telegram_DoCommand($$$)
 				$expect = 0;
 				last;
       } else {
-        $hash->{REMAINING} = $hash->{REMAINING}.$rawMsg;
+        $hash->{REMAINING} .= $rawMsg;
       }
     } else {
 			$retValue = $rawMsg;
@@ -907,7 +920,7 @@ sub Telegram_DoCommand($$$)
   }
 
 	# add remaining buf to remaining for further operation
-	$hash->{REMAINING} = $hash->{REMAINING}.$buf;
+	$hash->{REMAINING} .= $buf;
 	
 	# handle remaining buffer
 	if ( length($hash->{REMAINING}) > 0 ) {

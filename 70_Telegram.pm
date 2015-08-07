@@ -87,26 +87,24 @@
 #   format msgPeer  peer format with underscore to be reusable in msgTo
 #   prepare for dealing with numeric chat and user ids
 #   only a simgle message and without preceding ANSWER and length (if complete) will be returned as results of raw commands (and other ocmmands)  
-#   
+#   allow multiple restrictedPeers for cmds
+#   remove lastMsgId (was not handled so far)
+# 0.6 2015-08-07 Stabilization 
+#
 #
 ##############################################################################
 # Extensions 
-# - on docommand only take the first message from return / rest put into remaining
-# - allow multiple restrictedPeers for cmds
-# - remove lastMsgId
-#
-#
+# - handle numeric ID mode of telegram-cli (increased security due to fixed identities)
 # - fix telegramd script to ensure port being shutdown
 # - test socket handling
 #
-# - add contact
-# - read all unread messages from default peer on init
-#
 ##############################################################################
 # Ideas / Future
+# - read all unread messages from default peer on init
 # - allow multi parameter set for set <device> <peer> 
 # - start local telegram-cli as subprocess
 # - support presence messages
+# - add contact
 #
 ##############################################################################
 #	
@@ -179,7 +177,7 @@ sub Telegram_Initialize($) {
 	$hash->{SetFn}      = "Telegram_Set";
   $hash->{ShutdownFn} = "Telegram_Shutdown"; 
 	$hash->{AttrFn}     = "Telegram_Attr";
-	$hash->{AttrList}   = "lastMsgId defaultPeer defaultSecret:0,1 cmdKeyword cmdRestrictedPeer cmdTriggerOnly:0,1 cmdNumericIDs:0,1".
+	$hash->{AttrList}   = "defaultPeer defaultSecret:0,1 cmdKeyword cmdRestrictedPeer cmdTriggerOnly:0,1 cmdNumericIDs:0,1".
 						$readingFnAttributes;
 	
 }
@@ -452,14 +450,7 @@ sub Telegram_Attr(@) {
 	# $name is device name
 	# aName and aVal are Attribute name and value
 	if ($cmd eq "set") {
-		if($aName eq 'lastMsgId') {
-			return "Telegram_Attr: value must be >=0 " if( $aVal < 0 );
-		}
-
-		if ($aName eq 'lastMsgId') {
-			$attr{$name}{'lastMsgId'} = $aVal;
-
-		} elsif ($aName eq 'defaultPeer') {
+    if ($aName eq 'defaultPeer') {
 			$attr{$name}{'defaultPeer'} = $aVal;
 
 		} elsif ($aName eq 'defaultSecret') {
@@ -470,7 +461,9 @@ sub Telegram_Attr(@) {
 
 		} elsif ($aName eq 'cmdRestrictedPeer') {
       $aVal =~ s/^\s+|\s+$//g;
-      $aVal =~ s/ /_/g;
+
+      # allow multiple peers with spaces separated
+      # $aVal =~ s/ /_/g;
       $attr{$name}{'cmdRestrictedPeer'} = $aVal;
 
 		} elsif ($aName eq 'cmdTriggerOnly') {
@@ -651,9 +644,7 @@ sub Telegram_Read($;$)
             Log3 $name, 5, "Telegram_Read $name: cmd found :".$cmd.": ";
             
             # validate security criteria for commands
-            my $cp = AttrVal($name,'cmdRestrictedPeer','');
-
-            if ( ( $cp eq '' ) || ( $cp eq $mpeernorm ) ) {
+            if ( Telegram_checkAllowedPeer( $hash, $mpeernorm ) ) {
               Log3 $name, 5, "Telegram_Read cmd correct peer ";
               # Either no peer defined or cmdpeer matches peer for message -> good to execute
               my $cto = AttrVal($name,'cmdTriggerOnly',"0");
@@ -689,8 +680,7 @@ sub Telegram_Read($;$)
 
   }
   
-  return $ret;
-    
+  return $ret;    
 }
 
 #####################################
@@ -715,6 +705,27 @@ sub Telegram_Write($$) {
 ##
 ##############################################################################
 ##############################################################################
+
+#####################################
+# Check if peer is allowed - true if allowed
+sub Telegram_checkAllowedPeer($$) {
+  my ($hash,$mpeer) = @_;
+  my $name = $hash->{NAME};
+
+  Log3 $name, 5, "Telegram_checkAllowedPeer $name: called with $mpeer";
+
+  my $cp = AttrVal($name,'cmdRestrictedPeer','');
+
+  return 1 if ( $cp eq '' );
+  
+  my @peers = split( " ", $cp);  
+  
+  foreach my $cp (@peers) {
+    return 1 if ( $cp eq $mpeer );
+  }
+  
+  return 0;
+}  
 
 
 #####################################
@@ -1126,7 +1137,6 @@ sub Telegram_getNextMessage($$)
     <li>cmdTriggerOnly &lt;0 or 1&gt;<br>Restrict the execution of commands only to trigger command. If this attr is set (value 1), then only the name of the trigger even has to be given (i.e. without the preceding statement trigger). 
           So if for example cmdKeyword is set to <code>ok fhem</code> and cmdTriggerOnly is set, then a message of <code>ok fhem someMacro</code> would execute the fhem command  <code>trigger someMacro</code>.
     </li> 
-    <li>lastMsgId &lt;number&gt;<br>Specify the last message handled by Telegram.<br>NOTE: Not yet handled</li> 
     <li><a href="#verbose">verbose</a></li>
   </ul>
   <br><br>

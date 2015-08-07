@@ -92,6 +92,8 @@
 # 0.6 2015-08-07 Stabilization 
 #
 #
+#
+#
 ##############################################################################
 # Extensions 
 # - handle numeric ID mode of telegram-cli (increased security due to fixed identities)
@@ -1131,8 +1133,9 @@ sub Telegram_getNextMessage($$)
         The result of the cmd is always sent as message to the defaultPeer 
     </li> 
 
-    <li>cmdRestrictedPeer &lt;peername&gt;<br>Restrict the execution of commands only to messages sent from the the given peername 
-    (specified in the form of firstname_lastname). A message with the cmd and sender is sent to the default peer in case of another user trying to sent messages<br>
+    <li>cmdRestrictedPeer &lt;peername(s)&gt;<br>Restrict the execution of commands only to messages sent from the the given peername or multiple peernames
+    (specified in the form of firstname_lastname, multiple peers to be separated by a space). 
+    A message with the cmd and sender is sent to the default peer in case of another user trying to sent messages<br>
     </li> 
     <li>cmdTriggerOnly &lt;0 or 1&gt;<br>Restrict the execution of commands only to trigger command. If this attr is set (value 1), then only the name of the trigger even has to be given (i.e. without the preceding statement trigger). 
           So if for example cmdKeyword is set to <code>ok fhem</code> and cmdTriggerOnly is set, then a message of <code>ok fhem someMacro</code> would execute the fhem command  <code>trigger someMacro</code>.

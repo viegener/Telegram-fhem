@@ -706,7 +706,7 @@ sub Telegram_Read($;$)
 ##############################################################################
 
 #####################################
-# Check if peer is allowed - true if allowed
+# INTERNAL: Check if peer is allowed - true if allowed
 sub Telegram_checkAllowedPeer($$) {
   my ($hash,$mpeer) = @_;
   my $name = $hash->{NAME};
@@ -728,7 +728,7 @@ sub Telegram_checkAllowedPeer($$) {
 
 
 #####################################
-# split message into id peer and text
+# INTERNAL: split message into id peer and text
 # returns id, peer, msgtext
 sub Telegram_SplitMsg($)
 {
@@ -747,7 +747,7 @@ sub Telegram_SplitMsg($)
 
 
 #####################################
-# Initialize a connection to the telegram-cli
+# INTERNAL: Initialize a connection to the telegram-cli
 # requires to ensure commands are accepted / set this as main_session, get last msg id 
 sub Telegram_DoInit($)
 {

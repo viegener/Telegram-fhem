@@ -96,6 +96,7 @@
 #
 ##############################################################################
 # Extensions 
+# - startup behavior: make sure being able to be operational and able to send a message
 # - handle numeric ID mode of telegram-cli (increased security due to fixed identities)
 # - fix telegramd script to ensure port being shutdown
 # - test socket handling
@@ -138,7 +139,6 @@ sub Telegram_Set($@);
 sub Telegram_Get($@);
 
 sub Telegram_Read($;$);
-sub Telegram_Write($$);
 sub Telegram_Parse($$$);
 
 
@@ -170,7 +170,7 @@ sub Telegram_Initialize($) {
 	require "$attr{global}{modpath}/FHEM/DevIo.pm";
 
 	$hash->{ReadFn}     = "Telegram_Read";
-	$hash->{WriteFn}    = "Telegram_Write";
+#	$hash->{WriteFn}    = "Telegram_Write";
 	$hash->{ReadyFn}    = "Telegram_Ready";
 
 	$hash->{DefFn}      = "Telegram_Define";
@@ -266,6 +266,33 @@ sub Telegram_Undef($$)
   Log3 $name, 5, "Telegram_Undef $name: done ";
   return undef;
 }
+
+######################################
+#  Shutdown function is called on shutdown of server and will issue a quite to the cli 
+sub Telegram_Shutdown($) {
+
+	my ( $hash ) = @_;
+  my $name = $hash->{NAME};
+
+  Log3 $name, 5, "Telegram_Attr $name: called ";
+
+  # First needs send an empty line and read all returns away
+  my $buf = Telegram_DoCommand( $hash, '', undef );
+
+  # send a quit but ignore return value
+  $buf = Telegram_DoCommand( $hash, '', undef );
+  Log3 $name, 5, "Telegram_Shutdown $name: Done quit with return :".(defined($buf)?$buf:"undef").": ";
+  
+  return undef;
+}
+
+
+##############################################################################
+##############################################################################
+## Instance methods
+##############################################################################
+##############################################################################
+
 
 ####################################
 # set function for executing set operations on device
@@ -480,25 +507,6 @@ sub Telegram_Attr(@) {
 	return undef;
 }
 
-######################################
-#  Shutdown function is called on shutdown of server and will issue a quite to the cli 
-sub Telegram_Shutdown($) {
-
-	my ( $hash ) = @_;
-  my $name = $hash->{NAME};
-
-  Log3 $name, 5, "Telegram_Attr $name: called ";
-
-  # First needs send an empty line and read all returns away
-  my $buf = Telegram_DoCommand( $hash, '', undef );
-
-  # send a quit but ignore return value
-  $buf = Telegram_DoCommand( $hash, '', undef );
-  Log3 $name, 5, "Telegram_Shutdown $name: Done quit with return :".(defined($buf)?$buf:"undef").": ";
-  
-  return undef;
-}
-
 #####################################
 sub Telegram_Ready($)
 {
@@ -684,19 +692,6 @@ sub Telegram_Read($;$)
   
   return $ret;    
 }
-
-#####################################
-# Write a message to telegram as a command 
-sub Telegram_Write($$) {
-  my ($hash,$msg) = @_;
-  my $name = $hash->{NAME};
-
-  Log3 $name, 5, "Telegram_Write $name: called ";
-
-  return Telegram_DoCommand( $hash, $msg, undef );  
-
-} 
-
 
 
 

@@ -91,11 +91,13 @@
 #   remove lastMsgId (was not handled so far)
 # 0.6 2015-08-07 Stabilization 
 #
-#
+#   remove write fn (not needed for logical device)
+#   FIX: quit command on shutdown
 #
 #
 ##############################################################################
 # Extensions 
+# - handle recursion by marking entry into _set / _get / _attr / _read ; remaining messages only handled on entry into recursion
 # - startup behavior: make sure being able to be operational and able to send a message
 # - handle numeric ID mode of telegram-cli (increased security due to fixed identities)
 # - fix telegramd script to ensure port being shutdown
@@ -280,7 +282,7 @@ sub Telegram_Shutdown($) {
   my $buf = Telegram_DoCommand( $hash, '', undef );
 
   # send a quit but ignore return value
-  $buf = Telegram_DoCommand( $hash, '', undef );
+  $buf = Telegram_DoCommand( $hash, 'quit', undef );
   Log3 $name, 5, "Telegram_Shutdown $name: Done quit with return :".(defined($buf)?$buf:"undef").": ";
   
   return undef;
@@ -289,7 +291,7 @@ sub Telegram_Shutdown($) {
 
 ##############################################################################
 ##############################################################################
-## Instance methods
+## Instance operational methods
 ##############################################################################
 ##############################################################################
 

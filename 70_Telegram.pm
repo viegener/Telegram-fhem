@@ -93,6 +93,8 @@
 #
 #   remove write fn (not needed for logical device)
 #   FIX: quit command on shutdown
+#   Send command result also to sender of command
+#   Send name of peer with command result
 #
 #
 ##############################################################################
@@ -594,9 +596,6 @@ sub Telegram_Read($;$)
   # undefined return value as default
   my $ret;
 
-  # command key word aus Attribut holen
-  my $ck = AttrVal($name,'cmdKeyword',undef);
-  
   while ( length( $buf ) > 0 ) {
   
     ( $msg, $rawMsg, $buf ) = Telegram_getNextMessage( $hash, $buf );
@@ -639,53 +638,12 @@ sub Telegram_Read($;$)
 
         readingsEndUpdate($hash, 1);
         
-
-        # Check for cmdKeyword
-        if ( defined( $ck ) ) {
- #         Log3 $name, 5, "Telegram_Read $name: cmd keyword :".$ck.": ";
-
-          # trim whitespace from message text
-          $mtext =~ s/^\s+|\s+$//g;
-          
-          if ( index($mtext,$ck) == 0 ) {
-            # OK, cmdKeyword was found / extract cmd
-            my $cmd = substr( $mtext, length($ck) );
-            # trim also cmd
-            $cmd =~ s/^\s+|\s+$//g;
-
-            Log3 $name, 5, "Telegram_Read $name: cmd found :".$cmd.": ";
-            
-            # validate security criteria for commands
-            if ( Telegram_checkAllowedPeer( $hash, $mpeernorm ) ) {
-              Log3 $name, 5, "Telegram_Read cmd correct peer ";
-              # Either no peer defined or cmdpeer matches peer for message -> good to execute
-              my $cto = AttrVal($name,'cmdTriggerOnly',"0");
-              if ( $cto eq '1' ) {
-                $cmd = "trigger ".$cmd;
-              }
-              
-              Log3 $name, 5, "Telegram_Read final cmd for analyze :".$cmd.": ";
-              my $ret = AnalyzeCommand( undef, $cmd, "" );
-              Log3 $name, 5, "Telegram_Read result for analyze :".$ret.": ";
-
-              if ( length( $ret) == 0 ) {
-                $ret = "telegram fhem cmd :$cmd: result OK";
-              } else {
-                $ret = "telegram fhem cmd :$cmd: result :$ret:";
-              }
-              Log3 $name, 5, "Telegram_Read $name: cmd result :".$ret.": ";
-              AnalyzeCommand( undef, "set $name message $ret", "" );
-            } else {
-              # unauthorized fhem cmd
-              Log3 $name, 1, "Telegram_Read unauthorized cmd from user :$mpeer:";
-              $ret = "" if ( ! defined( $ret ) );
-              $ret .=  "UNAUTHORIZED: telegram fhem cmd :$cmd: from user :$mpeer: \n";
-            }
-
-          }
-
+        my $cmdRet = Telegram_ReadHandleCommand( $hash, $mpeernorm, $mtext );
+        if ( defined( $cmdRet ) ) {
+          $ret = "" if ( ! defined( $ret ) );
+          $ret .=  $cmdRet;
         }
-
+        
       }
 
     }
@@ -706,6 +664,71 @@ sub Telegram_Read($;$)
 ##############################################################################
 
 #####################################
+# INTERNAL: Check if peer is allowed - true if allowed
+sub Telegram_ReadHandleCommand($$$) {
+  my ($hash, $mpeernorm, $mtext ) = @_;
+  my $name = $hash->{NAME};
+
+  my $ret;
+  
+  # command key word aus Attribut holen
+  my $ck = AttrVal($name,'cmdKeyword',undef);
+  
+  return $ret if ( ! defined( $ck ) );
+
+  # trim whitespace from message text
+  $mtext =~ s/^\s+|\s+$//g;
+  
+  return $ret if ( index($mtext,$ck) != 0 );
+
+  # OK, cmdKeyword was found / extract cmd
+  my $cmd = substr( $mtext, length($ck) );
+  # trim also cmd
+  $cmd =~ s/^\s+|\s+$//g;
+
+  Log3 $name, 5, "Telegram_ReadHandleCommand $name: cmd found :".$cmd.": ";
+  
+  # validate security criteria for commands
+  if ( Telegram_checkAllowedPeer( $hash, $mpeernorm ) ) {
+    Log3 $name, 5, "Telegram_ReadHandleCommand cmd correct peer ";
+    # Either no peer defined or cmdpeer matches peer for message -> good to execute
+    my $cto = AttrVal($name,'cmdTriggerOnly',"0");
+    if ( $cto eq '1' ) {
+      $cmd = "trigger ".$cmd;
+    }
+    
+    Log3 $name, 5, "Telegram_ReadHandleCommand final cmd for analyze :".$cmd.": ";
+    my $ret = AnalyzeCommand( undef, $cmd, "" );
+    Log3 $name, 5, "Telegram_ReadHandleCommand result for analyze :".$ret.": ";
+
+    if ( length( $ret) == 0 ) {
+      $ret = "telegram fhem ($mpeernorm) cmd :$cmd: result OK";
+    } else {
+      $ret = "telegram fhem ($mpeernorm) cmd :$cmd: result :$ret:";
+    }
+    Log3 $name, 5, "Telegram_ReadHandleCommand $name: cmd result :".$ret.": ";
+    AnalyzeCommand( undef, "set $name message $mpeernorm: $ret", "" );
+    my $defpeer = AttrVal($name,'defaultPeer',undef);
+    if ( defined( $defpeer ) ) {
+      if ( Telegram_convertpeer( $defpeer ) ne $mpeernorm ) {
+        AnalyzeCommand( undef, "set $name messageTo $mpeernorm $ret", "" );
+      }
+    }
+  } else {
+    # unauthorized fhem cmd
+    Log3 $name, 1, "Telegram_ReadHandleCommand unauthorized cmd from user :$mpeernorm:";
+    $ret = "" if ( ! defined( $ret ) );
+    $ret .=  "UNAUTHORIZED: telegram fhem cmd :$cmd: from user :$mpeernorm: \n";
+  }
+
+  return $ret;
+}
+
+
+
+  
+  
+  #####################################
 # INTERNAL: Check if peer is allowed - true if allowed
 sub Telegram_checkAllowedPeer($$) {
   my ($hash,$mpeer) = @_;
@@ -777,6 +800,8 @@ sub Telegram_DoInit($)
   return undef;
 }
 
+#####################################
+# INTERNAL: Function to convert a peer name to a normalized form
 sub Telegram_convertpeer($)
 {
 	my ( $peer ) = @_;

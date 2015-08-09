@@ -95,6 +95,7 @@
 #   FIX: quit command on shutdown
 #   Send command result also to sender of command
 #   Send name of peer with command result
+#   FIX: handled undefined buf in docommmand on startup
 #
 #
 ##############################################################################
@@ -917,6 +918,9 @@ sub Telegram_DoCommand($$$)
   ### Attention this might contain multiple messages - so split into separate messages and just check for failure or success
 
   my ( $msg, $rawMsg, $retValue );
+
+  # ensure buf is defined for remaining processing (happens on startup)
+  $buf = '' if ( ! defined($buf) );
 
   # Parse the different messages in the buffer
   while ( length($buf) > 0 ) {

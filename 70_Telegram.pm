@@ -96,6 +96,9 @@
 #   Send command result also to sender of command
 #   Send name of peer with command result
 #   FIX: handled undefined buf in docommmand on startup
+#   new set command sendPhotoTo - sending message to an arbitrary peer
+#   longer delay for doCommand (.5 sec) to allow success or failure being sent
+#   Internal: reworked set to use a joint send_phote/message routine
 #
 #
 ##############################################################################
@@ -155,6 +158,7 @@ my %sets = (
 	"messageTo" => "textField",
 	"raw" => "textField",
 	"sendPhoto" => "textField",
+	"sendPhotoTo" => "textField",
 	"zDebug" => "textField"
 );
 
@@ -344,7 +348,7 @@ sub Telegram_Set($@)
     # should return undef if succesful
     Log3 $name, 5, "Telegram_Set $name: start message send ";
     my $arg = join(" ", @args );
-    $ret = Telegram_SendMessage( $hash, $peer, $arg );
+    $ret = Telegram_SendIt( $hash, $peer, $arg, 1 );
 
 	} elsif($cmd eq 'messageTo') {
     if ( $numberOfArgs < 3 ) {
@@ -356,7 +360,7 @@ sub Telegram_Set($@)
     my $arg = join(" ", @args );
 
     Log3 $name, 5, "Telegram_Set $name: start message send ";
-    $ret = Telegram_SendMessage( $hash, $peer, $arg );
+    $ret = Telegram_SendIt( $hash, $peer, $arg, 1 );
 
   } elsif($cmd eq 'raw') {
     if ( $numberOfArgs < 2 ) {
@@ -391,16 +395,20 @@ sub Telegram_Set($@)
     my $arg = join(" ", @args );
 
     Log3 $name, 5, "Telegram_Set $name: start photo send ";
+    $ret = Telegram_SendIt( $hash, $peer, $arg, 0 );
 
-    my $peer2 = Telegram_convertpeer( $peer );
-
-    my $cmd = "send_photo $peer2 $arg";
-    my $ret = Telegram_DoCommand( $hash, $cmd, "SUCCESS" );
-    if ( defined($ret) ) {
-      $hash->{sentMsgResult} = $ret;
-    } else {
-      $hash->{sentMsgResult} = "SUCCESS";
+	} elsif($cmd eq 'sendPhotoTo') {
+    if ( $numberOfArgs < 3 ) {
+      return "Telegram_Set: Command $cmd, need to specify peer and text ";
     }
+
+    # should return undef if succesful
+    my $peer = shift @args;
+
+    my $arg = join(" ", @args );
+
+    Log3 $name, 5, "Telegram_Set $name: start photo send to $peer";
+    $ret = Telegram_SendIt( $hash, $peer, $arg, 0 );
 
   } elsif($cmd eq 'zDebug') {
     Log3 $name, 5, "Telegram_Set $name: start debug option ";
@@ -815,20 +823,17 @@ sub Telegram_convertpeer($)
 }
 
 #####################################
-# INTERNAL: Function to send a message to a peer and handle result
-sub Telegram_SendMessage($$$)
+# INTERNAL: Function to send a message or Phote to a peer and handle result
+sub Telegram_SendIt($$$$)
 {
-	my ( $hash, $peer, $msg ) = @_;
+	my ( $hash, $peer, $msg, $isText) = @_;
   my $name = $hash->{NAME};
 	
-  Log3 $name, 5, "Telegram_SendMessage $name: called ";
+  Log3 $name, 5, "Telegram_SendIt $name: called ";
 
   # trim and convert spaces in peer to underline 
   my $peer2 = Telegram_convertpeer( $peer );
   
-  $hash->{sentMsgText} = $msg;
-  $hash->{sentMsgPeer} = $peer2;
-
   my $defSec = AttrVal($name,'defaultSecret',0);
   if ( $defSec ) {
     $peer2 = "!_".$peer2;
@@ -837,7 +842,16 @@ sub Telegram_SendMessage($$$)
     $hash->{sentMsgSecure} = "normal";
   }
 
-  my $cmd = "msg $peer2 $msg";
+  my $cmd;
+  if ( $isText ) {
+    $hash->{sentMsgText} = $msg;
+    $cmd = "msg $peer2 $msg";
+  } else {
+    $hash->{sentMsgText} = "Photo: $msg";
+    $cmd = "send_photo $peer2 $msg";
+  }
+  $hash->{sentMsgPeer} = $peer2;
+
   my $ret = Telegram_DoCommand( $hash, $cmd, "SUCCESS" );
   if ( defined($ret) ) {
     $hash->{sentMsgResult} = $ret;
@@ -912,7 +926,7 @@ sub Telegram_DoCommand($$$)
 
   Log3 $name, 5, "Telegram_DoCommand $name: send command DONE ";
 
-  $buf = DevIo_SimpleReadWithTimeout($hash, 0.3);
+  $buf = DevIo_SimpleReadWithTimeout($hash, 0.5);
   Log3 $name, 5, "Telegram_DoCommand $name: returned :".(defined($buf)?$buf:"undef").": ";
   
   ### Attention this might contain multiple messages - so split into separate messages and just check for failure or success
@@ -1128,6 +1142,8 @@ sub Telegram_getNextMessage($$)
     <li>sendPhoto &lt;file&gt; [&lt;caption&gt;]<br>Sends a photo to the default peer. 
     File is specifying a filename and path that is local to the directory in which telegram-cli process is started. 
     So this might be a path on the remote host where telegram-cli is running and therefore not local to fhem.</li>
+    <li>sendPhotoTo &lt;peer&gt; &lt;file&gt; [&lt;caption&gt;]<br>Sends a photo to the given peer, 
+    other arguments are handled as with <code>sendPhoto</code></li>
 
   </ul>
   <br><br>

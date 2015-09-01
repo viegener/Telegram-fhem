@@ -99,6 +99,7 @@
 #   new set command sendPhotoTo - sending message to an arbitrary peer
 #   longer delay for doCommand (.5 sec) to allow success or failure being sent
 #   Internal: reworked set to use a joint send_phote/message routine
+#   command results parsing: cr/lf will be replaced by spaces
 #
 #
 ##############################################################################
@@ -673,7 +674,7 @@ sub Telegram_Read($;$)
 ##############################################################################
 
 #####################################
-# INTERNAL: Check if peer is allowed - true if allowed
+# INTERNAL: execute command and sent return value 
 sub Telegram_ReadHandleCommand($$$) {
   my ($hash, $mpeernorm, $mtext ) = @_;
   my $name = $hash->{NAME};
@@ -716,6 +717,10 @@ sub Telegram_ReadHandleCommand($$$) {
       $ret = "telegram fhem ($mpeernorm) cmd :$cmd: result :$ret:";
     }
     Log3 $name, 5, "Telegram_ReadHandleCommand $name: cmd result :".$ret.": ";
+    
+    # replace line ends with spaces
+    $ret =~ s/(\r|\n)/ /gm;
+    
     AnalyzeCommand( undef, "set $name message $mpeernorm: $ret", "" );
     my $defpeer = AttrVal($name,'defaultPeer',undef);
     if ( defined( $defpeer ) ) {

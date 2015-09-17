@@ -30,17 +30,24 @@
 #
 #   Convert Telegram to TelegramBot 
 #
+# 0.1 2015-09-17 Started
+#
+#   Add a nonBlocking Get for Update
+#   Read Message 
+#
 ##############################################################################
 # TODO 
+#   handle contacts
 #   Extend DoUrlCommand with expect parameter (ok or return parsed json object)
 #   GetMe as connectivity check
-#   Add a nonBlocking Get for Update
 #   avoid excessive update with increasing delays
-#   Read Message 
-#   handle contacts
 #   Dealing with contact information
-#
+#   Reinitialize for URLs and Ids and HTTPGet
 #   Handle state
+#
+#   Merge TelegramBot into Telegram
+#   Doccumentation
+#   
 #
 #
 ##############################################################################
@@ -66,7 +73,7 @@ package main;
 
 use strict;
 use warnings;
-use DevIo;
+#use DevIo;
 use HttpUtils;
 use JSON; 
 
@@ -163,7 +170,7 @@ sub TelegramBot_Define($$) {
   # ??? getMe as connectivity check and set internals accordingly
   
   # Initiate long poll for updates
-  TelegramBot_UpdatePoll($hash);
+#  TelegramBot_UpdatePoll($hash);
 
   return $ret; 
 }
@@ -734,6 +741,7 @@ sub TelegramBot_UpdatePoll($)
   
   # get next offset id
   my $offset = $hash->{offset_id};
+  $offset = 0 if ( ! defined($offset) );
   
   # build url 
   my $url =  $hash->{URL}."getUpdates?offset=".$offset."&limit=5&timeout=".$timeout;
@@ -747,7 +755,7 @@ sub TelegramBot_UpdatePoll($)
                   hash       => $hash,
                   offset     => $offset,
               };
-  HttpUtils_NonBlockingGet( $param ); 
+  HttpUtils_NonblockingGet( $param ); 
 }
 
 
@@ -772,10 +780,11 @@ sub TelegramBot_ParseUpdate($$$)
   # Check for timeout   "read from $hash->{addr} timed out"
   if ( $err =~ /^read from.*timed out$/ ) {
     $ret = "NonBlockingGet timed out on read from $param->{url}";
-  } elsif ( $err != "" ) {
+  } elsif ( $err ne "" ) {
     $ret = "NonBlockingGet: returned $err";
-  } elsif ( $data != "" ) {
+  } elsif ( $data ne "" ) {
     # assuming empty data without err means timeout
+    Log3 $name, 5, "TelegramBot_ParseUpdate $name: data returned :$data:";
     my $jo = decode_json( $data );
 
     if ( ! $jo->{ok} ) {
@@ -787,16 +796,17 @@ sub TelegramBot_ParseUpdate($$$)
     } else {
       if ( defined( $jo->{result} ) ) {
         $result = $jo->{result};
+        Log3 $name, 5, "TelegramBot_ParseUpdate $name: BB number of results ".scalar(@$result) ;
       } else {
         $ret = "getUpdates returned no result";
       }
     }
   }
 
-  if ( defined( $result ) ) {
+  if ( defined($result) ) {
     # handle result
-    Log3 $name, 5, "TelegramBot_ParseUpdate $name: number of results ".int($result) ;
-    foreach my $update ( $result ) {
+    Log3 $name, 5, "TelegramBot_ParseUpdate $name: number of results ".scalar(@$result) ;
+    foreach my $update ( @$result ) {
       Log3 $name, 5, "TelegramBot_ParseUpdate $name: parse result ";
       if ( defined( $update->{message} ) ) {
         $ret = TelegramBot_ParseMsg( $hash, $update->{update_id}, $update->{message} );
@@ -804,7 +814,7 @@ sub TelegramBot_ParseUpdate($$$)
       if ( defined( $ret ) ) {
         last;
       } else {
-        $hash->{offset_id} = $update->{update_id};
+        $hash->{offset_id} = $update->{update_id}+1;
       }
     }
   }

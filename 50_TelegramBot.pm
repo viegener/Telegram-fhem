@@ -32,7 +32,10 @@
 #
 ##############################################################################
 # TODO 
+#   Extend DoUrlCommand with expect parameter (ok or return parsed json object)
+#   GetMe as connectivity check
 #   Add a nonBlocking Get for Update
+#   avoid excessive update with increasing delays
 #   Read Message 
 #   handle contacts
 #   Dealing with contact information
@@ -160,7 +163,7 @@ sub TelegramBot_Define($$) {
   # ??? getMe as connectivity check and set internals accordingly
   
   # Initiate long poll for updates
-  TelegramBot_GetUpdate($hash);
+  TelegramBot_UpdatePoll($hash);
 
   return $ret; 
 }
@@ -280,6 +283,7 @@ sub TelegramBot_Set($@)
 
   } elsif($cmd eq 'zDebug') {
     Log3 $name, 5, "TelegramBot_Set $name: start debug option ";
+    TelegramBot_UpdatePoll($hash);
 #    delete( $hash->{READINGS}{lastmessage} );
 #    delete( $hash->{READINGS}{prevMsgSecret} );
 #    delete( $hash->{REMAININGOLD} );
@@ -716,6 +720,159 @@ sub TelegramBot_ReadHandleCommand($$$) {
 ##############################################################################
 ##############################################################################
 
+#####################################
+#  INTERNAL: _PollUpdate is called to set out a nonblocking http call for updates
+sub TelegramBot_UpdatePoll($) 
+{
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+		
+  Log3 $name, 5, "TelegramBot_UpdatePoll $name: called ";
+
+  # ??? Get timeout from attribute 
+  my $timeout = 30;
+  
+  # get next offset id
+  my $offset = $hash->{offset_id};
+  
+  # build url 
+  my $url =  $hash->{URL}."getUpdates?offset=".$offset."&limit=5&timeout=".$timeout;
+  
+  my $param = {
+                  url        => $url,
+                  timeout    => $timeout+5,
+                  method     => "GET",
+                  header     => $TelegramBot_header,
+                  callback   =>  \&TelegramBot_ParseUpdate,
+                  hash       => $hash,
+                  offset     => $offset,
+              };
+  HttpUtils_NonBlockingGet( $param ); 
+}
+
+
+#####################################
+#  INTERNAL: _ParseUpdate is the callback for the long poll on update call 
+#   3 params are defined for callbacks
+#     param-hash
+#     err
+#     data (returned from url call)
+# empty string used instead of undef for no return/err value
+sub TelegramBot_ParseUpdate($$$)
+{
+  my ( $param, $err, $data ) = @_;
+  my $hash= $param->{hash};
+  my $name = $hash->{NAME};
+
+  my $ret;
+  my $result;
+  
+  Log3 $name, 5, "TelegramBot_ParseUpdate $name: called ";
+
+  # Check for timeout   "read from $hash->{addr} timed out"
+  if ( $err =~ /^read from.*timed out$/ ) {
+    $ret = "NonBlockingGet timed out on read from $param->{url}";
+  } elsif ( $err != "" ) {
+    $ret = "NonBlockingGet: returned $err";
+  } elsif ( $data != "" ) {
+    # assuming empty data without err means timeout
+    my $jo = decode_json( $data );
+
+    if ( ! $jo->{ok} ) {
+      if ( defined( $jo->{description} ) ) {
+        $ret = "getUpdates returned error:".$jo->{description}.":";
+      } else {
+        $ret = "getUpdates returned error without description";
+      }
+    } else {
+      if ( defined( $jo->{result} ) ) {
+        $result = $jo->{result};
+      } else {
+        $ret = "getUpdates returned no result";
+      }
+    }
+  }
+
+  if ( defined( $result ) ) {
+    # handle result
+    Log3 $name, 5, "TelegramBot_ParseUpdate $name: number of results ".int($result) ;
+    foreach my $update ( $result ) {
+      Log3 $name, 5, "TelegramBot_ParseUpdate $name: parse result ";
+      if ( defined( $update->{message} ) ) {
+        $ret = TelegramBot_ParseMsg( $hash, $update->{update_id}, $update->{message} );
+      }
+      if ( defined( $ret ) ) {
+        last;
+      } else {
+        $hash->{offset_id} = $update->{update_id};
+      }
+    }
+  }
+  
+  # ??? avoid excessive update with increasing delays
+  TelegramBot_UpdatePoll($hash); 
+
+  if ( defined( $ret ) ) {
+    Log3 $name, 3, "TelegramBot_ParseUpdate $name: resulted in :$ret: ";
+  } else {
+    Log3 $name, 5, "TelegramBot_ParseUpdate $name: resulted ok ";
+  }
+  
+}
+
+#####################################
+#  INTERNAL: _ParseMsg handle a message from the update call 
+#   params are the hash, the updateid and the actual message
+sub TelegramBot_ParseMsg($$$)
+{
+  my ( $hash, $uid, $message ) = @_;
+  my $name = $hash->{NAME};
+
+  my $ret;
+  
+  my $mid = $message->{message_id};
+  
+  my $from = $message->{from};
+  
+  my $mpeer = $from->{id};
+  
+  # ??? check peer
+
+  if ( defined( $message->{text} ) ) {
+    my $mtext = $message->{text};
+   
+    my $mpeernorm = $mpeer;
+    $mpeernorm =~ s/^\s+|\s+$//g;
+    $mpeernorm =~ s/ /_/g;
+
+    Log3 $name, 5, "TelegramBot_Read $name: Found message $mid from $mpeer :$mtext:";
+    
+    readingsBeginUpdate($hash);
+
+    readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});				
+    readingsBulkUpdate($hash, "prevMsgPeer", $hash->{READINGS}{msgPeer}{VAL});				
+    readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
+
+    readingsBulkUpdate($hash, "msgId", $mid);				
+    readingsBulkUpdate($hash, "msgPeer", $mpeernorm);				
+    readingsBulkUpdate($hash, "msgText", $mtext);				
+
+    readingsEndUpdate($hash, 1);
+    
+    my $cmdRet = TelegramBot_ReadHandleCommand( $hash, $mpeernorm, $mtext );
+    if ( defined( $cmdRet ) ) {
+      $ret = "" if ( ! defined( $ret ) );
+      $ret .=  $cmdRet;
+    }
+
+  } else {
+    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer without text";
+  }
+  
+  return $ret;
+}
+  
+#####################################
 # INTERNAL: Function to send a message to a peer and handle result
 sub TelegramBot_SendText($$$$)
 {
@@ -765,7 +922,7 @@ sub TelegramBot_DoUrlCommand($$)
   
   my $param = {
                   url        => $url,
-                  timeout    => 5,
+                  timeout    => 2,
                   hash       => $hash,
                   method     => "GET",
                   header     => $TelegramBot_header

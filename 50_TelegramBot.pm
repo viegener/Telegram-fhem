@@ -34,6 +34,7 @@
 #
 #   Add a nonBlocking Get for Update
 #   Read Message 
+#   added polling internal and pollingtimeout
 #
 ##############################################################################
 # TODO 
@@ -124,7 +125,7 @@ sub TelegramBot_Initialize($) {
 	$hash->{GetFn}      = "TelegramBot_Get";
 	$hash->{SetFn}      = "TelegramBot_Set";
 	$hash->{AttrFn}     = "TelegramBot_Attr";
-	$hash->{AttrList}   = "defaultPeer defaultSecret:0,1 cmdKeyword cmdRestrictedPeer cmdTriggerOnly:0,1 cmdNumericIDs:0,1".
+	$hash->{AttrList}   = "defaultPeer defaultSecret:0,1 pollingTimeout cmdKeyword cmdRestrictedPeer cmdTriggerOnly:0,1 cmdNumericIDs:0,1".
 						$readingFnAttributes;
 	
 }
@@ -170,7 +171,9 @@ sub TelegramBot_Define($$) {
   # ??? getMe as connectivity check and set internals accordingly
   
   # Initiate long poll for updates
-#  TelegramBot_UpdatePoll($hash);
+  $hash->{POLLING} = 0;
+
+  TelegramBot_UpdatePoll($hash);
 
   return $ret; 
 }
@@ -389,6 +392,14 @@ sub TelegramBot_Attr(@) {
 
 		} elsif ($aName eq 'cmdNumericIDs') {
 			$attr{$name}{'cmdNumericIDs'} = ($aVal eq "1")? "1": "0";
+
+    } elsif ($aName eq 'pollingTimeout') {
+      if ( $aVal =~ /^[[:digit:]]+$/ ) {
+        $attr{$name}{'pollingTimeout'} = $aVal;
+      }
+      if ( ! $hash->{POLLING} ) {
+        TelegramBot_UpdatePoll($hash);
+      }
 
     }
 	}
@@ -736,8 +747,16 @@ sub TelegramBot_UpdatePoll($)
 		
   Log3 $name, 5, "TelegramBot_UpdatePoll $name: called ";
 
+  if ( $hash->{POLLING} ) {
+    Log3 $name, 3, "TelegramBot_UpdatePoll $name: polling still running ";
+  }
+
   # ??? Get timeout from attribute 
-  my $timeout = 30;
+  my $timeout =   AttrVal($name,'pollingTimeout',30);
+  if ( $timeout == 0 ) {
+    Log3 $name, 3, "TelegramBot_UpdatePoll $name: Polling timeout 0 - no polling ";
+    return;
+  }
   
   # get next offset id
   my $offset = $hash->{offset_id};
@@ -755,6 +774,8 @@ sub TelegramBot_UpdatePoll($)
                   hash       => $hash,
                   offset     => $offset,
               };
+              
+  $hash->{POLLING} = 1;
   HttpUtils_NonblockingGet( $param ); 
 }
 
@@ -775,6 +796,8 @@ sub TelegramBot_ParseUpdate($$$)
   my $ret;
   my $result;
   
+  $hash->{POLLING} = 0;
+
   Log3 $name, 5, "TelegramBot_ParseUpdate $name: called ";
 
   # Check for timeout   "read from $hash->{addr} timed out"

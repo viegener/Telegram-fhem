@@ -30,11 +30,16 @@
 #
 #   Convert Telegram to TelegramBot 
 #
-# 0.1 2015-09-17 Started
+# 0.1 2015-09-17 Send only
 #
 #   Add a nonBlocking Get for Update
 #   Read Message 
 #   added polling internal and pollingtimeout
+#
+# 0.2 2015-09-17 Basic send and receive
+#
+#
+#
 #
 ##############################################################################
 # TODO 

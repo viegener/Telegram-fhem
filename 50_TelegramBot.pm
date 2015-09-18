@@ -38,18 +38,25 @@
 #
 # 0.2 2015-09-17 Basic send and receive
 #
+#   Extend DoUrlCommand to correctly analyze return
+#   GetMe as connectivity check
+#   pollingTimeout is now default 0 (no reception possible without pollingtimeout set > 0)
+#   Handle state - Polling / Static / Failed
+#   in case of failures wait before starting next poll
+#   avoid excessive update with increasing delays
+#   exception handling for json decoder
+#
+# 0.3 2015-09-18 Stable receive / define / error ahdnling
 #
 #
 #
 ##############################################################################
 # TODO 
 #   handle contacts
-#   Extend DoUrlCommand with expect parameter (ok or return parsed json object)
-#   GetMe as connectivity check
-#   avoid excessive update with increasing delays
 #   Dealing with contact information
+#   grab contacts from messages
+#   honor attributes for gaining contacts
 #   Reinitialize for URLs and Ids and HTTPGet
-#   Handle state
 #
 #   Merge TelegramBot into Telegram
 #   Doccumentation
@@ -171,13 +178,28 @@ sub TelegramBot_Define($$) {
 
   $hash->{URL} = "https://api.telegram.org/bot".$hash->{Token}."/";
 
-  Log3 $name, 5, "TelegramBot_Define $name: done with ".(defined($ret)?$ret:"undef");
-
-  # ??? getMe as connectivity check and set internals accordingly
-  
-  # Initiate long poll for updates
+  $hash->{WAIT} = 0;
+  $hash->{FAILS} = 0;
   $hash->{POLLING} = 0;
 
+  $hash->{STATE} = "Defined";
+
+  Log3 $name, 5, "TelegramBot_Define $name: done with ".(defined($ret)?$ret:"undef");
+
+  # getMe as connectivity check and set internals accordingly
+  my $url = $hash->{URL}."getMe";
+  my $meret = TelegramBot_DoUrlCommand( $hash, $url );
+  if ( defined($meret) ) {
+    $hash->{me} = TelegramBot_userObjectToString( $meret );
+    $hash->{STATE} = "Initialized";
+
+  } else {
+    $hash->{me} = "Failed - see log file for details";
+    $hash->{STATE} = "Failed";
+    $hash->{FAILS} = 1;
+  }
+  
+  # Initiate long poll for updates
   TelegramBot_UpdatePoll($hash);
 
   return $ret; 
@@ -745,6 +767,9 @@ sub TelegramBot_ReadHandleCommand($$$) {
 
 #####################################
 #  INTERNAL: _PollUpdate is called to set out a nonblocking http call for updates
+#  if still polling return
+#  if more than one fails happened --> wait instead of poll
+#
 sub TelegramBot_UpdatePoll($) 
 {
   my ($hash) = @_;
@@ -753,16 +778,32 @@ sub TelegramBot_UpdatePoll($)
   Log3 $name, 5, "TelegramBot_UpdatePoll $name: called ";
 
   if ( $hash->{POLLING} ) {
-    Log3 $name, 3, "TelegramBot_UpdatePoll $name: polling still running ";
+    Log3 $name, 5, "TelegramBot_UpdatePoll $name: polling still running ";
+    return;
   }
 
-  # ??? Get timeout from attribute 
-  my $timeout =   AttrVal($name,'pollingTimeout',30);
+  # Get timeout from attribute 
+  my $timeout =   AttrVal($name,'pollingTimeout',0);
   if ( $timeout == 0 ) {
+    $hash->{STATE} = "Static";
     Log3 $name, 3, "TelegramBot_UpdatePoll $name: Polling timeout 0 - no polling ";
     return;
   }
   
+  if ( $hash->{FAILS} > 1 ) {
+    # more than one fail in a row wait until next poll
+    $hash->{OLDFAILS} = $hash->{FAILS};
+    $hash->{FAILS} = 0;
+    my $wait = $hash->{OLDFAILS}+2;
+    Log3 $name, 5, "TelegramBot_UpdatePoll $name: got fails :".$hash->{OLDFAILS}.": wait ".$wait." seconds";
+  	InternalTimer(gettimeofday()+$wait, "TelegramBot_UpdatePoll", $hash,0); 
+    return;
+  } elsif ( defined($hash->{OLDFAILS}) ) {
+    # oldfails defined means 
+    $hash->{FAILS} = $hash->{OLDFAILS};
+    delete $hash->{OLDFAILS};
+  }
+
   # get next offset id
   my $offset = $hash->{offset_id};
   $offset = 0 if ( ! defined($offset) );
@@ -780,6 +821,8 @@ sub TelegramBot_UpdatePoll($)
                   offset     => $offset,
               };
               
+  $hash->{STATE} = "Polling";
+
   $hash->{POLLING} = 1;
   HttpUtils_NonblockingGet( $param ); 
 }
@@ -813,9 +856,15 @@ sub TelegramBot_ParseUpdate($$$)
   } elsif ( $data ne "" ) {
     # assuming empty data without err means timeout
     Log3 $name, 5, "TelegramBot_ParseUpdate $name: data returned :$data:";
-    my $jo = decode_json( $data );
+    my $jo;
+    
+    eval {
+      $jo = decode_json( $data );
+    };
 
-    if ( ! $jo->{ok} ) {
+    if ( ! defined( $jo ) ) {
+      $ret = "getUpdates returned no valid JSON !";
+    } elsif ( ! $jo->{ok} ) {
       if ( defined( $jo->{description} ) ) {
         $ret = "getUpdates returned error:".$jo->{description}.":";
       } else {
@@ -824,7 +873,6 @@ sub TelegramBot_ParseUpdate($$$)
     } else {
       if ( defined( $jo->{result} ) ) {
         $result = $jo->{result};
-        Log3 $name, 5, "TelegramBot_ParseUpdate $name: BB number of results ".scalar(@$result) ;
       } else {
         $ret = "getUpdates returned no result";
       }
@@ -833,6 +881,7 @@ sub TelegramBot_ParseUpdate($$$)
 
   if ( defined($result) ) {
     # handle result
+    $hash->{FAILS} = 0;    # succesful getupdates reset fails
     Log3 $name, 5, "TelegramBot_ParseUpdate $name: number of results ".scalar(@$result) ;
     foreach my $update ( @$result ) {
       Log3 $name, 5, "TelegramBot_ParseUpdate $name: parse result ";
@@ -845,9 +894,12 @@ sub TelegramBot_ParseUpdate($$$)
         $hash->{offset_id} = $update->{update_id}+1;
       }
     }
+  } else {
+    # something went wrong increase fails
+    $hash->{FAILS} += 1;
   }
   
-  # ??? avoid excessive update with increasing delays
+  # start next poll or wait
   TelegramBot_UpdatePoll($hash); 
 
   if ( defined( $ret ) ) {
@@ -947,6 +999,7 @@ sub TelegramBot_SendText($$$$)
 # Parameter
 #   hash
 #   url - url including parameters
+#   > returns undex in case of error or the content of the result object if ok
 sub TelegramBot_DoUrlCommand($$)
 {
 	my ( $hash, $url ) = @_;
@@ -956,8 +1009,6 @@ sub TelegramBot_DoUrlCommand($$)
   
   Log3 $name, 5, "TelegramBot_DoUrlCommand $name: called ";
 
-  Log3 $name, 5, "TelegramBot_DoUrlCommand $name: send url command :$url: ";
-  
   my $param = {
                   url        => $url,
                   timeout    => 2,
@@ -967,19 +1018,26 @@ sub TelegramBot_DoUrlCommand($$)
               };
   my ($err, $data) = HttpUtils_BlockingGet( $param );
 
-  if ( $err != "" ) {
+  if ( $err ne "" ) {
     # http returned error
-    $ret = "TelegramBot_DoUrlCommand $name: http access returned error :$err:";
-    Log3 $name, 2, $ret;
+    Log3 $name, 2, "TelegramBot_DoUrlCommand $name: http access returned error :$err:";
   } else {
-    my $jo = decode_json( $data );
-    my $val;
+    my $jo;
     
-    $val = $jo->{ok};
-    Log3 $name, 2, "TelegramBot_DoUrlCommand ok :$val:";
-    
-    $val = $jo->{result};
-    Log3 $name, 2, "TelegramBot_DoUrlCommand result :$val:";
+    eval {
+      $jo = decode_json( $data );
+    };
+
+    if ( ! defined( $jo ) ) {
+      Log3 $name, 2, "TelegramBot_DoUrlCommand FAILED with invalid JSON returned";
+    } elsif ( $jo->{ok} ) {
+      $ret = $jo->{result};
+      Log3 $name, 4, "TelegramBot_DoUrlCommand OK result :$ret:";
+    } else {
+      my $val = $jo->{description};
+      Log3 $name, 2, "TelegramBot_DoUrlCommand FAILED result :$val:";
+    }    
+
   }
 
   return $ret;
@@ -993,7 +1051,26 @@ sub TelegramBot_DoUrlCommand($$)
 ##############################################################################
 ##############################################################################
 
+#####################################
+# INTERNAL: Convert TelegramBot user object to string
+sub TelegramBot_userObjectToString($) {
 
+	my ( $user ) = @_;
+  
+  my $ret = $user->{id}.":";
+  
+  $ret .= $user->{first_name};
+  $ret .= " ".$user->{last_name} if ( defined( $user->{last_name} ) );
+
+  $ret .= ":";
+
+  $ret .= $user->{username} if ( defined( $user->{username} ) );
+
+  $ret =~ s/^\s+|\s+$//g;
+  $ret =~ s/ /_/g;
+
+  return $ret;
+}
   
 #####################################
 # INTERNAL: Check if peer is allowed - true if allowed

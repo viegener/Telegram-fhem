@@ -56,20 +56,29 @@
 #   new set: contacts to allow manual contact setting
 #   ensure correct contacts on set
 #   
+#   show names instead of ids (names is full_name)
+#   ensure contacts without spaces and ids only digits for set contacts
+#   replaceContacts (instead of just set contacts)
+#   Allow usage of names (either username starting with @ or full name not only digits)
+#   peer / peerId in received and sent message
+#   unauthorized result handled correctly and sent to defaultpeer
+#   
+# 0.4 2015-09-18 Contact management available
+#   
+#   
+#   
 #
 ##############################################################################
 # TODO 
-#   show names instead of ids (names is full_name)
-#   Allow usage of names 
+#   Commands defined for bot
+#   Sent last commands as return value on HandledCOmmand
+#   tests with keyboards
 #
+#   send Photos
+#   
 #   honor attributes for gaining contacts - no new contacts etc
 #
-#   attribute to use/show names instead of ids
-#   setContacts to correct contatcs
-#
 #   Doccumentation
-#   
-#   send Photos
 #   
 #   Merge TelegramBot into Telegram
 #   
@@ -128,7 +137,7 @@ my %sets = (
 	"sendPhotoTo" => "textField",
 	"zDebug" => "textField",
   # BOTONLY
-	"contacts" => "textField",
+	"replaceContacts" => "textField",
 	"reset" => undef
 );
 
@@ -344,7 +353,7 @@ sub TelegramBot_Set($@)
     Log3 $name, 5, "TelegramBot_Set $name: reset requested ";
     TelegramBot_StartSetup( $hash );
 
-  } elsif($cmd eq 'contacts') {
+  } elsif($cmd eq 'replaceContacts') {
     if ( $numberOfArgs < 2 ) {
       return "TelegramBot_Set: Command $cmd, need to specify contacts string separate by space and contacts in the form of <id>:<full_name>:[@<username>] ";
     }
@@ -782,8 +791,14 @@ sub TelegramBot_ReadHandleCommand($$$) {
   } else {
     # unauthorized fhem cmd
     Log3 $name, 1, "TelegramBot_ReadHandleCommand unauthorized cmd from user :$mpeernorm:";
-    $ret = "" if ( ! defined( $ret ) );
-    $ret .=  "UNAUTHORIZED: TelegramBot fhem cmd :$cmd: from user :$mpeernorm: \n";
+    $ret =  "UNAUTHORIZED: TelegramBot fhem cmd :$cmd: from user :$mpeernorm: \n";
+    
+    # send unauthorized to defaultpeer
+    my $defpeer = AttrVal($name,'defaultPeer',undef);
+    if ( defined( $defpeer ) ) {
+      AnalyzeCommand( undef, "set $name message $ret", "" );
+    }
+    
   }
 
   return $ret;
@@ -993,10 +1008,12 @@ sub TelegramBot_ParseMsg($$$)
 
     readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});				
     readingsBulkUpdate($hash, "prevMsgPeer", $hash->{READINGS}{msgPeer}{VAL});				
+    readingsBulkUpdate($hash, "prevMsgPeerId", $hash->{READINGS}{msgPeerId}{VAL});				
     readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
 
     readingsBulkUpdate($hash, "msgId", $mid);				
-    readingsBulkUpdate($hash, "msgPeer", $mpeernorm);				
+    readingsBulkUpdate($hash, "msgPeer", TelegramBot_GetFullnameForContact( $hash, $mpeernorm ));				
+    readingsBulkUpdate($hash, "msgPeerId", $mpeernorm);				
     readingsBulkUpdate($hash, "msgText", $mtext);				
 
     readingsBulkUpdate($hash, "Contacts", TelegramBot_ContactUpdate( $hash, @contacts )) if ( scalar(@contacts) > 0 );
@@ -1004,11 +1021,9 @@ sub TelegramBot_ParseMsg($$$)
     readingsEndUpdate($hash, 1);
     
     my $cmdRet = TelegramBot_ReadHandleCommand( $hash, $mpeernorm, $mtext );
-    if ( defined( $cmdRet ) ) {
-      $ret = "" if ( ! defined( $ret ) );
-      $ret .=  $cmdRet;
-    }
-
+    #  ignore result of readhandlecommand since it leads to endless loop
+    
+    
   } elsif ( scalar(@contacts) > 0 )  {
     readingsSingleUpdate($hash, "Contacts", TelegramBot_ContactUpdate( $hash, @contacts ), 1); 
 
@@ -1031,8 +1046,14 @@ sub TelegramBot_SendText($$$$)
   Log3 $name, 5, "TelegramBot_SendText $name: called ";
 
   # trim and convert spaces in peer to underline 
-  my $peer2 = TelegramBot_convertpeer( $peer );
-  
+#  my $peer2 = TelegramBot_convertpeer( $peer );
+  my $peer2 = TelegramBot_GetIdForPeer( $hash, $peer );
+ 
+  $hash->{sentMsgPeer} = $peer;
+  $hash->{sentMsgPeerId} = $peer2;
+
+  my $ret;
+
   my $url;
   if ( $isText ) {
     $hash->{sentMsgText} = $msg;
@@ -1041,13 +1062,26 @@ sub TelegramBot_SendText($$$$)
     $hash->{sentMsgText} = "Photo: $msg";
     $url = "send_photo $peer2 $msg";
   }
-  $hash->{sentMsgPeer} = $peer2;
 
-  my $ret = TelegramBot_DoUrlCommand( $hash, $url );
-  if ( defined($ret) ) {
+  if ( ! defined( $peer2 ) ) {
+    $ret = "FAILED peer not found :$peer:";
+    Log3 $name, 3, "TelegramBot_SendText $name: :$ret:";
     $hash->{sentMsgResult} = $ret;
-  } else {
+    return $ret;
+  }
+  
+  $ret = TelegramBot_DoUrlCommand( $hash, $url );
+  if ( ! defined($ret) ) {
+    # should not happen but consider this success
+  } elsif ( ref( $ret ) eq "" ) {
+    # string returned that means error is returned
+    $hash->{sentMsgResult} = $ret;
+    $ret = undef;
+  }  else {
+    # object is returned, so everything ok
     $hash->{sentMsgResult} = "SUCCESS";
+    # here result is ignored
+    $ret = undef;
   }
 
   return $ret;
@@ -1058,7 +1092,7 @@ sub TelegramBot_SendText($$$$)
 # Parameter
 #   hash
 #   url - url including parameters
-#   > returns undex in case of error or the content of the result object if ok
+#   > returns string in case of error or the content of the result object if ok
 sub TelegramBot_DoUrlCommand($$)
 {
 	my ( $hash, $url ) = @_;
@@ -1079,7 +1113,8 @@ sub TelegramBot_DoUrlCommand($$)
 
   if ( $err ne "" ) {
     # http returned error
-    Log3 $name, 2, "TelegramBot_DoUrlCommand $name: http access returned error :$err:";
+    $ret = "FAILED http access returned error :$err:";
+    Log3 $name, 2, "TelegramBot_DoUrlCommand $name: ".$ret;
   } else {
     my $jo;
     
@@ -1088,13 +1123,14 @@ sub TelegramBot_DoUrlCommand($$)
     };
 
     if ( ! defined( $jo ) ) {
-      Log3 $name, 2, "TelegramBot_DoUrlCommand FAILED with invalid JSON returned";
+      $ret = "FAILED invalid JSON returned";
+      Log3 $name, 2, "TelegramBot_DoUrlCommand $name: ".$ret;
     } elsif ( $jo->{ok} ) {
       $ret = $jo->{result};
-      Log3 $name, 4, "TelegramBot_DoUrlCommand OK result :$ret:";
+      Log3 $name, 4, "TelegramBot_DoUrlCommand OK with result";
     } else {
-      my $val = $jo->{description};
-      Log3 $name, 2, "TelegramBot_DoUrlCommand FAILED result :$val:";
+      my $ret = "FAILED Telegram returned error: ".$jo->{description};
+      Log3 $name, 2, "TelegramBot_DoUrlCommand $name: ".$ret;
     }    
 
   }
@@ -1110,7 +1146,82 @@ sub TelegramBot_DoUrlCommand($$)
 ##############################################################################
 ##############################################################################
 
+#####################################
+# INTERNAL: get id for a peer
+#   if only digits --> assume id
+#   if start with @ --> assume username
+#   else --> assume full name
+sub TelegramBot_GetIdForPeer($$)
+{
+  my ($hash,$mpeer) = @_;
 
+  TelegramBot_InternalContactsFromReading( $hash ) if ( ! defined( $hash->{Contacts} ) );
+
+  my $id;
+  
+  if ( $mpeer =~ /^[[:digit:]]+$/ ) {
+    # check if id is in hash 
+    $id = $mpeer if ( defined( $hash->{Contacts}{$mpeer} ) );
+  } elsif ( $mpeer =~ /^@.*$/ ) {
+    foreach  my $mkey ( keys $hash->{Contacts} ) {
+      my @clist = split( /:/, $hash->{Contacts}{$mkey} );
+      if ( @clist[2] eq $mpeer ) {
+        $id = @clist[0];
+        last;
+      }
+    }
+  } else {
+    $mpeer =~ s/^\s+|\s+$//g;
+    $mpeer =~ s/ /_/g;
+    foreach  my $mkey ( keys $hash->{Contacts} ) {
+      my @clist = split( /:/, $hash->{Contacts}{$mkey} );
+      if ( @clist[1] eq $mpeer ) {
+        $id = @clist[0];
+        last;
+      }
+    }
+  }  
+  
+  return $id
+}
+  
+  
+
+
+
+#####################################
+# INTERNAL: get full name for contact id
+sub TelegramBot_GetContactInfoForContact($$)
+{
+  my ($hash,$mcid) = @_;
+
+  TelegramBot_InternalContactsFromReading( $hash ) if ( ! defined( $hash->{Contacts} ) );
+
+  return ( $hash->{Contacts}{$mcid});
+}
+  
+  
+#####################################
+# INTERNAL: get full name for contact id
+sub TelegramBot_GetFullnameForContact($$)
+{
+  my ($hash,$mcid) = @_;
+
+  my $contact = TelegramBot_GetContactInfoForContact( $hash,$mcid );
+  my $ret;
+  
+  Log3 $hash->{NAME}, 4, "TelegramBot_GetFullnameForContact # Contacts is $contact:";
+
+  if ( defined( $contact ) ) {
+      my @clist = split( /:/, $contact );
+      $ret = @clist[1];
+      Log3 $hash->{NAME}, 4, "TelegramBot_GetFullnameForContact # name is $ret";
+  }
+  
+  return $ret;
+}
+  
+  
 #####################################
 # INTERNAL: check if a contact is already known in the internals->Contacts-hash
 sub TelegramBot_IsKnownContact($$)
@@ -1151,6 +1262,7 @@ sub TelegramBot_CalcContactsHash($$)
   foreach  my $contact ( @contactList ) {
     my ( $id, $cname, $cuser ) = split( ":", $contact, 3 );
     # add contact only if all three parts are there and 2nd part not empty and 3rd part either empty or start with @ and at least 3 chars
+    # and id must be only digits
     if ( ( ! defined( $cuser ) ) || ( ! defined( $cname ) ) ) {
       next;
     } elsif ( length( $cname ) == 0 ) {
@@ -1159,7 +1271,13 @@ sub TelegramBot_CalcContactsHash($$)
       next;
     } elsif ( ( substr($cuser,0,1) ne "@" ) && ( length( $cuser ) < 3 ) ) {
       next;
+    } elsif ( $id !~ /^[[:digit:]]+$/ ) {
+      next;
     } else {
+      $cname =~ s/^\s+|\s+$//g;
+      $cname =~ s/ /_/g;
+      $cuser =~ s/^\s+|\s+$//g;
+      $cuser =~ s/ /_/g;
       $hash->{Contacts}{$id} = $id.":".$cname.":".$cuser;
     }
   }

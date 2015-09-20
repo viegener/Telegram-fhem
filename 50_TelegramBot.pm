@@ -54,13 +54,15 @@
 #   Contacts will be updated every reception
 #   fixed contact handling on restart
 #   new set: contacts to allow manual contact setting
+#   ensure correct contacts on set
 #   
 #
 ##############################################################################
 # TODO 
 #   show names instead of ids (names is full_name)
 #   Allow usage of names 
-#   honor attributes for gaining contacts
+#
+#   honor attributes for gaining contacts - no new contacts etc
 #
 #   attribute to use/show names instead of ids
 #   setContacts to correct contatcs
@@ -1147,8 +1149,19 @@ sub TelegramBot_CalcContactsHash($$)
   
   # for each element - get id as hashtag and full contact as value
   foreach  my $contact ( @contactList ) {
-    my ( $id ) = split( ":", $contact, 2 );
-    $hash->{Contacts}{$id} = $contact;
+    my ( $id, $cname, $cuser ) = split( ":", $contact, 3 );
+    # add contact only if all three parts are there and 2nd part not empty and 3rd part either empty or start with @ and at least 3 chars
+    if ( ( ! defined( $cuser ) ) || ( ! defined( $cname ) ) ) {
+      next;
+    } elsif ( length( $cname ) == 0 ) {
+      next;
+    } elsif ( ( length( $cuser ) > 0 ) && ( substr($cuser,0,1) ne "@" ) ) {
+      next;
+    } elsif ( ( substr($cuser,0,1) ne "@" ) && ( length( $cuser ) < 3 ) ) {
+      next;
+    } else {
+      $hash->{Contacts}{$id} = $id.":".$cname.":".$cuser;
+    }
   }
 }
 
@@ -1178,10 +1191,10 @@ sub TelegramBot_ContactUpdate($@) {
 
   Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hasn after :".scalar(keys $hash->{Contacts}).":";
 
-  my $rc;
+  my $rc = "";
   foreach my $key (keys $hash->{Contacts} )
     {
-      if ( defined( $rc ) ) {
+      if ( length($rc) > 0 ) {
         $rc .= " ".$hash->{Contacts}{$key};
       } else {
         $rc = $hash->{Contacts}{$key};

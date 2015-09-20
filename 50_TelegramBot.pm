@@ -50,22 +50,24 @@
 #
 #   handle contacts from received messages
 #   manage contacts as interna and readings
+#   new set: reset internal contacts from attribute / reading / URLs reset also
+#   Contacts will be updated every reception
+#   fixed contact handling on restart
+#   new set: contacts to allow manual contact setting
 #   
 #
 ##############################################################################
 # TODO 
-#   react on setState for removing contact internals if reading contacts is set newly
-#   Dealing with contact information
 #   show names instead of ids (names is full_name)
 #   Allow usage of names 
 #   honor attributes for gaining contacts
-#   Reinitialize for URLs and Ids and HTTPGet
 #
-#   reset internal contacts from attribute / reading
 #   attribute to use/show names instead of ids
-#   test contact handling on restart
+#   setContacts to correct contatcs
 #
 #   Doccumentation
+#   
+#   send Photos
 #   
 #   Merge TelegramBot into Telegram
 #   
@@ -122,7 +124,10 @@ my %sets = (
 	"raw" => "textField",
 	"sendPhoto" => "textField",
 	"sendPhotoTo" => "textField",
-	"zDebug" => "textField"
+	"zDebug" => "textField",
+  # BOTONLY
+	"contacts" => "textField",
+	"reset" => undef
 );
 
 my %gets = (
@@ -143,13 +148,14 @@ sub TelegramBot_Initialize($) {
 
 	$hash->{DefFn}      = "TelegramBot_Define";
 	$hash->{UndefFn}    = "TelegramBot_Undef";
+	$hash->{StateFn}      = "TelegramBot_State";
 	$hash->{GetFn}      = "TelegramBot_Get";
 	$hash->{SetFn}      = "TelegramBot_Set";
 	$hash->{AttrFn}     = "TelegramBot_Attr";
 	$hash->{AttrList}   = "defaultPeer defaultSecret:0,1 pollingTimeout cmdKeyword cmdRestrictedPeer cmdTriggerOnly:0,1 cmdNumericIDs:0,1".
-						$readingFnAttributes;
-	
+						$readingFnAttributes;           
 }
+
 
 
 ######################################
@@ -185,31 +191,13 @@ sub TelegramBot_Define($$) {
   
   $hash->{TYPE} = "TelegramBot";
 
-  $hash->{URL} = "https://api.telegram.org/bot".$hash->{Token}."/";
+  $hash->{STATE} = "Undefined";
 
   $hash->{WAIT} = 0;
   $hash->{FAILS} = 0;
   $hash->{POLLING} = 0;
 
-  $hash->{STATE} = "Defined";
-
-  Log3 $name, 4, "TelegramBot_Define $name: done with ".(defined($ret)?$ret:"undef");
-
-  # getMe as connectivity check and set internals accordingly
-  my $url = $hash->{URL}."getMe";
-  my $meret = TelegramBot_DoUrlCommand( $hash, $url );
-  if ( defined($meret) ) {
-    $hash->{me} = TelegramBot_userObjectToString( $meret );
-    $hash->{STATE} = "Initialized";
-
-  } else {
-    $hash->{me} = "Failed - see log file for details";
-    $hash->{STATE} = "Failed";
-    $hash->{FAILS} = 1;
-  }
-  
-  # Initiate long poll for updates
-  TelegramBot_UpdatePoll($hash);
+  TelegramBot_StartSetup( $hash );
 
   return $ret; 
 }
@@ -238,6 +226,21 @@ sub TelegramBot_Undef($$)
 ##############################################################################
 
 
+####################################
+# State function to ensure contacts internal hash being reset on Contacts Readings Set
+sub TelegramBot_State($$$$) {
+	my ($hash, $time, $name, $value) = @_; 
+	
+#  Log3 $hash->{NAME}, 4, "TelegramBot_State called with :$name: value :$value:";
+
+  if ($name eq 'Contacts')  {
+    TelegramBot_CalcContactsHash( $hash, $value );
+    Log3 $hash->{NAME}, 4, "TelegramBot_State Contacts hash has now :".scalar(keys $hash->{Contacts}).":";
+	}
+	
+	return undef;
+}
+ 
 ####################################
 # set function for executing set operations on device
 sub TelegramBot_Set($@)
@@ -333,6 +336,26 @@ sub TelegramBot_Set($@)
 #    delete( $hash->{READINGS}{lastmessage} );
 #    delete( $hash->{READINGS}{prevMsgSecret} );
 #    delete( $hash->{REMAININGOLD} );
+
+  # BOTONLY
+  } elsif($cmd eq 'reset') {
+    Log3 $name, 5, "TelegramBot_Set $name: reset requested ";
+    TelegramBot_StartSetup( $hash );
+
+  } elsif($cmd eq 'contacts') {
+    if ( $numberOfArgs < 2 ) {
+      return "TelegramBot_Set: Command $cmd, need to specify contacts string separate by space and contacts in the form of <id>:<full_name>:[@<username>] ";
+    }
+    my $arg = join(" ", @args );
+    # first set the hash accordingly
+    TelegramBot_CalcContactsHash($hash, $arg);
+
+    # then calculate correct string reading and put this into the rading
+    my @dumarr;
+    readingsSingleUpdate($hash, "Contacts", TelegramBot_ContactUpdate($hash, @dumarr) , 1); 
+
+    Log3 $name, 5, "TelegramBot_Set $name: contacts newly set ";
+
   }
 
   if ( ! defined( $ret ) ) {
@@ -790,6 +813,12 @@ sub TelegramBot_UpdatePoll($)
     return;
   }
 
+  if ( $hash->{RESET} ) {
+    Log3 $name, 4, "TelegramBot_UpdatePoll $name: RESET request ";
+    delete $hash->{RESET};
+    TelegramBot_DoSetup( $hash );
+  }
+
   # Get timeout from attribute 
   my $timeout =   AttrVal($name,'pollingTimeout',0);
   if ( $timeout == 0 ) {
@@ -936,16 +965,16 @@ sub TelegramBot_ParseMsg($$$)
   my $mpeer = $from->{id};
 
   # check peers beside from only contact (shared contact) and new_chat_participant are checked
-  push( @contacts, $from ) if ( ! TelegramBot_IsKnownContact( $hash, $from->{id} ) );
+  push( @contacts, $from );
 
   my $user = $message->{contact};
   if ( defined( $user ) ) {
-    push( @contacts, $user ) if ( ! TelegramBot_IsKnownContact( $hash, $user->{id} ) );
+    push( @contacts, $user );
   }
 
   $user = $message->{new_chat_participant};
   if ( defined( $user ) ) {
-    push( @contacts, $user ) if ( ! TelegramBot_IsKnownContact( $hash, $user->{id} ) );
+    push( @contacts, $user );
   }
 
   # handle text message
@@ -968,7 +997,7 @@ sub TelegramBot_ParseMsg($$$)
     readingsBulkUpdate($hash, "msgPeer", $mpeernorm);				
     readingsBulkUpdate($hash, "msgText", $mtext);				
 
-    TelegramBot_ReadingsContactUpdate( $hash, @contacts ) if ( scalar(@contacts) > 0 );
+    readingsBulkUpdate($hash, "Contacts", TelegramBot_ContactUpdate( $hash, @contacts )) if ( scalar(@contacts) > 0 );
 
     readingsEndUpdate($hash, 1);
     
@@ -979,9 +1008,7 @@ sub TelegramBot_ParseMsg($$$)
     }
 
   } elsif ( scalar(@contacts) > 0 )  {
-    readingsBeginUpdate($hash);
-    TelegramBot_ReadingsContactUpdate( $hash, @contacts );
-    readingsEndUpdate($hash, 1);
+    readingsSingleUpdate($hash, "Contacts", TelegramBot_ContactUpdate( $hash, @contacts ), 1); 
 
     Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer without text but with contacts";
 
@@ -1076,7 +1103,7 @@ sub TelegramBot_DoUrlCommand($$)
 ##############################################################################
 ##############################################################################
 ##
-## HELPER
+## CONTACT handler
 ##
 ##############################################################################
 ##############################################################################
@@ -1088,15 +1115,22 @@ sub TelegramBot_IsKnownContact($$)
 {
   my ($hash,$mpeer) = @_;
 
-  TelegramBot_CalcContactsHash( $hash ) if ( ! defined( $hash->{Contacts} ) );
+  TelegramBot_InternalContactsFromReading( $hash ) if ( ! defined( $hash->{Contacts} ) );
+
+  foreach my $key (keys $hash->{Contacts} )
+      {
+        Log3 $hash->{NAME}, 4, "Contact :$key: is  :".$hash->{Contacts}{$key}.":";
+      }
+
+
   return ( defined( $hash->{$mpeer} ) );
 }
 
 #####################################
 # INTERNAL: calculate internals->contacts-hash from Readings->Contacts string
-sub TelegramBot_CalcContactsHash($)
+sub TelegramBot_CalcContactsHash($$)
 {
-  my ($hash) = @_;
+  my ($hash, $cstr) = @_;
 
   # create a new hash
   if ( defined( $hash->{Contacts} ) ) {
@@ -1109,38 +1143,52 @@ sub TelegramBot_CalcContactsHash($)
   }
   
   # split reading at separator 
-  my @contactList = split(/\s+/, ReadingsVal($hash->{NAME},"Contacts","") );
+  my @contactList = split(/\s+/, $cstr );
   
   # for each element - get id as hashtag and full contact as value
   foreach  my $contact ( @contactList ) {
-    my ( $id ) = split( ":", $contact, 1 );
+    my ( $id ) = split( ":", $contact, 2 );
     $hash->{Contacts}{$id} = $contact;
   }
 }
 
 
 #####################################
-# INTERNAL: update reading with new contacts (and also the corresponding hash in internals)
-#   begin update done external already !!
-sub TelegramBot_ReadingsContactUpdate($@) {
+# INTERNAL: calculate internals->contacts-hash from Readings->Contacts string
+sub TelegramBot_InternalContactsFromReading($)
+{
+  my ($hash) = @_;
+  TelegramBot_CalcContactsHash( $hash, ReadingsVal($hash->{NAME},"Contacts","") );
+}
+
+
+#####################################
+# INTERNAL: update contacts hash and return complete readings string
+sub TelegramBot_ContactUpdate($@) {
 
   my ($hash, @contacts) = @_;
 
-  TelegramBot_CalcContactsHash( $hash ) if ( ! defined( $hash->{Contacts} ) );
-
-  my $rc = ReadingsVal($hash->{NAME},"Contacts","");
+  TelegramBot_InternalContactsFromReading( $hash ) if ( ! defined( $hash->{Contacts} ) );
   
-  foreach my $user ( @contacts ) {
-    if ( ! TelegramBot_IsKnownContact( $hash, $user->{id} ) ) {
-      my $userString = TelegramBot_userObjectToString( $user );
-      $hash->{contacts}{$hash->{contacts}} = $userString;
+  Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hasn before :".scalar(keys $hash->{Contacts}).":";
 
-      $rc .=" " if ( length( $rc ) > 0 );
-      $rc .= $userString;
+  foreach my $user ( @contacts ) {
+    $hash->{Contacts}{$user->{id}} = TelegramBot_userObjectToString( $user );
+  }
+
+  Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hasn after :".scalar(keys $hash->{Contacts}).":";
+
+  my $rc;
+  foreach my $key (keys $hash->{Contacts} )
+    {
+      if ( defined( $rc ) ) {
+        $rc .= " ".$hash->{Contacts}{$key};
+      } else {
+        $rc = $hash->{Contacts}{$key};
+      }
     }
 
-  }
-  readingsBulkUpdate($hash, "Contacts", $rc);				
+  return $rc;		
 }
   
 #####################################
@@ -1164,7 +1212,69 @@ sub TelegramBot_userObjectToString($) {
   return $ret;
 }
 
+##############################################################################
+##############################################################################
+##
+## HELPER
+##
+##############################################################################
+##############################################################################
 
+
+######################################
+#  make sure a reinitialization is triggered on next update
+#  
+sub TelegramBot_StartSetup($) {
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+
+  Log3 $name, 4, "TelegramBot_StartSetup $name: called ";
+
+  $hash->{me} = "<unknown>";
+  $hash->{STATE} = "Undefined";
+  $hash->{RESET} = 1;
+
+  # Initiate long poll for updates
+  TelegramBot_UpdatePoll($hash);
+}
+
+  
+
+######################################
+#  Initialize function for resetting internals and reinitialize connection
+#  
+sub TelegramBot_DoSetup($) {
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+
+  Log3 $name, 4, "TelegramBot_DoSetup $name: called ";
+
+  $hash->{WAIT} = 0;
+  $hash->{FAILS} = 0;
+  $hash->{POLLING} = 0;
+
+  $hash->{STATE} = "Defined";
+
+  $hash->{URL} = "https://api.telegram.org/bot".$hash->{Token}."/";
+
+  # getMe as connectivity check and set internals accordingly
+  my $url = $hash->{URL}."getMe";
+  my $meret = TelegramBot_DoUrlCommand( $hash, $url );
+  if ( defined($meret) ) {
+    $hash->{me} = TelegramBot_userObjectToString( $meret );
+    $hash->{STATE} = "Setup";
+
+  } else {
+    $hash->{me} = "Failed - see log file for details";
+    $hash->{STATE} = "Failed";
+    $hash->{FAILS} = 1;
+  }
+  
+  TelegramBot_InternalContactsFromReading( $hash);
+
+  Log3 $name, 4, "TelegramBot_DoSetup $name: ended ";
+
+}
 
   
 #####################################

@@ -69,16 +69,27 @@
 #   
 # 0.5 2015-09-21 Contact management available
 #   
-#   
+#   FIX: undef is returned from AnalyzeCommand - accept as ok
+#   reset will reinitiate polling independant of current polling state
+#   FIX: Allow underscores in tokens
+#   FIX: Allow only a single updater loop
+#   return message on commands could be shortened (no double user ids)
+#   return message on commands to include readable name
+#
 #
 ##############################################################################
 # TODO 
-#   Commands defined for bot
-#   Sent last commands as return value on HandledCOmmand
-#   add keyboards
 #
 #   send Photos
 #   
+#   BUG: Contacts are not stored always
+#   add watchdog for polling as workaround for stopping
+#   
+#   Commands defined for bot
+#   Allow to specify commands for Bot and fhem commands accordingly
+#   Sent last commands as return value on HandledCOmmand
+#   add keyboards
+#
 #   honor attributes for gaining contacts - no new contacts etc
 #   
 #   Merge TelegramBot into Telegram
@@ -146,7 +157,7 @@ my %gets = (
 #	"msgById" => "textField"
 );
 
-my $TelegramBot_header = "agent: TelegramBot/0.0\r\nUser-Agent: TelegramBot/0.0\r\nAccept: application/json;charset=utf-8\r\n";
+my $TelegramBot_header = "agent: TelegramBot/0.0\r\nUser-Agent: TelegramBot/0.0\r\nAccept: application/json\r\nAccept-Charset: utf-8\r\n";
 
 
 #####################################
@@ -191,7 +202,7 @@ sub TelegramBot_Define($$) {
     return $errmsg;
   }
   
-  if ( $a[2] =~ /^[[:alnum:]]([[:alnum:]]|[-:])+[[:alnum:]]$/ ) {
+  if ( $a[2] =~ /^([[:alnum:]]|[-:_])+[[:alnum:]]+([[:alnum:]]|[-:_])+$/ ) {
     $hash->{Token} = $a[2];
   } else {
     $errmsg = "specify valid API token containing only alphanumeric characters and -: characters: define <name> TelegramBot  <APItoken> ";
@@ -207,6 +218,7 @@ sub TelegramBot_Define($$) {
 
   $hash->{WAIT} = 0;
   $hash->{FAILS} = 0;
+  $hash->{UPDATER} = 0;
   $hash->{POLLING} = 0;
 
   TelegramBot_StartSetup( $hash );
@@ -439,8 +451,11 @@ sub TelegramBot_Attr(@) {
 
 	return "\"TelegramBot_Attr: \" $name does not exist" if (!defined($hash));
 
-  Log3 $name, 5, "TelegramBot_Attr $name: $cmd  on $aName to $aVal";
-  
+  if (!defined($aVal)) {
+    Log3 $name, 5, "TelegramBot_Attr $name: $cmd  on $aName to $aVal";
+  } else {
+    Log3 $name, 5, "TelegramBot_Attr $name: $cmd  on $aName to <undef>";
+  }
 	# $cmd can be "del" or "set"
 	# $name is device name
 	# aName and aVal are Attribute name and value
@@ -759,6 +774,9 @@ sub TelegramBot_ReadHandleCommand($$$) {
 
   Log3 $name, 3, "TelegramBot_ReadHandleCommand $name: cmd found :".$cmd.": ";
   
+  # get human readble name for peer
+  my $pname = TelegramBot_GetFullnameForContact( $hash, $mpeernorm );
+
   # validate security criteria for commands
   if ( TelegramBot_checkAllowedPeer( $hash, $mpeernorm ) ) {
     Log3 $name, 5, "TelegramBot_ReadHandleCommand cmd correct peer ";
@@ -770,32 +788,41 @@ sub TelegramBot_ReadHandleCommand($$$) {
     
     Log3 $name, 5, "TelegramBot_ReadHandleCommand final cmd for analyze :".$cmd.": ";
     my $ret = AnalyzeCommand( undef, $cmd, "" );
-    Log3 $name, 5, "TelegramBot_ReadHandleCommand result for analyze :".$ret.": ";
 
-    if ( length( $ret) == 0 ) {
-      $ret = "TelegramBot fhem ($mpeernorm) cmd :$cmd: result OK";
+    Log3 $name, 5, "TelegramBot_ReadHandleCommand result for analyze :".(defined($ret)?$ret:"<undef>").": ";
+
+    my $defpeer = AttrVal($name,'defaultPeer',undef);
+    $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
+    
+    my $retstart = "TelegramBot fhem";
+    $retstart .= " from $pname ($mpeernorm)" if ( $defpeer ne $mpeernorm );
+    
+    # undef is considered ok
+    if ( ( ! defined( $ret ) ) || ( length( $ret) == 0 ) ) {
+      $ret = "$retstart cmd :$cmd: result OK";
     } else {
-      $ret = "TelegramBot fhem ($mpeernorm) cmd :$cmd: result :$ret:";
+      $ret = "$retstart cmd :$cmd: result :$ret:";
     }
-    Log3 $name, 5, "TelegramBot_ReadHandleCommand $name: cmd result :".$ret.": ";
+    Log3 $name, 5, "TelegramBot_ReadHandleCommand $name: ".$ret.": ";
     
     # replace line ends with spaces
     $ret =~ s/(\r|\n)/ /gm;
     
-    AnalyzeCommand( undef, "set $name message $mpeernorm: $ret", "" );
-    my $defpeer = AttrVal($name,'defaultPeer',undef);
+    AnalyzeCommand( undef, "set $name message $ret", "" );
     if ( defined( $defpeer ) ) {
-      if ( TelegramBot_convertpeer( $defpeer ) ne $mpeernorm ) {
+#      if ( TelegramBot_convertpeer( $defpeer ) ne $mpeernorm ) {
+      if ( $defpeer ne $mpeernorm ) {
         AnalyzeCommand( undef, "set $name messageTo $mpeernorm $ret", "" );
       }
     }
   } else {
     # unauthorized fhem cmd
-    Log3 $name, 1, "TelegramBot_ReadHandleCommand unauthorized cmd from user :$mpeernorm:";
-    $ret =  "UNAUTHORIZED: TelegramBot fhem cmd :$cmd: from user :$mpeernorm: \n";
+    Log3 $name, 1, "TelegramBot_ReadHandleCommand unauthorized cmd from user :$pname: ($mpeernorm)";
+    $ret =  "UNAUTHORIZED: TelegramBot fhem cmd :$cmd: from user :$pname: ($mpeernorm) \n";
     
     # send unauthorized to defaultpeer
     my $defpeer = AttrVal($name,'defaultPeer',undef);
+    $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
     if ( defined( $defpeer ) ) {
       AnalyzeCommand( undef, "set $name message $ret", "" );
     }
@@ -863,6 +890,10 @@ sub TelegramBot_UpdatePoll($)
   my $offset = $hash->{offset_id};
   $offset = 0 if ( ! defined($offset) );
   
+  # updater is the id of the current updater sequence 
+  # will be increased whenever device (polling) is reset and a new polling is started
+  my $updater = $hash->{UPDATER};
+  
   # build url 
   my $url =  $hash->{URL}."getUpdates?offset=".$offset."&limit=5&timeout=".$timeout;
   
@@ -874,6 +905,7 @@ sub TelegramBot_UpdatePoll($)
                   callback   =>  \&TelegramBot_ParseUpdate,
                   hash       => $hash,
                   offset     => $offset,
+                  updater    => $updater,
               };
               
   $hash->{STATE} = "Polling";
@@ -916,8 +948,10 @@ sub TelegramBot_ParseUpdate($$$)
 ###################### 
    eval {
      # quick hack for emoticons ??? - replace \u with \\u
-     $data =~ s/(\\u[0-9a-f]{4})/\\\1/g;
-     $jo = from_json( $data, {ascii => 1});
+       $data =~ s/(\\u[0-9a-f]{4})/\\$1/g;
+       $jo = decode_json( $data );
+#     $data =~ s/(\\u[0-9a-f]{4})/\\\1/g;
+#     $jo = from_json( $data, {ascii => 1});
    };
 
  #   eval {
@@ -985,8 +1019,13 @@ sub TelegramBot_ParseUpdate($$$)
   }
   
   # start next poll or wait
-  TelegramBot_UpdatePoll($hash); 
-
+  # start only if current updater in hash is equal to updater in the params
+  if ( $hash->{UPDATER} == $param->{updater} ) {
+    TelegramBot_UpdatePoll($hash); 
+  } else {
+    Log3 $name, 2, "TelegramBot_ParseUpdate $name: stopped duplicate update cycle :".$param->{updater}.":";
+  }
+  
   if ( defined( $ret ) ) {
     Log3 $name, 3, "TelegramBot_ParseUpdate $name: resulted in :$ret: ";
   } else {
@@ -1395,6 +1434,10 @@ sub TelegramBot_StartSetup($) {
   $hash->{me} = "<unknown>";
   $hash->{STATE} = "Undefined";
   $hash->{RESET} = 1;
+  $hash->{UPDATER} += 1;
+  
+  # ??? quick hack since polling seems to stop some times
+  $hash->{POLLING} = 0;
 
   # Initiate long poll for updates
   TelegramBot_UpdatePoll($hash);
@@ -1493,21 +1536,6 @@ sub TelegramBot_convertpeer($)
   return $peer2;
 }
 
-
-
-#####################################
-# INTERNAL: Function to get the real name for a 
-sub TelegramBot_PeerToID($$)
-{
-	my ( $hash, $peer ) = @_;
-  my $name = $hash->{NAME};
-	
-  Log3 $name, 5, "TelegramBot_PeerToID $name: called ";
-
-  #????
-
-  return ;
-}
 
 
 ##############################################################################

@@ -75,10 +75,14 @@
 #   FIX: Allow only a single updater loop
 #   return message on commands could be shortened (no double user ids)
 #   return message on commands to include readable name
+#   translate \n into %0A for message
 #
 #
 ##############################################################################
 # TODO 
+#
+#   put complete hash into internals
+#   httputil_close on undef/shutdown/reset
 #
 #   send Photos
 #   
@@ -1127,6 +1131,10 @@ sub TelegramBot_SendText($$$$)
   my $url;
   if ( $isText ) {
     $hash->{sentMsgText} = $msg;
+
+    my $c = chr(10);
+    $msg =~ s/([^\\])\\n/$1$c/g;
+    
     $url = $hash->{URL}."sendMessage?chat_id=".$peer2."&text=".urlEncode($msg);
   } else {
     $hash->{sentMsgText} = "Photo: $msg";

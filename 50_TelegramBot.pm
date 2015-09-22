@@ -77,12 +77,12 @@
 #   return message on commands to include readable name
 #   translate \n into %0A for message
 #
+#   put complete hash into internals
+#   httputil_close on undef/shutdown/reset
+#
 #
 ##############################################################################
 # TODO 
-#
-#   put complete hash into internals
-#   httputil_close on undef/shutdown/reset
 #
 #   send Photos
 #   
@@ -142,6 +142,9 @@ sub TelegramBot_Get($@);
 sub TelegramBot_Read($;$);
 sub TelegramBot_Parse($$$);
 
+sub TelegramBot_ParseUpdate($$$);
+
+
 #########################
 # Globals
 my %sets = (
@@ -162,6 +165,16 @@ my %gets = (
 );
 
 my $TelegramBot_header = "agent: TelegramBot/0.0\r\nUser-Agent: TelegramBot/0.0\r\nAccept: application/json\r\nAccept-Charset: utf-8\r\n";
+
+
+my %TelegramBot_hu_params = (
+                  url        => "",
+                  timeout    => 5,
+                  method     => "GET",
+                  header     => $TelegramBot_header,
+                  callback   => \&TelegramBot_ParseUpdate
+);
+
 
 
 #####################################
@@ -225,7 +238,9 @@ sub TelegramBot_Define($$) {
   $hash->{UPDATER} = 0;
   $hash->{POLLING} = 0;
 
-  TelegramBot_StartSetup( $hash );
+  $hash->{HU_PARAMS} = \%TelegramBot_hu_params;
+
+  TelegramBot_Setup( $hash );
 
   return $ret; 
 }
@@ -241,6 +256,8 @@ sub TelegramBot_Undef($$)
 
   Log3 $name, 3, "TelegramBot_Undef $name: called ";
 
+  HttpUtils_Close(\%TelegramBot_hu_params); 
+  
   RemoveInternalTimer($hash);
 
   Log3 $name, 3, "TelegramBot_Undef $name: done ";
@@ -368,7 +385,7 @@ sub TelegramBot_Set($@)
   # BOTONLY
   } elsif($cmd eq 'reset') {
     Log3 $name, 5, "TelegramBot_Set $name: reset requested ";
-    TelegramBot_StartSetup( $hash );
+    TelegramBot_Setup( $hash );
 
   } elsif($cmd eq 'replaceContacts') {
     if ( $numberOfArgs < 2 ) {
@@ -862,12 +879,6 @@ sub TelegramBot_UpdatePoll($)
     return;
   }
 
-  if ( $hash->{RESET} ) {
-    Log3 $name, 4, "TelegramBot_UpdatePoll $name: RESET request ";
-    delete $hash->{RESET};
-    TelegramBot_DoSetup( $hash );
-  }
-
   # Get timeout from attribute 
   my $timeout =   AttrVal($name,'pollingTimeout',0);
   if ( $timeout == 0 ) {
@@ -894,28 +905,18 @@ sub TelegramBot_UpdatePoll($)
   my $offset = $hash->{offset_id};
   $offset = 0 if ( ! defined($offset) );
   
-  # updater is the id of the current updater sequence 
-  # will be increased whenever device (polling) is reset and a new polling is started
-  my $updater = $hash->{UPDATER};
-  
   # build url 
   my $url =  $hash->{URL}."getUpdates?offset=".$offset."&limit=5&timeout=".$timeout;
-  
-  my $param = {
-                  url        => $url,
-                  timeout    => $timeout+5,
-                  method     => "GET",
-                  header     => $TelegramBot_header,
-                  callback   =>  \&TelegramBot_ParseUpdate,
-                  hash       => $hash,
-                  offset     => $offset,
-                  updater    => $updater,
-              };
-              
+
+  $TelegramBot_hu_params{url} = $url;
+  $TelegramBot_hu_params{timeout} = $timeout+5;
+  $TelegramBot_hu_params{hash} = $hash;
+  $TelegramBot_hu_params{offset} = $offset;
+
   $hash->{STATE} = "Polling";
 
   $hash->{POLLING} = 1;
-  HttpUtils_NonblockingGet( $param ); 
+  HttpUtils_NonblockingGet( \%TelegramBot_hu_params ); 
 }
 
 
@@ -997,7 +998,7 @@ sub TelegramBot_ParseUpdate($$$)
   if ( defined($result) ) {
      # handle result
     $hash->{FAILS} = 0;    # succesful getupdates reset fails
-    Log3 $name, 3, "TelegramBot_ParseUpdate $name: number of results ".scalar(@$result) ;
+    Log3 $name, 5, "TelegramBot_ParseUpdate $name: number of results ".scalar(@$result) ;
     foreach my $update ( @$result ) {
       Log3 $name, 5, "TelegramBot_ParseUpdate $name: parse result ";
       if ( defined( $update->{message} ) ) {
@@ -1023,12 +1024,7 @@ sub TelegramBot_ParseUpdate($$$)
   }
   
   # start next poll or wait
-  # start only if current updater in hash is equal to updater in the params
-  if ( $hash->{UPDATER} == $param->{updater} ) {
-    TelegramBot_UpdatePoll($hash); 
-  } else {
-    Log3 $name, 2, "TelegramBot_ParseUpdate $name: stopped duplicate update cycle :".$param->{updater}.":";
-  }
+  TelegramBot_UpdatePoll($hash); 
   
   if ( defined( $ret ) ) {
     Log3 $name, 3, "TelegramBot_ParseUpdate $name: resulted in :$ret: ";
@@ -1180,9 +1176,10 @@ sub TelegramBot_DoUrlCommand($$)
   
   Log3 $name, 5, "TelegramBot_DoUrlCommand $name: called ";
 
+
   my $param = {
                   url        => $url,
-                  timeout    => 2,
+                  timeout    => 1,
                   hash       => $hash,
                   method     => "GET",
                   header     => $TelegramBot_header
@@ -1288,12 +1285,14 @@ sub TelegramBot_GetFullnameForContact($$)
   my $contact = TelegramBot_GetContactInfoForContact( $hash,$mcid );
   my $ret;
   
-  Log3 $hash->{NAME}, 4, "TelegramBot_GetFullnameForContact # Contacts is $contact:";
 
   if ( defined( $contact ) ) {
+      Log3 $hash->{NAME}, 4, "TelegramBot_GetFullnameForContact # Contacts is $contact:";
       my @clist = split( /:/, $contact );
       $ret = $clist[1];
       Log3 $hash->{NAME}, 4, "TelegramBot_GetFullnameForContact # name is $ret";
+  } else {
+    Log3 $hash->{NAME}, 4, "TelegramBot_GetFullnameForContact # Contacts is <undef>";
   }
   
   return $ret;
@@ -1433,42 +1432,25 @@ sub TelegramBot_userObjectToString($) {
 ######################################
 #  make sure a reinitialization is triggered on next update
 #  
-sub TelegramBot_StartSetup($) {
+sub TelegramBot_Setup($) {
   my ($hash) = @_;
   my $name = $hash->{NAME};
 
-  Log3 $name, 4, "TelegramBot_StartSetup $name: called ";
+  Log3 $name, 4, "TelegramBot_Setup $name: called ";
 
   $hash->{me} = "<unknown>";
   $hash->{STATE} = "Undefined";
-  $hash->{RESET} = 1;
-  $hash->{UPDATER} += 1;
+
+  HttpUtils_Close(\%TelegramBot_hu_params); 
   
+  $hash->{WAIT} = 0;
+  $hash->{FAILS} = 0;
+  $hash->{URL} = "https://api.telegram.org/bot".$hash->{Token}."/";
+
   # ??? quick hack since polling seems to stop some times
   $hash->{POLLING} = 0;
 
-  # Initiate long poll for updates
-  TelegramBot_UpdatePoll($hash);
-}
-
-  
-
-######################################
-#  Initialize function for resetting internals and reinitialize connection
-#  
-sub TelegramBot_DoSetup($) {
-  my ($hash) = @_;
-  my $name = $hash->{NAME};
-
-  Log3 $name, 4, "TelegramBot_DoSetup $name: called ";
-
-  $hash->{WAIT} = 0;
-  $hash->{FAILS} = 0;
-  $hash->{POLLING} = 0;
-
   $hash->{STATE} = "Defined";
-
-  $hash->{URL} = "https://api.telegram.org/bot".$hash->{Token}."/";
 
   # getMe as connectivity check and set internals accordingly
   my $url = $hash->{URL}."getMe";
@@ -1485,9 +1467,13 @@ sub TelegramBot_DoSetup($) {
   
   TelegramBot_InternalContactsFromReading( $hash);
 
-  Log3 $name, 4, "TelegramBot_DoSetup $name: ended ";
+  Log3 $name, 4, "TelegramBot_Setup $name: ended ";
 
+  # Initiate long poll for updates
+  TelegramBot_UpdatePoll($hash);
 }
+
+  
 
   
 #####################################

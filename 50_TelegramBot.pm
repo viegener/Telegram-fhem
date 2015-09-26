@@ -79,6 +79,9 @@
 #
 #   put complete hash into internals
 #   httputil_close on undef/shutdown/reset
+#   removed non working raw set command
+#   added JSON comment in documentation
+#   Increased timeout on nonblocking get - due to changes on telegram side
 #
 #
 ##############################################################################
@@ -87,19 +90,21 @@
 #   send Photos
 #   
 #   BUG: Contacts are not stored always
-#   add watchdog for polling as workaround for stopping
-#   
 #   Commands defined for bot
 #   Allow to specify commands for Bot and fhem commands accordingly
+#   
+#   add messageReplyTo
 #   Sent last commands as return value on HandledCOmmand
 #   add keyboards
 #
+#   dialogfunction for handling dialog communications
+#
 #   honor attributes for gaining contacts - no new contacts etc
+#   
+#   add watchdog for polling as workaround for stopping
 #   
 #   Merge TelegramBot into Telegram
 #   
-#   clean up documentation
-#
 #
 ##############################################################################
 # Ideas / Future
@@ -909,7 +914,7 @@ sub TelegramBot_UpdatePoll($)
   my $url =  $hash->{URL}."getUpdates?offset=".$offset."&limit=5&timeout=".$timeout;
 
   $TelegramBot_hu_params{url} = $url;
-  $TelegramBot_hu_params{timeout} = $timeout+5;
+  $TelegramBot_hu_params{timeout} = $timeout+$timeout+5;
   $TelegramBot_hu_params{hash} = $hash;
   $TelegramBot_hu_params{offset} = $offset;
 
@@ -1566,6 +1571,13 @@ sub TelegramBot_convertpeer($)
   </ul>
   
   <br><br>
+  Note:
+  <ul>
+    <li>This module requires the perl JSON module.<br>
+        Please install the module (e.g. with <code>sudo apt-get install libjson-perl</code>) or the correct method for the underlying platform/system.</li>
+  </ul>   
+  <br><br>
+
   The TelegramBot module allows receiving of (text) messages from any peer (telegram user) and can send text messages to known users.
   The contacts/peers, that are known to the bot are stored in a reading (named <code>Contacts</code>) and also internally in the module in a hashed list to allow the usage 
   of contact ids and also full names and usernames. Contact ids are made up from only digits, user names are prefixed with a @. 

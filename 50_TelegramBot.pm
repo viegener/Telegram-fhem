@@ -1580,6 +1580,7 @@ sub TelegramBot_convertpeer($)
   <ul>
     <li>This module requires the perl JSON module.<br>
         Please install the module (e.g. with <code>sudo apt-get install libjson-perl</code>) or the correct method for the underlying platform/system.</li>
+    <li>The attribute pollingTimeout needs to be set to a value greater than zero, to define the interval of receiving messages (if not set or set to 0, no messages will be received!)</li>
   </ul>   
   <br><br>
 

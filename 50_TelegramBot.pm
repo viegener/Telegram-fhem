@@ -83,18 +83,22 @@
 #   Increased timeout on nonblocking get - due to changes on telegram side
 # 0.6 2015-09-27 Stabilized / Multi line return
 #
+#   send Photos
+#
+#
 #
 ##############################################################################
 # TODO 
 #
-#   send Photos
+#   remove zDebug2
+#   align sendIt mit sendText 
+#   unify json decoder into one routine
 #   
 #   Fix emoticons
 #   
 #   get chat id for reply to
 #   mark url as unsafe for log in httputils
 #   
-#   BUG: Contacts are not stored always
 #   Commands defined for bot
 #   Allow to specify commands for Bot and fhem commands accordingly
 #   
@@ -139,6 +143,8 @@ use warnings;
 use HttpUtils;
 use JSON; 
 
+use File::Basename;
+
 use Scalar::Util qw(reftype looks_like_number);
 
 #########################
@@ -161,10 +167,11 @@ my %sets = (
 	"message" => "textField",
 	"secretChat" => undef,
 	"messageTo" => "textField",
-	"raw" => "textField",
+#	"raw" => "textField",
 	"sendPhoto" => "textField",
 	"sendPhotoTo" => "textField",
 	"zDebug" => "textField",
+	"zDebug2" => "textField",
   # BOTONLY
 	"replaceContacts" => "textField",
 	"reset" => undef
@@ -174,15 +181,23 @@ my %gets = (
 #	"msgById" => "textField"
 );
 
-my $TelegramBot_header = "agent: TelegramBot/0.0\r\nUser-Agent: TelegramBot/0.0\r\nAccept: application/json\r\nAccept-Charset: utf-8\r\n";
+my $TelegramBot_header = "agent: TelegramBot/0.0\r\nUser-Agent: TelegramBot/0.0\r\nAccept: application/json\r\nAccept-Charset: utf-8";
 
 
-my %TelegramBot_hu_params = (
+my %TelegramBot_hu_upd_params = (
                   url        => "",
                   timeout    => 5,
                   method     => "GET",
                   header     => $TelegramBot_header,
                   callback   => \&TelegramBot_ParseUpdate
+);
+
+my %TelegramBot_hu_do_params = (
+                  url        => "",
+                  timeout    => 5,
+                  method     => "GET",
+                  header     => $TelegramBot_header,
+                  callback   => \&TelegramBot_ParseDo
 );
 
 
@@ -248,7 +263,8 @@ sub TelegramBot_Define($$) {
   $hash->{UPDATER} = 0;
   $hash->{POLLING} = 0;
 
-  $hash->{HU_PARAMS} = \%TelegramBot_hu_params;
+  $hash->{HU_UPD_PARAMS} = \%TelegramBot_hu_upd_params;
+  $hash->{HU_DO_PARAMS} = \%TelegramBot_hu_do_params;
 
   TelegramBot_Setup( $hash );
 
@@ -266,8 +282,10 @@ sub TelegramBot_Undef($$)
 
   Log3 $name, 3, "TelegramBot_Undef $name: called ";
 
-  HttpUtils_Close(\%TelegramBot_hu_params); 
+  HttpUtils_Close(\%TelegramBot_hu_upd_params); 
   
+  HttpUtils_Close(\%TelegramBot_hu_do_params); 
+
   RemoveInternalTimer($hash);
 
   Log3 $name, 3, "TelegramBot_Undef $name: done ";
@@ -368,8 +386,8 @@ sub TelegramBot_Set($@)
     my $arg = join(" ", @args );
 
     Log3 $name, 5, "TelegramBot_Set $name: start photo send ";
-    $ret = "TelegramBot_Set: Command $cmd, not yet supported ";
-#    $ret = TelegramBot_SendIt( $hash, $peer, $arg, 0 );
+#    $ret = "TelegramBot_Set: Command $cmd, not yet supported ";
+    $ret = TelegramBot_SendIt( $hash, $peer, $arg, 0 );
 
 	} elsif($cmd eq 'sendPhotoTo') {
     if ( $numberOfArgs < 3 ) {
@@ -382,8 +400,8 @@ sub TelegramBot_Set($@)
     my $arg = join(" ", @args );
 
     Log3 $name, 5, "TelegramBot_Set $name: start photo send to $peer";
-    $ret = "TelegramBot_Set: Command $cmd, not yet supported ";
-#    $ret = TelegramBot_SendIt( $hash, $peer, $arg, 0 );
+#    $ret = "TelegramBot_Set: Command $cmd, not yet supported ";
+    $ret = TelegramBot_SendIt( $hash, $peer, $arg, 0 );
 
   } elsif($cmd eq 'zDebug') {
     Log3 $name, 5, "TelegramBot_Set $name: start debug option ";
@@ -392,6 +410,69 @@ sub TelegramBot_Set($@)
     delete( $hash->{READINGS}{msgPeername} );
 #    delete( $hash->{REMAININGOLD} );
 
+  } elsif($cmd eq 'zDebug2') {
+    # fort testing only
+    # set tbot zDebug2 /opt/fhem/fhemicon_bright.png
+    if ( $numberOfArgs < 2 ) {
+      return "TelegramBot_Set: Command $cmd, need to specify filename";
+    }
+     
+    my $fileName = shift @args;
+
+    Log3 $name, 5, "TelegramBot_Set $name: start debug 2 option with filename ::";
+
+    my $fileDataBinary = TelegramBot_BinaryFileRead( $hash, $fileName );
+    
+    my $filebase64 = $fileDataBinary;
+    
+    Log3 $name, 3, "TelegramBot_Set $name: base64 message \n<START>\n$filebase64\n<ENDE>";
+
+    my $url = $hash->{URL}."sendPhoto";
+#    my $url = $hash->{URL}."sendDocument";
+    my $boundary = "TelegramBot_boundary-x0123";      
+
+    my $baseFilename =  basename($fileName);
+    
+    my $param = {
+                    url        => $url,
+                    timeout    => 5,
+                    hash       => $hash,
+                    method     => "POST",
+                    header     => $TelegramBot_header."Content-Type: multipart/form-data; boundary=$boundary",
+#                    header     => "Content-Type: multipart/form-data; boundary=$boundary",
+                };
+
+    $param->{data} = "--$boundary\r\n".
+                   "Content-Disposition: form-data; name=\"chat_id\"\r\n".
+                   "\r\n".
+                   "99231878\r\n".
+                   "--$boundary\r\n".
+#                   "Content-Disposition: form-data; name=\"caption\"\r\n".
+#                   "\r\n".
+#                   "Ein Bild\r\n".
+#                   "--$boundary\r\n".
+                   "Content-Disposition: form-data; name=\"photo\"; filename=\"".$baseFilename."\"\r\n".
+#                   "Content-Type: image/png\r\n".
+#                   "Content-Transfer-Encoding: BASE64\r\n".
+                   "\r\n".
+                   $filebase64.
+                   "\r\n".
+                   "--$boundary--";     
+
+    Log3 $name, 3, "TelegramBot_Set $name: full message \n<START>\n".$param->{data}."\n<ENDE>";
+
+
+    my ($err, $data) = HttpUtils_BlockingGet( $param );
+
+    if ( $err ne "" ) {
+      # http returned error
+      $ret = "FAILED http access returned error :$err:";
+      Log3 $name, 2, "TelegramBot_Set$name: ".$ret;
+    } else {
+      Log3 $name, 3, "TelegramBot_Set $name: json result \n<START>\n$data\n<ENDE>";
+    }
+
+    
   # BOTONLY
   } elsif($cmd eq 'reset') {
     Log3 $name, 5, "TelegramBot_Set $name: reset requested ";
@@ -918,15 +999,15 @@ sub TelegramBot_UpdatePoll($)
   # build url 
   my $url =  $hash->{URL}."getUpdates?offset=".$offset."&limit=5&timeout=".$timeout;
 
-  $TelegramBot_hu_params{url} = $url;
-  $TelegramBot_hu_params{timeout} = $timeout+$timeout+5;
-  $TelegramBot_hu_params{hash} = $hash;
-  $TelegramBot_hu_params{offset} = $offset;
+  $TelegramBot_hu_upd_params{url} = $url;
+  $TelegramBot_hu_upd_params{timeout} = $timeout+$timeout+5;
+  $TelegramBot_hu_upd_params{hash} = $hash;
+  $TelegramBot_hu_upd_params{offset} = $offset;
 
   $hash->{STATE} = "Polling";
 
   $hash->{POLLING} = 1;
-  HttpUtils_NonblockingGet( \%TelegramBot_hu_params ); 
+  HttpUtils_NonblockingGet( \%TelegramBot_hu_upd_params); 
 }
 
 
@@ -1134,6 +1215,13 @@ sub TelegramBot_SendText($$$$)
 
   my $ret;
 
+  if ( ! defined( $peer2 ) ) {
+    $ret = "FAILED peer not found :$peer:";
+    Log3 $name, 3, "TelegramBot_SendText $name: :$ret:";
+    $hash->{sentMsgResult} = $ret;
+    return $ret;
+  }
+  
   my $url;
   if ( $isText ) {
     $hash->{sentMsgText} = $msg;
@@ -1147,13 +1235,6 @@ sub TelegramBot_SendText($$$$)
     $url = "send_photo $peer2 $msg";
   }
 
-  if ( ! defined( $peer2 ) ) {
-    $ret = "FAILED peer not found :$peer:";
-    Log3 $name, 3, "TelegramBot_SendText $name: :$ret:";
-    $hash->{sentMsgResult} = $ret;
-    return $ret;
-  }
-  
   $ret = TelegramBot_DoUrlCommand( $hash, $url );
   if ( ! defined($ret) ) {
     # should not happen but consider this success
@@ -1222,6 +1303,180 @@ sub TelegramBot_DoUrlCommand($$)
 
   return $ret;
 }
+
+#####################################
+# INTERNAL: Function to send a photo (and text message) to a peer and handle result
+sub TelegramBot_SendIt($$$$)
+{
+	my ( $hash, $peer, $msg, $isText) = @_;
+  my $name = $hash->{NAME};
+	
+  Log3 $name, 5, "TelegramBot_SendPhoto $name: called ";
+
+  # trim and convert spaces in peer to underline 
+#  my $peer2 = TelegramBot_convertpeer( $peer );
+  my $peer2 = TelegramBot_GetIdForPeer( $hash, $peer );
+ 
+  $hash->{sentMsgPeer} = $peer;
+  $hash->{sentMsgPeerId} = $peer2;
+
+  my $ret;
+
+  if ( ! defined( $peer2 ) ) {
+    $ret = "FAILED peer not found :$peer:";
+    Log3 $name, 3, "TelegramBot_SendText $name: :$ret:";
+    $hash->{sentMsgResult} = $ret;
+    return $ret;
+  }
+  
+  $hash->{sentMsgResult} = "WAITING";
+
+  my $url;
+    
+  $TelegramBot_hu_do_params{hash} = $hash;
+  $TelegramBot_hu_do_params{header} = $TelegramBot_header;
+
+  if ( $isText ) {
+    $hash->{sentMsgText} = $msg;
+
+    my $c = chr(10);
+    $msg =~ s/([^\\])\\n/$1$c/g;
+    
+    $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage?chat_id=".$peer2."&text=".urlEncode($msg);
+    $TelegramBot_hu_do_params{method} = "GET";
+
+  } else {
+    $hash->{sentMsgText} = "Photo: $msg";
+
+
+    $TelegramBot_hu_do_params{url} = $hash->{URL}."sendPhoto";
+#    $TelegramBot_hu_do_params{url} = "http://requestb.in/pdyziypd";
+    $TelegramBot_hu_do_params{method} = "POST";
+
+    my $filename =  $msg;
+    my $baseFilename =  basename($msg);
+    my $fileDataBinary = TelegramBot_BinaryFileRead( $hash, $filename );
+
+    if ( $fileDataBinary eq "" ) {
+      $ret = "FAILED file :$filename: not found or empty";
+      Log3 $name, 3, "TelegramBot_SendText $name: :$ret:";
+      $hash->{sentMsgResult} = $ret;
+      return $ret;
+    }
+    
+    my $boundary = "TelegramBot_boundary-x0123";      
+
+    $TelegramBot_hu_do_params{header} .= "\r\nContent-Type: multipart/form-data; boundary=$boundary";
+
+    $TelegramBot_hu_do_params{data} = "--$boundary\r\n".
+                   "Content-Disposition: form-data; name=\"chat_id\"\r\n".
+                   "\r\n".
+                   $peer2."\r\n".
+                   "--$boundary\r\n".
+#                   "Content-Disposition: form-data; name=\"caption\"\r\n".
+#                   "\r\n".
+#                   "Ein Bild\r\n".
+#                   "--$boundary\r\n".
+                   "Content-Disposition: form-data; name=\"photo\"; filename=\"".$baseFilename."\"\r\n".
+#                   "Content-Type: image/png\r\n".
+                   "\r\n".
+                   $fileDataBinary.
+                   "\r\n".
+                   "--$boundary--";     
+
+  }
+
+  HttpUtils_NonblockingGet( \%TelegramBot_hu_do_params); 
+  
+  return $ret;
+}
+
+
+#####################################
+#  INTERNAL: _ParseDo is the callback for the long poll on update call 
+#   3 params are defined for callbacks
+#     param-hash
+#     err
+#     data (returned from url call)
+# empty string used instead of undef for no return/err value
+sub TelegramBot_ParseDo($$$)
+{
+  my ( $param, $err, $data ) = @_;
+  my $hash= $param->{hash};
+  my $name = $hash->{NAME};
+
+  my $ret;
+  my $result;
+  
+  Log3 $name, 5, "TelegramBot_ParseDo $name: ";
+
+  # Check for timeout   "read from $hash->{addr} timed out"
+  if ( $err =~ /^read from.*timed out$/ ) {
+    $ret = "NonBlockingGet timed out on read from $param->{url}";
+  } elsif ( $err ne "" ) {
+    $ret = "NonBlockingGet: returned $err";
+  } elsif ( $data ne "" ) {
+    # assuming empty data without err means timeout
+    Log3 $name, 5, "TelegramBot_ParseDo $name: data returned :$data:";
+    my $jo;
+ 
+###################### 
+   eval {
+     # quick hack for emoticons ??? - replace \u with \\u
+       $data =~ s/(\\u[0-9a-f]{4})/\\$1/g;
+       $jo = decode_json( $data );
+#     $data =~ s/(\\u[0-9a-f]{4})/\\\1/g;
+#     $jo = from_json( $data, {ascii => 1});
+   };
+
+ #   eval {
+# print "CODE:";
+# print $data;
+# print ";\n";
+ 
+# $jo = from_json( $data );
+#       $jo = decode_json( encode( 'utf8', $data ) );
+#my $json = JSON->new;
+
+
+#       $jo = from_json( $data, {ascii => 1});
+       
+       #      my $json        = JSON->new->utf8;
+#      $jo = $json->ascii(1)->utf8(0)->decode( $data );
+ #   };
+
+###################### 
+
+ 
+    if ( ! defined( $jo ) ) {
+      $ret = "getUpdates returned no valid JSON !";
+    } elsif ( ! $jo->{ok} ) {
+      if ( defined( $jo->{description} ) ) {
+        $ret = "getUpdates returned error:".$jo->{description}.":";
+      } else {
+        $ret = "getUpdates returned error without description";
+      }
+    } else {
+      if ( defined( $jo->{result} ) ) {
+        $result = $jo->{result};
+      } else {
+        $ret = "telegram call returned no result";
+      }
+    }
+  }
+
+  $TelegramBot_hu_upd_params{data} = "";
+  
+  if ( defined( $ret ) ) {
+    Log3 $name, 3, "TelegramBot_ParseDo $name: resulted in :$ret: ";
+    $hash->{sentMsgResult} = $ret;
+  } else {
+    Log3 $name, 5, "TelegramBot_ParseDo $name: resulted ok ";
+    $hash->{sentMsgResult} = "SUCCESS";
+  }
+  
+}
+
 
 ##############################################################################
 ##############################################################################
@@ -1440,6 +1695,28 @@ sub TelegramBot_userObjectToString($) {
 
 
 ######################################
+#  read binary file for Phototransfer - returns undef or empty string on error
+#  
+sub TelegramBot_BinaryFileRead($$) {
+	my ($hash, $fileName) = @_;
+
+  return '' if ( ! (-e $fileName) );
+  
+  my $fileData = '';
+		
+  open TGB_BINFILE, '<'.$fileName;
+  binmode TGB_BINFILE;
+  while (<TGB_BINFILE>){
+    $fileData .= $_;
+  }
+  close TGB_BINFILE;
+  
+  return $fileData;
+}
+
+
+
+######################################
 #  make sure a reinitialization is triggered on next update
 #  
 sub TelegramBot_Setup($) {
@@ -1451,7 +1728,9 @@ sub TelegramBot_Setup($) {
   $hash->{me} = "<unknown>";
   $hash->{STATE} = "Undefined";
 
-  HttpUtils_Close(\%TelegramBot_hu_params); 
+  HttpUtils_Close(\%TelegramBot_hu_upd_params); 
+  
+  HttpUtils_Close(\%TelegramBot_hu_do_params); 
   
   $hash->{WAIT} = 0;
   $hash->{FAILS} = 0;

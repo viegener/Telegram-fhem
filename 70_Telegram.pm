@@ -100,6 +100,7 @@
 #   longer delay for doCommand (.5 sec) to allow success or failure being sent
 #   Internal: reworked set to use a joint send_phote/message routine
 #   command results parsing: cr/lf will be replaced by spaces
+# 0.7 2015-09-27 SendPhotoTo / better Command handling  
 #
 #
 ##############################################################################

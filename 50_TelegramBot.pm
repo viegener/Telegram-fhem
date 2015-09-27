@@ -76,18 +76,23 @@
 #   return message on commands could be shortened (no double user ids)
 #   return message on commands to include readable name
 #   translate \n into %0A for message
-#
 #   put complete hash into internals
 #   httputil_close on undef/shutdown/reset
 #   removed non working raw set command
 #   added JSON comment in documentation
 #   Increased timeout on nonblocking get - due to changes on telegram side
+# 0.6 2015-09-27 Stabilized / Multi line return
 #
 #
 ##############################################################################
 # TODO 
 #
 #   send Photos
+#   
+#   Fix emoticons
+#   
+#   get chat id for reply to
+#   mark url as unsafe for log in httputils
 #   
 #   BUG: Contacts are not stored always
 #   Commands defined for bot

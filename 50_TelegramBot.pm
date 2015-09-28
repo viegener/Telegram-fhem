@@ -85,13 +85,15 @@
 #
 #   send Photos
 #   align sendIt mit sendText 
-#
+#   method cleanup
+#   Only one callback for all nonBlockingGets
 #
 #
 ##############################################################################
 # TODO 
 #
-#   unify json decoder into one routine
+#   Queuuing for message and photo sending
+#
 #   
 #   Fix emoticons
 #   
@@ -145,10 +147,7 @@ sub TelegramBot_Undef($$);
 sub TelegramBot_Set($@);
 sub TelegramBot_Get($@);
 
-sub TelegramBot_Read($;$);
-sub TelegramBot_Parse($$$);
-
-sub TelegramBot_ParseUpdate($$$);
+sub TelegramBot_Callback($$$);
 
 
 #########################
@@ -178,7 +177,8 @@ my %TelegramBot_hu_upd_params = (
                   timeout    => 5,
                   method     => "GET",
                   header     => $TelegramBot_header,
-                  callback   => \&TelegramBot_ParseUpdate
+                  isPolling  => "update",
+                  callback   => \&TelegramBot_Callback
 );
 
 my %TelegramBot_hu_do_params = (
@@ -186,7 +186,7 @@ my %TelegramBot_hu_do_params = (
                   timeout    => 5,
                   method     => "GET",
                   header     => $TelegramBot_header,
-                  callback   => \&TelegramBot_ParseDo
+                  callback   => \&TelegramBot_Callback
 );
 
 
@@ -529,259 +529,14 @@ sub TelegramBot_Attr(@) {
 	return undef;
 }
 
-#####################################
-# _Read is called when data is available on the corresponding file descriptor 
-# data to be read must be collected in hash until the data is complete
-# Parse only one message at a time to be able that readingsupdates will be sent out
-# to be deleted
-sub TelegramBot_Read($;$) 
-{
-  my ($hash, $noIO) = @_;
-  my $name = $hash->{NAME};
-	my $buf = '';
-		
-  Log3 $name, 5, "TelegramBot_Read $name: called with noIo defined: ".defined($noIO);
-
-  # Read new data
-	if ( ! defined($noIO) ) {
-		$buf = DevIo_SimpleRead($hash);
-		if ( $buf ) {
-			Log3 $name, 5, "TelegramBot_Read $name: New read :$buf: ";
-		}
-	}
-  
-  # append remaining content to buf
-  $hash->{REMAINING} = '' if( ! defined($hash->{REMAINING}) );
-  $buf = $hash->{REMAINING}.$buf;
-  $hash->{REMAINING} = $buf;
-  
-  Log3 $name, 5, "TelegramBot_Read $name: Full buffer :$buf: ";
-
-  my ( $msg, $rawMsg );
-  
-  # undefined return value as default
-  my $ret;
-
-  while ( length( $buf ) > 0 ) {
-  
-    ( $msg, $rawMsg, $buf ) = TelegramBot_getNextMessage( $hash, $buf );
-
-    if (length( $msg )>0) {
-      Log3 $name, 5, "TelegramBot_Read $name: parsed a message :".$msg.": ";
-    } else {
-      Log3 $name, 5, "TelegramBot_Read $name: parsed a raw message :".$rawMsg.": ";
-    }
-#    Log3 $name, 5, "TelegramBot_Read $name: and remaining :".$buf.": ";
-
-		# update REMAINING for recursion
-    $hash->{REMAINING} = $buf;
-
-    # Do we have a message found
-    if (length( $msg )>0) {
-#      Log3 $name, 5, "TelegramBot_Read $name: message in buffer :$msg:";
-      $hash->{lastmessage} = $msg;
-
-      #55 [23:49]  First Last >>> test 5
-      # Ignore all none received messages  // final \n is already removed
-      my ($mid, $mpeer, $mtext ) = TelegramBot_SplitMsg( $msg );
-      
-      if ( defined( $mid ) ) {
-        Log3 $name, 5, "TelegramBot_Read $name: Found message $mid from $mpeer :$mtext:";
-   
-        my $mpeernorm = $mpeer;
-        $mpeernorm =~ s/^\s+|\s+$//g;
-        $mpeernorm =~ s/ /_/g;
-
-        readingsBeginUpdate($hash);
-
-        readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});				
-        readingsBulkUpdate($hash, "prevMsgPeer", $hash->{READINGS}{msgPeer}{VAL});				
-        readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
-
-        readingsBulkUpdate($hash, "msgId", $mid);				
-        readingsBulkUpdate($hash, "msgPeer", $mpeernorm);				
-        readingsBulkUpdate($hash, "msgText", $mtext);				
-
-        readingsEndUpdate($hash, 1);
-        
-        my $cmdRet = TelegramBot_ReadHandleCommand( $hash, $mpeernorm, $mtext );
-        if ( defined( $cmdRet ) ) {
-          $ret = "" if ( ! defined( $ret ) );
-          $ret .=  $cmdRet;
-        }
-        
-      }
-
-    }
-
-  }
-  
-  return $ret;    
-}
 
 ##############################################################################
 ##############################################################################
 ##
-## TO BE WORKED ON ??????????????????
+## Shared with 70_Telegram
 ##
 ##############################################################################
 ##############################################################################
-
-
-#####################################
-# INTERNAL: Function to get a message by id
-sub TelegramBot_GetMessage($$)
-{
-	my ( $hash, $msgid ) = @_;
-  my $name = $hash->{NAME};
-	
-  Log3 $name, 5, "TelegramBot_GetMessage $name: called ";
-    
-  my $cmd = "get_message $msgid";
-  
-  return TelegramBot_DoCommand( $hash, $cmd, undef );
-}
-
-
-#####################################
-# INTERNAL: Function to send a command handle result
-# Parameter
-#   hash
-#   cmd - command line to be executed
-#   expect - 
-#        undef - means no parsing of result - Everything is returned
-#        true - parse for SUCCESS = undef / FAIL: = msg
-#        false - expect nothing - so return undef if nothing got / FAIL: = return this
-sub TelegramBot_DoCommand($$$)
-{
-	my ( $hash, $cmd, $expect ) = @_;
-  my $name = $hash->{NAME};
-	my $buf = '';
-  
-  Log3 $name, 5, "TelegramBot_DoCommand $name: called ";
-
-  Log3 $name, 5, "TelegramBot_DoCommand $name: send command :$cmd: ";
-  
-  # Check for message in outstanding data from device
-  $hash->{REMAINING} = '' if( ! defined($hash->{REMAINING}) );
-
-  $buf = DevIo_SimpleReadWithTimeout($hash, 0.01);
-  if ( $buf ) {
-    Log3 $name, 5, "TelegramBot_DoCommand $name: Remaining read :$buf: ";
-    $hash->{REMAINING} .= $buf;
-  }
-  
-  # Now write the message
-  DevIo_SimpleWrite($hash, $cmd."\n", 0);
-
-  Log3 $name, 5, "TelegramBot_DoCommand $name: send command DONE ";
-
-  $buf = DevIo_SimpleReadWithTimeout($hash, 0.5);
-  Log3 $name, 5, "TelegramBot_DoCommand $name: returned :".(defined($buf)?$buf:"undef").": ";
-  
-  ### Attention this might contain multiple messages - so split into separate messages and just check for failure or success
-
-  my ( $msg, $rawMsg, $retValue );
-
-  # ensure buf is defined for remaining processing (happens on startup)
-  $buf = '' if ( ! defined($buf) );
-
-  # Parse the different messages in the buffer
-  while ( length($buf) > 0 ) {
-    ( $msg, $rawMsg, $buf ) = TelegramBot_getNextMessage( $hash, $buf );
-    Log3 $name, 5, "TelegramBot_DoCommand $name: parsed a message :".$msg.": ";
-    Log3 $name, 5, "TelegramBot_DoCommand $name: and rawMsg :".$rawMsg.": ";
-    Log3 $name, 5, "TelegramBot_DoCommand $name: and remaining :".$buf.": ";
-
-    # Return complete first rawmsg or $msg if nothing expected
-    if ( ! defined( $expect ) ) {
-      $hash->{REMAINING} .= $buf;
-      if ( length($msg) > 0 ) {
-        $retValue = $msg;
-      } else {
-        $retValue = $rawMsg;
-      }
-      last;
-    }
-
-    if ( length($msg) > 0 ) {
-      # Only FAIL / SUCCESS will be handled (and removed)
-      if ( $msg =~ /^FAIL:/ ) {
-				$retValue = $msg;
-				last;
-      } elsif ( $msg =~ /^SUCCESS$/s ) {
-				# reset $expect to make sure undef is returned
-				$expect = 0;
-				last;
-      } else {
-        $hash->{REMAINING} .= $rawMsg;
-      }
-    } else {
-			$retValue = $rawMsg;
-			last;
-    }
-  }
-
-	# add remaining buf to remaining for further operation
-	$hash->{REMAINING} .= $buf;
-	
-	# handle remaining buffer
-	if ( length($hash->{REMAINING}) > 0 ) {
-		# call read with noIO set
-		TelegramBot_Read( $hash, 1 );
-	}
-
-	# Result is in retValue / expect might be reset if success is received
-	if ( defined( $retValue ) ) {
-		return $retValue;
-  } elsif ( $expect ) {
-    return "NO RESULT";
-  }
-  
-  return undef;
-}
-
-#####################################
-# INTERNAL: Function to split buffer into separate messages
-# Parameter
-#   hash
-#   buf
-# RETURNS
-#   msg - parsed message without ANSWER
-#   rawMsg - raw message 
-#   buf - remaining buffer after removing (raw)msg
-sub TelegramBot_getNextMessage($$)
-{
-	my ( $hash, $buf ) = @_;
-  my $name = $hash->{NAME};
-
-  if ( $buf =~ /^(ANSWER\s(\d+)\n)(.*)$/s ) {
-    # buffer starts with message
-      my $headMsg = $1;
-      my $count = $2;
-      my $rembuf = $3;
-    
-      # not enough characters in buffer / should not happen
-      return ( '', $rembuf, '' ) if ( length($rembuf) < $count );
-
-      my $msg = substr( $rembuf, 0, ($count-1)); 
-			if ( $count == length($rembuf) ) {
-				$rembuf = '';
-			} else {
-				$rembuf = substr( $rembuf, ($count+1));
-		  }
-      
-      return ( $msg, $headMsg.$msg."\n", $rembuf );
-  
-  }  elsif ( $buf =~ /^(.*?)(ANSWER\s(\d+)\n(.*\n))$/s ) {
-    # There seems to be some other message coming ignore it
-    return ( '', $1."\n", $2 );
-  }
-
-  # No message found consider this all as raw
-  return ( '', $buf, '' );
-}
-
 
 
 #####################################
@@ -878,302 +633,6 @@ sub TelegramBot_ReadHandleCommand($$$) {
 ##############################################################################
 
 #####################################
-#  INTERNAL: _PollUpdate is called to set out a nonblocking http call for updates
-#  if still polling return
-#  if more than one fails happened --> wait instead of poll
-#
-sub TelegramBot_UpdatePoll($) 
-{
-  my ($hash) = @_;
-  my $name = $hash->{NAME};
-		
-  Log3 $name, 5, "TelegramBot_UpdatePoll $name: called ";
-
-  if ( $hash->{POLLING} ) {
-    Log3 $name, 4, "TelegramBot_UpdatePoll $name: polling still running ";
-    return;
-  }
-
-  # Get timeout from attribute 
-  my $timeout =   AttrVal($name,'pollingTimeout',0);
-  if ( $timeout == 0 ) {
-    $hash->{STATE} = "Static";
-    Log3 $name, 4, "TelegramBot_UpdatePoll $name: Polling timeout 0 - no polling ";
-    return;
-  }
-  
-  if ( $hash->{FAILS} > 1 ) {
-    # more than one fail in a row wait until next poll
-    $hash->{OLDFAILS} = $hash->{FAILS};
-    $hash->{FAILS} = 0;
-    my $wait = $hash->{OLDFAILS}+2;
-    Log3 $name, 5, "TelegramBot_UpdatePoll $name: got fails :".$hash->{OLDFAILS}.": wait ".$wait." seconds";
-  	InternalTimer(gettimeofday()+$wait, "TelegramBot_UpdatePoll", $hash,0); 
-    return;
-  } elsif ( defined($hash->{OLDFAILS}) ) {
-    # oldfails defined means 
-    $hash->{FAILS} = $hash->{OLDFAILS};
-    delete $hash->{OLDFAILS};
-  }
-
-  # get next offset id
-  my $offset = $hash->{offset_id};
-  $offset = 0 if ( ! defined($offset) );
-  
-  # build url 
-  my $url =  $hash->{URL}."getUpdates?offset=".$offset."&limit=5&timeout=".$timeout;
-
-  $TelegramBot_hu_upd_params{url} = $url;
-  $TelegramBot_hu_upd_params{timeout} = $timeout+$timeout+5;
-  $TelegramBot_hu_upd_params{hash} = $hash;
-  $TelegramBot_hu_upd_params{offset} = $offset;
-
-  $hash->{STATE} = "Polling";
-
-  $hash->{POLLING} = 1;
-  HttpUtils_NonblockingGet( \%TelegramBot_hu_upd_params); 
-}
-
-
-#####################################
-#  INTERNAL: _ParseUpdate is the callback for the long poll on update call 
-#   3 params are defined for callbacks
-#     param-hash
-#     err
-#     data (returned from url call)
-# empty string used instead of undef for no return/err value
-sub TelegramBot_ParseUpdate($$$)
-{
-  my ( $param, $err, $data ) = @_;
-  my $hash= $param->{hash};
-  my $name = $hash->{NAME};
-
-  my $ret;
-  my $result;
-  
-  $hash->{POLLING} = 0;
-
-  Log3 $name, 5, "TelegramBot_ParseUpdate $name: called ";
-
-  # Check for timeout   "read from $hash->{addr} timed out"
-  if ( $err =~ /^read from.*timed out$/ ) {
-    $ret = "NonBlockingGet timed out on read from $param->{url}";
-  } elsif ( $err ne "" ) {
-    $ret = "NonBlockingGet: returned $err";
-  } elsif ( $data ne "" ) {
-    # assuming empty data without err means timeout
-    Log3 $name, 5, "TelegramBot_ParseUpdate $name: data returned :$data:";
-    my $jo;
- 
-###################### 
-   eval {
-     # quick hack for emoticons ??? - replace \u with \\u
-       $data =~ s/(\\u[0-9a-f]{4})/\\$1/g;
-       $jo = decode_json( $data );
-#     $data =~ s/(\\u[0-9a-f]{4})/\\\1/g;
-#     $jo = from_json( $data, {ascii => 1});
-   };
-
- #   eval {
-# print "CODE:";
-# print $data;
-# print ";\n";
- 
-# $jo = from_json( $data );
-#       $jo = decode_json( encode( 'utf8', $data ) );
-#my $json = JSON->new;
-
-
-#       $jo = from_json( $data, {ascii => 1});
-       
-       #      my $json        = JSON->new->utf8;
-#      $jo = $json->ascii(1)->utf8(0)->decode( $data );
- #   };
-
-###################### 
-
- 
-    if ( ! defined( $jo ) ) {
-      $ret = "getUpdates returned no valid JSON !";
-    } elsif ( ! $jo->{ok} ) {
-      if ( defined( $jo->{description} ) ) {
-        $ret = "getUpdates returned error:".$jo->{description}.":";
-      } else {
-        $ret = "getUpdates returned error without description";
-      }
-    } else {
-      if ( defined( $jo->{result} ) ) {
-        $result = $jo->{result};
-      } else {
-        $ret = "getUpdates returned no result";
-      }
-    }
-  }
-
-  if ( defined($result) ) {
-     # handle result
-    $hash->{FAILS} = 0;    # succesful getupdates reset fails
-    Log3 $name, 5, "TelegramBot_ParseUpdate $name: number of results ".scalar(@$result) ;
-    foreach my $update ( @$result ) {
-      Log3 $name, 5, "TelegramBot_ParseUpdate $name: parse result ";
-      if ( defined( $update->{message} ) ) {
-# print "MSG:";
-# if ( defined( $update->{message}{text} ) ) {
-##  print $update->{message}{text};
-#} else {
-#  print "NOT DEFINED";
-#}
-# print ";\n";
-        
-        $ret = TelegramBot_ParseMsg( $hash, $update->{update_id}, $update->{message} );
-      }
-      if ( defined( $ret ) ) {
-        last;
-      } else {
-        $hash->{offset_id} = $update->{update_id}+1;
-      }
-    }
-  } else {
-    # something went wrong increase fails
-    $hash->{FAILS} += 1;
-  }
-  
-  # start next poll or wait
-  TelegramBot_UpdatePoll($hash); 
-  
-  if ( defined( $ret ) ) {
-    Log3 $name, 3, "TelegramBot_ParseUpdate $name: resulted in :$ret: ";
-  } else {
-    Log3 $name, 5, "TelegramBot_ParseUpdate $name: resulted ok ";
-  }
-  
-}
-
-#####################################
-#  INTERNAL: _ParseMsg handle a message from the update call 
-#   params are the hash, the updateid and the actual message
-sub TelegramBot_ParseMsg($$$)
-{
-  my ( $hash, $uid, $message ) = @_;
-  my $name = $hash->{NAME};
-
-  my @contacts;
-  
-  my $ret;
-  
-  my $mid = $message->{message_id};
-  
-  my $from = $message->{from};
-  my $mpeer = $from->{id};
-
-  # check peers beside from only contact (shared contact) and new_chat_participant are checked
-  push( @contacts, $from );
-
-  my $user = $message->{contact};
-  if ( defined( $user ) ) {
-    push( @contacts, $user );
-  }
-
-  $user = $message->{new_chat_participant};
-  if ( defined( $user ) ) {
-    push( @contacts, $user );
-  }
-
-  # handle text message
-  if ( defined( $message->{text} ) ) {
-    my $mtext = $message->{text};
-   
-    my $mpeernorm = $mpeer;
-    $mpeernorm =~ s/^\s+|\s+$//g;
-    $mpeernorm =~ s/ /_/g;
-
-#    Log3 $name, 5, "TelegramBot_Read $name: Found message $mid from $mpeer :$mtext:";
-    
-    readingsBeginUpdate($hash);
-
-    readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});				
-    readingsBulkUpdate($hash, "prevMsgPeer", $hash->{READINGS}{msgPeer}{VAL});				
-    readingsBulkUpdate($hash, "prevMsgPeerId", $hash->{READINGS}{msgPeerId}{VAL});				
-    readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
-
-    readingsBulkUpdate($hash, "msgId", $mid);				
-    readingsBulkUpdate($hash, "msgPeer", TelegramBot_GetFullnameForContact( $hash, $mpeernorm ));				
-    readingsBulkUpdate($hash, "msgPeerId", $mpeernorm);				
-    readingsBulkUpdate($hash, "msgText", $mtext);				
-
-    readingsBulkUpdate($hash, "Contacts", TelegramBot_ContactUpdate( $hash, @contacts )) if ( scalar(@contacts) > 0 );
-
-    readingsEndUpdate($hash, 1);
-    
-    my $cmdRet = TelegramBot_ReadHandleCommand( $hash, $mpeernorm, $mtext );
-    #  ignore result of readhandlecommand since it leads to endless loop
-    
-    
-  } elsif ( scalar(@contacts) > 0 )  {
-    readingsSingleUpdate($hash, "Contacts", TelegramBot_ContactUpdate( $hash, @contacts ), 1); 
-
-    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer without text but with contacts";
-
-  } else {
-    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer without text";
-  }
-  
-  return $ret;
-}
-  
-#####################################
-# INTERNAL: Function to send a command handle result
-# Parameter
-#   hash
-#   url - url including parameters
-#   > returns string in case of error or the content of the result object if ok
-sub TelegramBot_DoUrlCommand($$)
-{
-	my ( $hash, $url ) = @_;
-  my $name = $hash->{NAME};
-
-  my $ret;
-  
-  Log3 $name, 5, "TelegramBot_DoUrlCommand $name: called ";
-
-
-  my $param = {
-                  url        => $url,
-                  timeout    => 1,
-                  hash       => $hash,
-                  method     => "GET",
-                  header     => $TelegramBot_header
-              };
-  my ($err, $data) = HttpUtils_BlockingGet( $param );
-
-  if ( $err ne "" ) {
-    # http returned error
-    $ret = "FAILED http access returned error :$err:";
-    Log3 $name, 2, "TelegramBot_DoUrlCommand $name: ".$ret;
-  } else {
-    my $jo;
-    
-    eval {
-      $jo = decode_json( $data );
-    };
-
-    if ( ! defined( $jo ) ) {
-      $ret = "FAILED invalid JSON returned";
-      Log3 $name, 2, "TelegramBot_DoUrlCommand $name: ".$ret;
-    } elsif ( $jo->{ok} ) {
-      $ret = $jo->{result};
-      Log3 $name, 4, "TelegramBot_DoUrlCommand OK with result";
-    } else {
-      my $ret = "FAILED Telegram returned error: ".$jo->{description};
-      Log3 $name, 2, "TelegramBot_DoUrlCommand $name: ".$ret;
-    }    
-
-  }
-
-  return $ret;
-}
-
-#####################################
 # INTERNAL: Function to send a photo (and text message) to a peer and handle result
 sub TelegramBot_SendIt($$$$$)
 {
@@ -1262,13 +721,71 @@ sub TelegramBot_SendIt($$$$$)
 
 
 #####################################
-#  INTERNAL: _ParseDo is the callback for the long poll on update call 
+#  INTERNAL: _PollUpdate is called to set out a nonblocking http call for updates
+#  if still polling return
+#  if more than one fails happened --> wait instead of poll
+#
+sub TelegramBot_UpdatePoll($) 
+{
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+		
+  Log3 $name, 5, "TelegramBot_UpdatePoll $name: called ";
+
+  if ( $hash->{POLLING} ) {
+    Log3 $name, 4, "TelegramBot_UpdatePoll $name: polling still running ";
+    return;
+  }
+
+  # Get timeout from attribute 
+  my $timeout =   AttrVal($name,'pollingTimeout',0);
+  if ( $timeout == 0 ) {
+    $hash->{STATE} = "Static";
+    Log3 $name, 4, "TelegramBot_UpdatePoll $name: Polling timeout 0 - no polling ";
+    return;
+  }
+  
+  if ( $hash->{FAILS} > 1 ) {
+    # more than one fail in a row wait until next poll
+    $hash->{OLDFAILS} = $hash->{FAILS};
+    $hash->{FAILS} = 0;
+    my $wait = $hash->{OLDFAILS}+2;
+    Log3 $name, 5, "TelegramBot_UpdatePoll $name: got fails :".$hash->{OLDFAILS}.": wait ".$wait." seconds";
+  	InternalTimer(gettimeofday()+$wait, "TelegramBot_UpdatePoll", $hash,0); 
+    return;
+  } elsif ( defined($hash->{OLDFAILS}) ) {
+    # oldfails defined means 
+    $hash->{FAILS} = $hash->{OLDFAILS};
+    delete $hash->{OLDFAILS};
+  }
+
+  # get next offset id
+  my $offset = $hash->{offset_id};
+  $offset = 0 if ( ! defined($offset) );
+  
+  # build url 
+  my $url =  $hash->{URL}."getUpdates?offset=".$offset."&limit=5&timeout=".$timeout;
+
+  $TelegramBot_hu_upd_params{url} = $url;
+  $TelegramBot_hu_upd_params{timeout} = $timeout+$timeout+5;
+  $TelegramBot_hu_upd_params{hash} = $hash;
+  $TelegramBot_hu_upd_params{offset} = $offset;
+
+  $hash->{STATE} = "Polling";
+
+  $hash->{POLLING} = 1;
+  HttpUtils_NonblockingGet( \%TelegramBot_hu_upd_params); 
+}
+
+
+#####################################
+#  INTERNAL: Callback is the callback for any nonblocking call to the bot api (e.g. the long poll on update call)
 #   3 params are defined for callbacks
 #     param-hash
 #     err
 #     data (returned from url call)
 # empty string used instead of undef for no return/err value
-sub TelegramBot_ParseDo($$$)
+sub TelegramBot_Callback($$$)
 {
   my ( $param, $err, $data ) = @_;
   my $hash= $param->{hash};
@@ -1277,7 +794,9 @@ sub TelegramBot_ParseDo($$$)
   my $ret;
   my $result;
   
-  Log3 $name, 5, "TelegramBot_ParseDo $name: ";
+  $hash->{POLLING} = 0 if ( defined( $param->{isPolling} ) );
+
+  Log3 $name, 5, "TelegramBot_Callback $name: called from ".(( defined( $param->{isPolling} ) )?"Polling":"SendIt");
 
   # Check for timeout   "read from $hash->{addr} timed out"
   if ( $err =~ /^read from.*timed out$/ ) {
@@ -1286,17 +805,17 @@ sub TelegramBot_ParseDo($$$)
     $ret = "NonBlockingGet: returned $err";
   } elsif ( $data ne "" ) {
     # assuming empty data without err means timeout
-    Log3 $name, 5, "TelegramBot_ParseDo $name: data returned :$data:";
+    Log3 $name, 5, "TelegramBot_ParseUpdate $name: data returned :$data:";
     my $jo;
  
 ###################### 
-   eval {
-     # quick hack for emoticons ??? - replace \u with \\u
-       $data =~ s/(\\u[0-9a-f]{4})/\\$1/g;
-       $jo = decode_json( $data );
-#     $data =~ s/(\\u[0-9a-f]{4})/\\\1/g;
-#     $jo = from_json( $data, {ascii => 1});
-   };
+     eval {
+       # quick hack for emoticons ??? - replace \u with \\u
+         $data =~ s/(\\u[0-9a-f]{4})/\\$1/g;
+         $jo = decode_json( $data );
+  #     $data =~ s/(\\u[0-9a-f]{4})/\\\1/g;
+  #     $jo = from_json( $data, {ascii => 1});
+     };
 
  #   eval {
 # print "CODE:";
@@ -1315,37 +834,197 @@ sub TelegramBot_ParseDo($$$)
  #   };
 
 ###################### 
-
  
     if ( ! defined( $jo ) ) {
-      $ret = "getUpdates returned no valid JSON !";
+      $ret = "UpdatePoll returned no valid JSON !";
     } elsif ( ! $jo->{ok} ) {
       if ( defined( $jo->{description} ) ) {
-        $ret = "getUpdates returned error:".$jo->{description}.":";
+        $ret = "UpdatePoll returned error:".$jo->{description}.":";
       } else {
-        $ret = "getUpdates returned error without description";
+        $ret = "UpdatePoll returned error without description";
       }
     } else {
       if ( defined( $jo->{result} ) ) {
         $result = $jo->{result};
       } else {
-        $ret = "telegram call returned no result";
+        $ret = "UpdatePoll returned no result";
       }
     }
   }
 
-  $TelegramBot_hu_upd_params{data} = "";
-  
-  if ( defined( $ret ) ) {
-    Log3 $name, 3, "TelegramBot_ParseDo $name: resulted in :$ret: ";
-    $hash->{sentMsgResult} = $ret;
+  if ( defined( $param->{isPolling} ) ) {
+    # Polling means result must be analyzed
+    if ( defined($result) ) {
+       # handle result
+      $hash->{FAILS} = 0;    # succesful UpdatePoll reset fails
+      Log3 $name, 5, "UpdatePoll $name: number of results ".scalar(@$result) ;
+      foreach my $update ( @$result ) {
+        Log3 $name, 5, "UpdatePoll $name: parse result ";
+        if ( defined( $update->{message} ) ) {
+  # print "MSG:";
+  # if ( defined( $update->{message}{text} ) ) {
+  ##  print $update->{message}{text};
+  #} else {
+  #  print "NOT DEFINED";
+  #}
+  # print ";\n";
+          
+          $ret = TelegramBot_ParseMsg( $hash, $update->{update_id}, $update->{message} );
+        }
+        if ( defined( $ret ) ) {
+          last;
+        } else {
+          $hash->{offset_id} = $update->{update_id}+1;
+        }
+      }
+    } else {
+      # something went wrong increase fails
+      $hash->{FAILS} += 1;
+    }
+    
+    # start next poll or wait
+    TelegramBot_UpdatePoll($hash); 
+
+
   } else {
-    Log3 $name, 5, "TelegramBot_ParseDo $name: resulted ok ";
-    $hash->{sentMsgResult} = "SUCCESS";
+    # Non Polling means reset only the 
+    $TelegramBot_hu_do_params{data} = "";
   }
   
+  if ( defined( $ret ) ) {
+    Log3 $name, 3, "TelegramBot_Callback $name: resulted in :$ret: from ".(( defined( $param->{isPolling} ) )?"Polling":"SendIt");
+    $hash->{sentMsgResult} = $ret if ( ! defined( $param->{isPolling} ) );
+  } else {
+    Log3 $name, 5, "TelegramBot_Callback $name: resulted ok from ".(( defined( $param->{isPolling} ) )?"Polling":"SendIt");
+    $hash->{sentMsgResult} = "SUCCESS" if ( ! defined( $param->{isPolling} ) );
+  }
+
 }
 
+
+#####################################
+#  INTERNAL: _ParseMsg handle a message from the update call 
+#   params are the hash, the updateid and the actual message
+sub TelegramBot_ParseMsg($$$)
+{
+  my ( $hash, $uid, $message ) = @_;
+  my $name = $hash->{NAME};
+
+  my @contacts;
+  
+  my $ret;
+  
+  my $mid = $message->{message_id};
+  
+  my $from = $message->{from};
+  my $mpeer = $from->{id};
+
+  # check peers beside from only contact (shared contact) and new_chat_participant are checked
+  push( @contacts, $from );
+
+  my $user = $message->{contact};
+  if ( defined( $user ) ) {
+    push( @contacts, $user );
+  }
+
+  $user = $message->{new_chat_participant};
+  if ( defined( $user ) ) {
+    push( @contacts, $user );
+  }
+
+  # handle text message
+  if ( defined( $message->{text} ) ) {
+    my $mtext = $message->{text};
+   
+    my $mpeernorm = $mpeer;
+    $mpeernorm =~ s/^\s+|\s+$//g;
+    $mpeernorm =~ s/ /_/g;
+
+#    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer :$mtext:";
+    
+    readingsBeginUpdate($hash);
+
+    readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});				
+    readingsBulkUpdate($hash, "prevMsgPeer", $hash->{READINGS}{msgPeer}{VAL});				
+    readingsBulkUpdate($hash, "prevMsgPeerId", $hash->{READINGS}{msgPeerId}{VAL});				
+    readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
+
+    readingsBulkUpdate($hash, "msgId", $mid);				
+    readingsBulkUpdate($hash, "msgPeer", TelegramBot_GetFullnameForContact( $hash, $mpeernorm ));				
+    readingsBulkUpdate($hash, "msgPeerId", $mpeernorm);				
+    readingsBulkUpdate($hash, "msgText", $mtext);				
+
+    readingsBulkUpdate($hash, "Contacts", TelegramBot_ContactUpdate( $hash, @contacts )) if ( scalar(@contacts) > 0 );
+
+    readingsEndUpdate($hash, 1);
+    
+    my $cmdRet = TelegramBot_ReadHandleCommand( $hash, $mpeernorm, $mtext );
+    #  ignore result of readhandlecommand since it leads to endless loop
+    
+    
+  } elsif ( scalar(@contacts) > 0 )  {
+    readingsSingleUpdate($hash, "Contacts", TelegramBot_ContactUpdate( $hash, @contacts ), 1); 
+
+    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer without text but with contacts";
+
+  } else {
+    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer without text";
+  }
+  
+  return $ret;
+}
+  
+#####################################
+# INTERNAL: Function to send a command handle result
+# Parameter
+#   hash
+#   url - url including parameters
+#   > returns string in case of error or the content of the result object if ok
+sub TelegramBot_DoUrlCommand($$)
+{
+	my ( $hash, $url ) = @_;
+  my $name = $hash->{NAME};
+
+  my $ret;
+  
+  Log3 $name, 5, "TelegramBot_DoUrlCommand $name: called ";
+
+
+  my $param = {
+                  url        => $url,
+                  timeout    => 1,
+                  hash       => $hash,
+                  method     => "GET",
+                  header     => $TelegramBot_header
+              };
+  my ($err, $data) = HttpUtils_BlockingGet( $param );
+
+  if ( $err ne "" ) {
+    # http returned error
+    $ret = "FAILED http access returned error :$err:";
+    Log3 $name, 2, "TelegramBot_DoUrlCommand $name: ".$ret;
+  } else {
+    my $jo;
+    
+    eval {
+      $jo = decode_json( $data );
+    };
+
+    if ( ! defined( $jo ) ) {
+      $ret = "FAILED invalid JSON returned";
+      Log3 $name, 2, "TelegramBot_DoUrlCommand $name: ".$ret;
+    } elsif ( $jo->{ok} ) {
+      $ret = $jo->{result};
+      Log3 $name, 4, "TelegramBot_DoUrlCommand OK with result";
+    } else {
+      my $ret = "FAILED Telegram returned error: ".$jo->{description};
+      Log3 $name, 2, "TelegramBot_DoUrlCommand $name: ".$ret;
+    }    
+
+  }
+
+  return $ret;
+}
 
 ##############################################################################
 ##############################################################################

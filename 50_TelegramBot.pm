@@ -87,6 +87,10 @@
 #   align sendIt mit sendText 
 #   method cleanup
 #   Only one callback for all nonBlockingGets
+<<<<<<< HEAD
+=======
+#   Moved sentMsg* Internals to Readings (use zDebug to cleanup)
+>>>>>>> 07ec4384e5f28d8b81a3c966d7388c922d88ade7
 #   streamline sendPhoto
 #   Allow also usernames and full names in cmdRestrictedpeer
 #

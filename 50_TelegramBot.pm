@@ -87,16 +87,12 @@
 #   align sendIt mit sendText 
 #   method cleanup
 #   Only one callback for all nonBlockingGets
-#
+#   Moved sentMsg* Internals to Readings (use zDebug to cleanup)
 #
 ##############################################################################
 # TODO 
 #
 #   Queuuing for message and photo sending
-#
-#   
-#   Fix emoticons
-#   
 #   get chat id for reply to
 #   mark url as unsafe for log in httputils
 #   
@@ -109,6 +105,8 @@
 #
 #   dialogfunction for handling dialog communications
 #
+#   Fix emoticons
+#   
 #   honor attributes for gaining contacts - no new contacts etc
 #   
 #   add watchdog for polling as workaround for stopping
@@ -395,6 +393,10 @@ sub TelegramBot_Set($@)
   } elsif($cmd eq 'zDebug') {
     # for internal testing only
     Log3 $name, 5, "TelegramBot_Set $name: start debug option ";
+    delete $hash->{sentMsgPeer};
+    delete $hash->{sentMsgPeerId};
+    delete $hash->{sentMsgResult};
+    delete $hash->{sentMsgText};
 
     
   # BOTONLY
@@ -639,33 +641,31 @@ sub TelegramBot_SendIt($$$$$)
 	my ( $hash, $peer, $msg, $addPar, $isText) = @_;
   my $name = $hash->{NAME};
 	
-  Log3 $name, 5, "TelegramBot_SendPhoto $name: called ";
+  my $ret;
+  Log3 $name, 5, "TelegramBot_SendIt $name: called ";
 
   # trim and convert spaces in peer to underline 
 #  my $peer2 = TelegramBot_convertpeer( $peer );
   my $peer2 = TelegramBot_GetIdForPeer( $hash, $peer );
- 
-  $hash->{sentMsgPeer} = $peer;
-  $hash->{sentMsgPeerId} = $peer2;
 
-  my $ret;
+  readingsBeginUpdate($hash);
+
+  readingsBulkUpdate($hash, "sentMsgPeer", $peer);				
+  readingsBulkUpdate($hash, "sentMsgPeerId", $peer2);				
+
 
   if ( ! defined( $peer2 ) ) {
     $ret = "FAILED peer not found :$peer:";
-    Log3 $name, 3, "TelegramBot_SendText $name: :$ret:";
-    $hash->{sentMsgResult} = $ret;
-    return $ret;
+    $peer2 = "";
   }
   
-  $hash->{sentMsgResult} = "WORKING";
-
   my $url;
     
   $TelegramBot_hu_do_params{hash} = $hash;
   $TelegramBot_hu_do_params{header} = $TelegramBot_header;
 
   if ( $isText ) {
-    $hash->{sentMsgText} = $msg;
+    readingsBulkUpdate($hash, "sentMsgText", $msg);				
 
     my $c = chr(10);
     $msg =~ s/([^\\])\\n/$1$c/g;
@@ -674,8 +674,7 @@ sub TelegramBot_SendIt($$$$$)
     $TelegramBot_hu_do_params{method} = "GET";
 
   } else {
-    $hash->{sentMsgText} = "Photo: $msg";
-
+    readingsBulkUpdate($hash, "sentMsgText", "Photo: $msg");				
 
     $TelegramBot_hu_do_params{url} = $hash->{URL}."sendPhoto";
 #    $TelegramBot_hu_do_params{url} = "http://requestb.in/pdyziypd";
@@ -687,9 +686,6 @@ sub TelegramBot_SendIt($$$$$)
 
     if ( $fileDataBinary eq "" ) {
       $ret = "FAILED file :$filename: not found or empty";
-      Log3 $name, 3, "TelegramBot_SendText $name: :$ret:";
-      $hash->{sentMsgResult} = $ret;
-      return $ret;
     }
     
     my $boundary = "TelegramBot_boundary-x0123";      
@@ -714,7 +710,14 @@ sub TelegramBot_SendIt($$$$$)
 
   }
 
-  HttpUtils_NonblockingGet( \%TelegramBot_hu_do_params); 
+  if ( defined( $ret ) ) {
+    Log3 $name, 3, "TelegramBot_SendIt $name: :$ret:";
+    readingsBulkUpdate($hash, "sentMsgResult", $ret);				
+  } else {
+    readingsBulkUpdate($hash, "sentMsgResult", "WORKING");				
+  }
+
+  HttpUtils_NonblockingGet( \%TelegramBot_hu_do_params) if ( ! defined( $ret ) );
   
   return $ret;
 }
@@ -891,13 +894,11 @@ sub TelegramBot_Callback($$$)
     $TelegramBot_hu_do_params{data} = "";
   }
   
-  if ( defined( $ret ) ) {
-    Log3 $name, 3, "TelegramBot_Callback $name: resulted in :$ret: from ".(( defined( $param->{isPolling} ) )?"Polling":"SendIt");
-    $hash->{sentMsgResult} = $ret if ( ! defined( $param->{isPolling} ) );
-  } else {
-    Log3 $name, 5, "TelegramBot_Callback $name: resulted ok from ".(( defined( $param->{isPolling} ) )?"Polling":"SendIt");
-    $hash->{sentMsgResult} = "SUCCESS" if ( ! defined( $param->{isPolling} ) );
-  }
+  $ret = "SUCCESS" if ( ! defined( $ret ) );
+  
+  readingsSingleUpdate( $hash, "sentMsgResult", $ret, 1)  if ( ! defined( $param->{isPolling} ) );
+
+  Log3 $name, ( ( defined( $ret ) )?3:5), "TelegramBot_Callback $name: resulted in :$ret: from ".(( defined( $param->{isPolling} ) )?"Polling":"SendIt");
 
 }
 

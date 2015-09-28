@@ -84,14 +84,13 @@
 # 0.6 2015-09-27 Stabilized / Multi line return
 #
 #   send Photos
+#   align sendIt mit sendText 
 #
 #
 #
 ##############################################################################
 # TODO 
 #
-#   remove zDebug2
-#   align sendIt mit sendText 
 #   unify json decoder into one routine
 #   
 #   Fix emoticons
@@ -124,15 +123,6 @@
 ##############################################################################
 # Info: Max time out for getUpdates seem to be 20 s
 #	
-# Internals
-#   - Internal: sentMsgText
-#   - Internal: sentMsgResult
-#   - Internal: sentMsgPeer
-#   - Internal: sentMsgSecure
-#   - Internal: REMAINING - used for storing messages received intermediate
-#   - Internal: lastmessage - last message handled in Read function
-#   - Internal: sentMsgId???
-# 
 ##############################################################################
 
 package main;
@@ -171,7 +161,6 @@ my %sets = (
 	"sendPhoto" => "textField",
 	"sendPhotoTo" => "textField",
 	"zDebug" => "textField",
-	"zDebug2" => "textField",
   # BOTONLY
 	"replaceContacts" => "textField",
 	"reset" => undef
@@ -359,7 +348,7 @@ sub TelegramBot_Set($@)
     # should return undef if succesful
     Log3 $name, 4, "TelegramBot_Set $name: start message send ";
     my $arg = join(" ", @args );
-    $ret = TelegramBot_SendText( $hash, $peer, $arg, 1 );
+    $ret = TelegramBot_SendIt( $hash, $peer, $arg, undef, 1 );
 
 	} elsif($cmd eq 'messageTo') {
     if ( $numberOfArgs < 3 ) {
@@ -371,7 +360,7 @@ sub TelegramBot_Set($@)
     my $arg = join(" ", @args );
 
     Log3 $name, 4, "TelegramBot_Set $name: start message send ";
-    $ret = TelegramBot_SendText( $hash, $peer, $arg, 1 );
+    $ret = TelegramBot_SendIt( $hash, $peer, $arg, undef, 1 );
 
   } elsif($cmd eq 'sendPhoto') {
     if ( $numberOfArgs < 2 ) {
@@ -387,7 +376,7 @@ sub TelegramBot_Set($@)
 
     Log3 $name, 5, "TelegramBot_Set $name: start photo send ";
 #    $ret = "TelegramBot_Set: Command $cmd, not yet supported ";
-    $ret = TelegramBot_SendIt( $hash, $peer, $arg, 0 );
+    $ret = TelegramBot_SendIt( $hash, $peer, $arg, undef, 0 );
 
 	} elsif($cmd eq 'sendPhotoTo') {
     if ( $numberOfArgs < 3 ) {
@@ -401,76 +390,11 @@ sub TelegramBot_Set($@)
 
     Log3 $name, 5, "TelegramBot_Set $name: start photo send to $peer";
 #    $ret = "TelegramBot_Set: Command $cmd, not yet supported ";
-    $ret = TelegramBot_SendIt( $hash, $peer, $arg, 0 );
+    $ret = TelegramBot_SendIt( $hash, $peer, $arg, undef, 0 );
 
   } elsif($cmd eq 'zDebug') {
+    # for internal testing only
     Log3 $name, 5, "TelegramBot_Set $name: start debug option ";
-    TelegramBot_UpdatePoll($hash);
-    delete( $hash->{READINGS}{msgPeerName} );
-    delete( $hash->{READINGS}{msgPeername} );
-#    delete( $hash->{REMAININGOLD} );
-
-  } elsif($cmd eq 'zDebug2') {
-    # fort testing only
-    # set tbot zDebug2 /opt/fhem/fhemicon_bright.png
-    if ( $numberOfArgs < 2 ) {
-      return "TelegramBot_Set: Command $cmd, need to specify filename";
-    }
-     
-    my $fileName = shift @args;
-
-    Log3 $name, 5, "TelegramBot_Set $name: start debug 2 option with filename ::";
-
-    my $fileDataBinary = TelegramBot_BinaryFileRead( $hash, $fileName );
-    
-    my $filebase64 = $fileDataBinary;
-    
-    Log3 $name, 3, "TelegramBot_Set $name: base64 message \n<START>\n$filebase64\n<ENDE>";
-
-    my $url = $hash->{URL}."sendPhoto";
-#    my $url = $hash->{URL}."sendDocument";
-    my $boundary = "TelegramBot_boundary-x0123";      
-
-    my $baseFilename =  basename($fileName);
-    
-    my $param = {
-                    url        => $url,
-                    timeout    => 5,
-                    hash       => $hash,
-                    method     => "POST",
-                    header     => $TelegramBot_header."Content-Type: multipart/form-data; boundary=$boundary",
-#                    header     => "Content-Type: multipart/form-data; boundary=$boundary",
-                };
-
-    $param->{data} = "--$boundary\r\n".
-                   "Content-Disposition: form-data; name=\"chat_id\"\r\n".
-                   "\r\n".
-                   "99231878\r\n".
-                   "--$boundary\r\n".
-#                   "Content-Disposition: form-data; name=\"caption\"\r\n".
-#                   "\r\n".
-#                   "Ein Bild\r\n".
-#                   "--$boundary\r\n".
-                   "Content-Disposition: form-data; name=\"photo\"; filename=\"".$baseFilename."\"\r\n".
-#                   "Content-Type: image/png\r\n".
-#                   "Content-Transfer-Encoding: BASE64\r\n".
-                   "\r\n".
-                   $filebase64.
-                   "\r\n".
-                   "--$boundary--";     
-
-    Log3 $name, 3, "TelegramBot_Set $name: full message \n<START>\n".$param->{data}."\n<ENDE>";
-
-
-    my ($err, $data) = HttpUtils_BlockingGet( $param );
-
-    if ( $err ne "" ) {
-      # http returned error
-      $ret = "FAILED http access returned error :$err:";
-      Log3 $name, 2, "TelegramBot_Set$name: ".$ret;
-    } else {
-      Log3 $name, 3, "TelegramBot_Set $name: json result \n<START>\n$data\n<ENDE>";
-    }
 
     
   # BOTONLY
@@ -1198,61 +1122,6 @@ sub TelegramBot_ParseMsg($$$)
 }
   
 #####################################
-# INTERNAL: Function to send a message to a peer and handle result
-sub TelegramBot_SendText($$$$)
-{
-	my ( $hash, $peer, $msg, $isText) = @_;
-  my $name = $hash->{NAME};
-	
-  Log3 $name, 5, "TelegramBot_SendText $name: called ";
-
-  # trim and convert spaces in peer to underline 
-#  my $peer2 = TelegramBot_convertpeer( $peer );
-  my $peer2 = TelegramBot_GetIdForPeer( $hash, $peer );
- 
-  $hash->{sentMsgPeer} = $peer;
-  $hash->{sentMsgPeerId} = $peer2;
-
-  my $ret;
-
-  if ( ! defined( $peer2 ) ) {
-    $ret = "FAILED peer not found :$peer:";
-    Log3 $name, 3, "TelegramBot_SendText $name: :$ret:";
-    $hash->{sentMsgResult} = $ret;
-    return $ret;
-  }
-  
-  my $url;
-  if ( $isText ) {
-    $hash->{sentMsgText} = $msg;
-
-    my $c = chr(10);
-    $msg =~ s/([^\\])\\n/$1$c/g;
-    
-    $url = $hash->{URL}."sendMessage?chat_id=".$peer2."&text=".urlEncode($msg);
-  } else {
-    $hash->{sentMsgText} = "Photo: $msg";
-    $url = "send_photo $peer2 $msg";
-  }
-
-  $ret = TelegramBot_DoUrlCommand( $hash, $url );
-  if ( ! defined($ret) ) {
-    # should not happen but consider this success
-  } elsif ( ref( $ret ) eq "" ) {
-    # string returned that means error is returned
-    $hash->{sentMsgResult} = $ret;
-    $ret = undef;
-  }  else {
-    # object is returned, so everything ok
-    $hash->{sentMsgResult} = "SUCCESS";
-    # here result is ignored
-    $ret = undef;
-  }
-
-  return $ret;
-}
-
-#####################################
 # INTERNAL: Function to send a command handle result
 # Parameter
 #   hash
@@ -1306,9 +1175,9 @@ sub TelegramBot_DoUrlCommand($$)
 
 #####################################
 # INTERNAL: Function to send a photo (and text message) to a peer and handle result
-sub TelegramBot_SendIt($$$$)
+sub TelegramBot_SendIt($$$$$)
 {
-	my ( $hash, $peer, $msg, $isText) = @_;
+	my ( $hash, $peer, $msg, $addPar, $isText) = @_;
   my $name = $hash->{NAME};
 	
   Log3 $name, 5, "TelegramBot_SendPhoto $name: called ";
@@ -1329,7 +1198,7 @@ sub TelegramBot_SendIt($$$$)
     return $ret;
   }
   
-  $hash->{sentMsgResult} = "WAITING";
+  $hash->{sentMsgResult} = "WORKING";
 
   my $url;
     

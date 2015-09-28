@@ -87,7 +87,8 @@
 #   align sendIt mit sendText 
 #   method cleanup
 #   Only one callback for all nonBlockingGets
-#   Moved sentMsg* Internals to Readings (use zDebug to cleanup)
+#   streamline sendPhoto
+#   Allow also usernames and full names in cmdRestrictedpeer
 #
 ##############################################################################
 # TODO 
@@ -181,7 +182,7 @@ my %TelegramBot_hu_upd_params = (
 
 my %TelegramBot_hu_do_params = (
                   url        => "",
-                  timeout    => 5,
+                  timeout    => 15,
                   method     => "GET",
                   header     => $TelegramBot_header,
                   callback   => \&TelegramBot_Callback
@@ -393,10 +394,7 @@ sub TelegramBot_Set($@)
   } elsif($cmd eq 'zDebug') {
     # for internal testing only
     Log3 $name, 5, "TelegramBot_Set $name: start debug option ";
-    delete $hash->{sentMsgPeer};
-    delete $hash->{sentMsgPeerId};
-    delete $hash->{sentMsgResult};
-    delete $hash->{sentMsgText};
+#    delete $hash->{sentMsgPeer};
 
     
   # BOTONLY
@@ -638,26 +636,37 @@ sub TelegramBot_ReadHandleCommand($$$) {
 # INTERNAL: Function to send a photo (and text message) to a peer and handle result
 sub TelegramBot_SendIt($$$$$)
 {
-	my ( $hash, $peer, $msg, $addPar, $isText) = @_;
+	my ( $hash, @args) = @_;
+
+	my ( $peer, $msg, $addPar, $isText) = @args;
   my $name = $hash->{NAME};
 	
   my $ret;
   Log3 $name, 5, "TelegramBot_SendIt $name: called ";
 
+  if ( ( defined( $hash->{sentMsgResult} ) ) && ( $hash->{sentMsgResult} eq "WAITING" ) ){
+    # add to queue
+    if ( ! defined( $hash->{sentQueue} ) ) {
+      $hash->{sentQueue} = [];
+    }
+    Log3 $name, 5, "TelegramBot_Callback $name: add send to queue :$peer: -:$msg: - :$addPar:";
+    push( @{ $hash->{sentQueue} }, \@args );
+    return;
+  }  
+    
+  $hash->{sentMsgResult} = "WAITING";
+
   # trim and convert spaces in peer to underline 
 #  my $peer2 = TelegramBot_convertpeer( $peer );
   my $peer2 = TelegramBot_GetIdForPeer( $hash, $peer );
-
-  readingsBeginUpdate($hash);
-
-  readingsBulkUpdate($hash, "sentMsgPeer", $peer);				
-  readingsBulkUpdate($hash, "sentMsgPeerId", $peer2);				
-
 
   if ( ! defined( $peer2 ) ) {
     $ret = "FAILED peer not found :$peer:";
     $peer2 = "";
   }
+  
+  $hash->{sentMsgPeer} = $peer;
+  $hash->{sentMsgPeerId} = $peer2;
   
   my $url;
     
@@ -665,7 +674,7 @@ sub TelegramBot_SendIt($$$$$)
   $TelegramBot_hu_do_params{header} = $TelegramBot_header;
 
   if ( $isText ) {
-    readingsBulkUpdate($hash, "sentMsgText", $msg);				
+    $hash->{sentMsgText} = $msg;
 
     my $c = chr(10);
     $msg =~ s/([^\\])\\n/$1$c/g;
@@ -674,22 +683,24 @@ sub TelegramBot_SendIt($$$$$)
     $TelegramBot_hu_do_params{method} = "GET";
 
   } else {
-    readingsBulkUpdate($hash, "sentMsgText", "Photo: $msg");				
+    $hash->{sentMsgText} = "Photo: $msg";
 
     $TelegramBot_hu_do_params{url} = $hash->{URL}."sendPhoto";
-#    $TelegramBot_hu_do_params{url} = "http://requestb.in/pdyziypd";
+#    $TelegramBot_hu_do_params{url} = "http://requestb.in/11gye801";
     $TelegramBot_hu_do_params{method} = "POST";
 
     my $filename =  $msg;
     my $baseFilename =  basename($msg);
-    my $fileDataBinary = TelegramBot_BinaryFileRead( $hash, $filename );
+#    my $fileDataBinary = TelegramBot_BinaryFileRead( $hash, $filename );
 
-    if ( $fileDataBinary eq "" ) {
+    my $boundary = "TelegramBot_boundary-x0123";      
+
+    $TelegramBot_hu_do_params{data} = TelegramBot_BinaryFileRead( $hash, $filename );
+
+    if ( $TelegramBot_hu_do_params{data} eq "" ) {
       $ret = "FAILED file :$filename: not found or empty";
     }
     
-    my $boundary = "TelegramBot_boundary-x0123";      
-
     $TelegramBot_hu_do_params{header} .= "\r\nContent-Type: multipart/form-data; boundary=$boundary";
 
     $TelegramBot_hu_do_params{data} = "--$boundary\r\n".
@@ -704,7 +715,7 @@ sub TelegramBot_SendIt($$$$$)
                    "Content-Disposition: form-data; name=\"photo\"; filename=\"".$baseFilename."\"\r\n".
 #                   "Content-Type: image/png\r\n".
                    "\r\n".
-                   $fileDataBinary.
+                    $TelegramBot_hu_do_params{data}.
                    "\r\n".
                    "--$boundary--";     
 
@@ -712,9 +723,7 @@ sub TelegramBot_SendIt($$$$$)
 
   if ( defined( $ret ) ) {
     Log3 $name, 3, "TelegramBot_SendIt $name: :$ret:";
-    readingsBulkUpdate($hash, "sentMsgResult", $ret);				
-  } else {
-    readingsBulkUpdate($hash, "sentMsgResult", "WORKING");				
+    $hash->{sentMsgResult} = $ret;
   }
 
   HttpUtils_NonblockingGet( \%TelegramBot_hu_do_params) if ( ! defined( $ret ) );
@@ -839,18 +848,18 @@ sub TelegramBot_Callback($$$)
 ###################### 
  
     if ( ! defined( $jo ) ) {
-      $ret = "UpdatePoll returned no valid JSON !";
+      $ret = "Callback returned no valid JSON !";
     } elsif ( ! $jo->{ok} ) {
       if ( defined( $jo->{description} ) ) {
-        $ret = "UpdatePoll returned error:".$jo->{description}.":";
+        $ret = "Callback returned error:".$jo->{description}.":";
       } else {
-        $ret = "UpdatePoll returned error without description";
+        $ret = "Callback returned error without description";
       }
     } else {
       if ( defined( $jo->{result} ) ) {
         $result = $jo->{result};
       } else {
-        $ret = "UpdatePoll returned no result";
+        $ret = "Callback returned no result";
       }
     }
   }
@@ -894,12 +903,20 @@ sub TelegramBot_Callback($$$)
     $TelegramBot_hu_do_params{data} = "";
   }
   
+  my $ll = ( ( defined( $ret ) )?3:5);
+
   $ret = "SUCCESS" if ( ! defined( $ret ) );
+  Log3 $name, $ll, "TelegramBot_Callback $name: resulted in :$ret: from ".(( defined( $param->{isPolling} ) )?"Polling":"SendIt");
+
+  if ( ! defined( $param->{isPolling} ) ) {
+    $hash->{sentMsgResult} = $ret;
+    if ( ( defined( $hash->{sentQueue} ) ) && (  scalar( @{ $hash->{sentQueue} } ) ) ) {
+      my $ref = shift @{ $hash->{sentQueue} };
+      Log3 $name, 5, "TelegramBot_Callback $name: handle queued send with :@$ref[0]: -:@$ref[1]: ";
+      TelegramBot_SendIt( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3] );
+    }
+  }
   
-  readingsSingleUpdate( $hash, "sentMsgResult", $ret, 1)  if ( ! defined( $param->{isPolling} ) );
-
-  Log3 $name, ( ( defined( $ret ) )?3:5), "TelegramBot_Callback $name: resulted in :$ret: from ".(( defined( $param->{isPolling} ) )?"Polling":"SendIt");
-
 }
 
 
@@ -1327,9 +1344,12 @@ sub TelegramBot_checkAllowedPeer($$) {
   return 1 if ( $cp eq '' );
   
   my @peers = split( " ", $cp);  
-  
   foreach my $cp (@peers) {
     return 1 if ( $cp eq $mpeer );
+    my $cdefpeer = TelegramBot_GetIdForPeer( $hash, $cp );
+    if ( defined( $cdefpeer ) ) {
+      return 1 if ( $cdefpeer eq $mpeer );
+    }
   }
   
   return 0;
@@ -1478,7 +1498,7 @@ sub TelegramBot_convertpeer($)
         The result of the cmd is always sent as message to the defaultPeer 
     </li> 
 
-    <li>cmdRestrictedPeer &lt;peername(s)&gt;<br>Restrict the execution of commands only to messages sent from the the given peername or multiple peernames
+    <li>cmdRestrictedPeer &lt;peername(s)&gt;<br>Restrict the execution of commands only to messages sent from the given peername or multiple peernames
     (specified in the form of contact id, username or full name, multiple peers to be separated by a space). 
     A message with the cmd and sender is sent to the default peer in case of another user trying to sent messages<br>
     </li> 

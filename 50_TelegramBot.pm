@@ -89,11 +89,11 @@
 #   Only one callback for all nonBlockingGets
 #   streamline sendPhoto
 #   Allow also usernames and full names in cmdRestrictedpeer
+#   Queuuing for message and photo sending
 #
 ##############################################################################
 # TODO 
 #
-#   Queuuing for message and photo sending
 #   get chat id for reply to
 #   mark url as unsafe for log in httputils
 #   
@@ -686,7 +686,7 @@ sub TelegramBot_SendIt($$$$$)
     $hash->{sentMsgText} = "Photo: $msg";
 
     $TelegramBot_hu_do_params{url} = $hash->{URL}."sendPhoto";
-#    $TelegramBot_hu_do_params{url} = "http://requestb.in/11gye801";
+#    $TelegramBot_hu_do_params{url} = "http://requestb.in/1fbddf61";
     $TelegramBot_hu_do_params{method} = "POST";
 
     my $filename =  $msg;
@@ -702,7 +702,6 @@ sub TelegramBot_SendIt($$$$$)
     }
     
     $TelegramBot_hu_do_params{header} .= "\r\nContent-Type: multipart/form-data; boundary=$boundary";
-
     $TelegramBot_hu_do_params{data} = "--$boundary\r\n".
                    "Content-Disposition: form-data; name=\"chat_id\"\r\n".
                    "\r\n".
@@ -719,6 +718,9 @@ sub TelegramBot_SendIt($$$$$)
                    "\r\n".
                    "--$boundary--";     
 
+    # only for test / debug               
+    $TelegramBot_hu_do_params{loglevel} = 3;
+    TelegramBot_BinaryFileWrite( $hash, "/opt/fhem/test.bin", $TelegramBot_hu_do_params{data} );
   }
 
   if ( defined( $ret ) ) {
@@ -1283,6 +1285,22 @@ sub TelegramBot_BinaryFileRead($$) {
 
 
 ######################################
+#  write binary file for (hest hash, filename and the data
+#  
+sub TelegramBot_BinaryFileWrite($$$) {
+	my ($hash, $fileName, $data) = @_;
+
+  open TGB_BINFILE, '>'.$fileName;
+  binmode TGB_BINFILE;
+  print TGB_BINFILE $data;
+  close TGB_BINFILE;
+  
+  return undef;
+}
+
+
+
+######################################
 #  make sure a reinitialization is triggered on next update
 #  
 sub TelegramBot_Setup($) {
@@ -1298,6 +1316,11 @@ sub TelegramBot_Setup($) {
   
   HttpUtils_Close(\%TelegramBot_hu_do_params); 
   
+  # Ensure queueing is not happening
+  delete( $hash->{sentQueue} );
+  delete( $hash->{sentMsgResult} );
+  
+
   $hash->{WAIT} = 0;
   $hash->{FAILS} = 0;
   $hash->{URL} = "https://api.telegram.org/bot".$hash->{Token}."/";

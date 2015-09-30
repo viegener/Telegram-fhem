@@ -162,7 +162,7 @@ HttpUtils_Connect($)
           my %timerHash = ( hash => $hash );
           $hash->{directWriteFn} = sub() {
           
-            Log3 $hash,$hash->{loglevel}, "directWriteFn entering with : ".$hash->{CONNECTPHASE}.":";
+            Log3 $hash,$hash->{loglevel}, "directWriteFn entering with : ".(defined($hash->{CONNECTPHASE})?$hash->{CONNECTPHASE}:"<undef>").":";
             my $err;
             my $cleanup;
             
@@ -175,14 +175,14 @@ HttpUtils_Connect($)
 
               $hash->{CONNECTPHASE} = 1 if ( ! defined($err) );
               
-              Log3 $hash,$hash->{loglevel}, "directWriteFn phase 1 err? :$err:";
+              Log3 $hash,$hash->{loglevel}, "directWriteFn phase 1 err? :".(defined($err)?$err:"<none>").":";
             } elsif ( $hash->{CONNECTPHASE} == 1 ) {
               $err = HttpUtils_C2_Header($hash);
               $hash->{CONNECTPHASE} = 2;
             } elsif ( $hash->{CONNECTPHASE} == 2 ) {
               # loop over data transfer until err empty or != EAGAIN --> undef means completed / "" means data available / other means error
               $err = HttpUtils_C2_LoopData($hash);
-              Log3 $hash,$hash->{loglevel}, "directWriteFn phase 2 err? :$err:";
+              Log3 $hash,$hash->{loglevel}, "directWriteFn phase 2 err? :".(defined($err)?$err:"<none>").":";
               if ( ( ! defined($err) ) || ( $err ne "" ) ) {
                 $hash->{CONNECTPHASE} = 3;
                 Log3 $hash,$hash->{loglevel}, "directWriteFn phase 2 finished moving to 3:";
@@ -536,6 +536,7 @@ HttpUtils_ParseAnswer($$)
     } else {
       my $ra;
       map { $ra=$1 if($_ =~ m/Location:\s*(\S+)$/) } @header;
+      $ra = "/$ra" if($ra !~ m/^http/ && $ra !~ m/^\//);
       $hash->{url} = ($ra =~ m/^http/) ? $ra: $hash->{addr}.$ra;
       Log3 $hash, $hash->{loglevel}, "HttpUtils $hash->{displayurl}: ".
           "Redirect to ".($hash->{hideurl} ? "<hidden>" : $hash->{url});

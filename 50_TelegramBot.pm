@@ -87,9 +87,12 @@
 #   align sendIt mit sendText 
 #   method cleanup
 #   Only one callback for all nonBlockingGets
-#   streamline sendPhoto
 #   Allow also usernames and full names in cmdRestrictedpeer
 #   Queuuing for message and photo sending
+#   streamline sendPhoto(sendIt) with new httputil 
+#   Change message send to Post
+# 0.7 2015-09-30 sendPhoto (relying on new HTTPUtils) / all sendIt on Post
+#   
 #
 ##############################################################################
 # TODO 
@@ -668,61 +671,46 @@ sub TelegramBot_SendIt($$$$$)
   $hash->{sentMsgPeer} = $peer;
   $hash->{sentMsgPeerId} = $peer2;
   
-  my $url;
-    
+  # init param hash
   $TelegramBot_hu_do_params{hash} = $hash;
   $TelegramBot_hu_do_params{header} = $TelegramBot_header;
+  delete( $TelegramBot_hu_do_params{boundary} );
+
+  # add chat / user id (no file) --> this will also do init
+  $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "chat_id", undef, $peer2, 0 );
 
   if ( $isText ) {
-    $hash->{sentMsgText} = $msg;
+    $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage";
 
-    my $c = chr(10);
-    $msg =~ s/([^\\])\\n/$1$c/g;
+    $hash->{sentMsgText} = $msg;
+#    my $c = chr(10);
+#    $msg =~ s/([^\\])\\n/$1$c/g;
+
+    # add msg (no file)
+    $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "text", undef, $msg, 0 ) if ( ! defined( $ret ) );
     
-    $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage?chat_id=".$peer2."&text=".urlEncode($msg);
-    $TelegramBot_hu_do_params{method} = "GET";
+#    $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage?chat_id=".$peer2."&text=".urlEncode($msg);
 
   } else {
     $hash->{sentMsgText} = "Photo: $msg";
 
     $TelegramBot_hu_do_params{url} = $hash->{URL}."sendPhoto";
-#    $TelegramBot_hu_do_params{url} = "http://requestb.in/1fbddf61";
-    $TelegramBot_hu_do_params{method} = "POST";
+    #    $TelegramBot_hu_do_params{url} = "http://requestb.in/1fbddf61";
 
-    my $filename =  $msg;
-    my $baseFilename =  basename($msg);
-#    my $fileDataBinary = TelegramBot_BinaryFileRead( $hash, $filename );
-
-    my $boundary = "TelegramBot_boundary-x0123";      
-
-    $TelegramBot_hu_do_params{data} = TelegramBot_BinaryFileRead( $hash, $filename );
-
-    if ( $TelegramBot_hu_do_params{data} eq "" ) {
-      $ret = "FAILED file :$filename: not found or empty";
-    }
+    # add msg (no file) 
+    $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "photo", undef, $msg, 1 ) if ( ! defined( $ret ) );
     
-    $TelegramBot_hu_do_params{header} .= "\r\nContent-Type: multipart/form-data; boundary=$boundary";
-    $TelegramBot_hu_do_params{data} = "--$boundary\r\n".
-                   "Content-Disposition: form-data; name=\"chat_id\"\r\n".
-                   "\r\n".
-                   $peer2."\r\n".
-                   "--$boundary\r\n".
-#                   "Content-Disposition: form-data; name=\"caption\"\r\n".
-#                   "\r\n".
-#                   "Ein Bild\r\n".
-#                   "--$boundary\r\n".
-                   "Content-Disposition: form-data; name=\"photo\"; filename=\"".$baseFilename."\"\r\n".
-#                   "Content-Type: image/png\r\n".
-                   "\r\n".
-                    $TelegramBot_hu_do_params{data}.
-                   "\r\n".
-                   "--$boundary--";     
-
     # only for test / debug               
     $TelegramBot_hu_do_params{loglevel} = 3;
-    TelegramBot_BinaryFileWrite( $hash, "/opt/fhem/test.bin", $TelegramBot_hu_do_params{data} );
+#    TelegramBot_BinaryFileWrite( $hash, "/opt/fhem/test.bin", $TelegramBot_hu_do_params{data} );
   }
 
+  # finalize multipart 
+  $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, undef, undef, undef, 0 );
+
+#  Log3 $name, 3, "TelegramBot_SendIt $name: multipart data :".$TelegramBot_hu_do_params{data}.":";
+
+  
   if ( defined( $ret ) ) {
     Log3 $name, 3, "TelegramBot_SendIt $name: :$ret:";
     $hash->{sentMsgResult} = $ret;
@@ -733,6 +721,61 @@ sub TelegramBot_SendIt($$$$$)
   return $ret;
 }
 
+#####################################
+# INTERNAL: Build a multipart form data in a given hash
+# Parameter
+#   hash (device hash)
+#   params (hash for building up the data)
+#   paramname --> if not sepecifed / undef - multipart will be finished
+#   header for multipart
+#   content 
+#   isFile to specify if content is providing a file to be read as content
+#   > returns string in case of error or undef
+sub TelegramBot_AddMultipart($$$$$$)
+{
+	my ( $hash, $params, $parname, $parheader, $parcontent, $isFile ) = @_;
+  my $name = $hash->{NAME};
+
+  my $ret;
+  
+  # Check if boundary is defined
+  if ( ! defined( $params->{boundary} ) ) {
+    $params->{boundary} = "TelegramBot_boundary-x0123";
+    $params->{header} .= "\r\nContent-Type: multipart/form-data; boundary=".$params->{boundary};
+    $params->{method} = "POST";
+    $params->{data} = "";
+  }
+  
+  # ensure parheader is defined and add final header new lines
+  $parheader = "" if ( ! defined( $parheader ) );
+  $parheader .= "\r\n" if ( ( length($parheader) > 0 ) && ( $parheader !~ /\r\n$/ ) );
+
+  # add content 
+  my $finalcontent;
+  if ( defined( $parname ) ) {
+    $params->{data} .= "--".$params->{boundary}."\r\n";
+    if ( $isFile ) {
+      my $baseFilename =  basename($parcontent);
+      $parheader = "Content-Disposition: form-data; name=\"".$parname."\"; filename=\"".$baseFilename."\"\r\n".$parheader."\r\n";
+      $finalcontent = TelegramBot_BinaryFileRead( $hash, $parcontent );
+      if ( $TelegramBot_hu_do_params{data} eq "" ) {
+        return( "FAILED file :$parcontent: not found or empty" );
+      }
+    } else {
+      $parheader = "Content-Disposition: form-data; name=\"".$parname."\"\r\n".$parheader."\r\n";
+      $finalcontent = $parcontent;
+    }
+    $params->{data} .= $parheader.$finalcontent."\r\n";
+    
+  } else {
+    return( "No content defined for multipart" ) if ( length( $params->{data} ) == 0 );
+    $params->{data} .= "--".$params->{boundary}."--";     
+  }
+
+  return undef;
+}
+
+  
 
 #####################################
 #  INTERNAL: _PollUpdate is called to set out a nonblocking http call for updates
@@ -993,7 +1036,7 @@ sub TelegramBot_ParseMsg($$$)
   
   return $ret;
 }
-  
+
 #####################################
 # INTERNAL: Function to send a command handle result
 # Parameter

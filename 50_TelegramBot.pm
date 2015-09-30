@@ -1537,17 +1537,20 @@ sub TelegramBot_convertpeer($)
     <li>messageTo &lt;peer&gt; &lt;text&gt;<br>Sends the given message to the given peer. 
     Peer needs to be given without space or other separator, i.e. spaces should be replaced by underscore (e.g. first_last)</li>
 
-    <li>sendPhoto &lt;file&gt; [&lt;caption&gt;]<br>NOT YET SUPPORTED ! <br>Sends a photo to the default peer. 
+    <li>sendPhoto &lt;file&gt; [&lt;caption&gt;]<br>Sends a photo to the default peer. 
     File is specifying a filename and path that is local to the directory in which telegram-cli process is started. 
     So this might be a path on the remote host where telegram-cli is running and therefore not local to fhem.</li>
-    <li>sendPhotoTo &lt;peer&gt; &lt;file&gt; [&lt;caption&gt;]<br>NOT YET SUPPORTED ! <br>Sends a photo to the given peer, 
+    <li>sendPhotoTo &lt;peer&gt; &lt;file&gt; [&lt;caption&gt;]<br>Sends a photo to the given peer, 
     other arguments are handled as with <code>sendPhoto</code></li>
+
 
     <br><br>
     <li>replaceContacts &lt;text&gt;<br>Set the contacts newly from a string. Multiple contacts can be separated by a space. 
     Each contact needs to be specified as a triple of contact id, full name and user name as explained above. </li>
-    <li>reset<br>Reset the internal state of the telegram bot. This is normally not needed, but can be used to reset the used URL, internal contact handling and polling  </li>
-    
+    <li>reset<br>Reset the internal state of the telegram bot. This is normally not needed, but can be used to reset the used URL, 
+    internal contact handling, queue of send items and polling <br>
+    ATTENTION: Messages that might be queued on the telegram server side (especially commands) might be then worked off afterwards immedately. 
+    If in doubt it is recommened to temporarily deactivate (delete) the cmdKeyword attribute before resetting.</li>
 
   </ul>
   <br><br>

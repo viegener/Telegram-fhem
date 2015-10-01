@@ -93,9 +93,13 @@
 #   Change message send to Post
 # 0.7 2015-09-30 sendPhoto (relying on new HTTPUtils) / all sendIt on Post
 #   
+#   corrected documentation to describe local path
+#   FIX: file not found error on send photo works now
+#   caption for sendPhoto
 #
 ##############################################################################
 # TODO 
+#
 #
 #   get chat id for reply to
 #   mark url as unsafe for log in httputils
@@ -374,11 +378,15 @@ sub TelegramBot_Set($@)
     if ( ! defined($peer) ) {
       return "TelegramBot_Set: Command $cmd, requires defaultPeer being set";
     }
-    my $arg = join(" ", @args );
+    my $file = shift @args;
+    $file = $1 if ( $file =~ /^\"(.*)\"$/ );
+    
+    my $caption;
+    $caption = join(" ", @args ) if ( $numberOfArgs > 2 );
 
     Log3 $name, 5, "TelegramBot_Set $name: start photo send ";
 #    $ret = "TelegramBot_Set: Command $cmd, not yet supported ";
-    $ret = TelegramBot_SendIt( $hash, $peer, $arg, undef, 0 );
+    $ret = TelegramBot_SendIt( $hash, $peer, $file, $caption, 0 );
 
 	} elsif($cmd eq 'sendPhotoTo') {
     if ( $numberOfArgs < 3 ) {
@@ -388,11 +396,14 @@ sub TelegramBot_Set($@)
     # should return undef if succesful
     my $peer = shift @args;
 
-    my $arg = join(" ", @args );
+    my $file = shift @args;
+    $file = $1 if ( $file =~ /^\"(.*)\"$/ );
+    
+    my $caption;
+    $caption = join(" ", @args ) if ( $numberOfArgs > 3 );
 
     Log3 $name, 5, "TelegramBot_Set $name: start photo send to $peer";
-#    $ret = "TelegramBot_Set: Command $cmd, not yet supported ";
-    $ret = TelegramBot_SendIt( $hash, $peer, $arg, undef, 0 );
+    $ret = TelegramBot_SendIt( $hash, $peer, $file, $caption, 0 );
 
   } elsif($cmd eq 'zDebug') {
     # for internal testing only
@@ -652,7 +663,7 @@ sub TelegramBot_SendIt($$$$$)
     if ( ! defined( $hash->{sentQueue} ) ) {
       $hash->{sentQueue} = [];
     }
-    Log3 $name, 5, "TelegramBot_Callback $name: add send to queue :$peer: -:$msg: - :$addPar:";
+    Log3 $name, 3, "TelegramBot_SendIt $name: add send to queue :$peer: -:$msg: - :$addPar:";
     push( @{ $hash->{sentQueue} }, \@args );
     return;
   }  
@@ -692,12 +703,19 @@ sub TelegramBot_SendIt($$$$$)
 #    $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage?chat_id=".$peer2."&text=".urlEncode($msg);
 
   } else {
+    # Photo send    
     $hash->{sentMsgText} = "Photo: $msg";
 
     $TelegramBot_hu_do_params{url} = $hash->{URL}."sendPhoto";
     #    $TelegramBot_hu_do_params{url} = "http://requestb.in/1fbddf61";
 
-    # add msg (no file) 
+    # add caption
+    if ( defined( $addPar ) ) {
+      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "caption", undef, $addPar, 0 ) if ( ! defined( $ret ) );
+    }
+    
+    # add msg (no file)
+    Log3 $name, 3, "TelegramBot_SendIt $name: Filename for image file :$msg:";
     $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "photo", undef, $msg, 1 ) if ( ! defined( $ret ) );
     
     # only for test / debug               
@@ -706,7 +724,7 @@ sub TelegramBot_SendIt($$$$$)
   }
 
   # finalize multipart 
-  $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, undef, undef, undef, 0 );
+  $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, undef, undef, undef, 0 ) if ( ! defined( $ret ) );
 
 #  Log3 $name, 3, "TelegramBot_SendIt $name: multipart data :".$TelegramBot_hu_do_params{data}.":";
 
@@ -758,7 +776,7 @@ sub TelegramBot_AddMultipart($$$$$$)
       my $baseFilename =  basename($parcontent);
       $parheader = "Content-Disposition: form-data; name=\"".$parname."\"; filename=\"".$baseFilename."\"\r\n".$parheader."\r\n";
       $finalcontent = TelegramBot_BinaryFileRead( $hash, $parcontent );
-      if ( $TelegramBot_hu_do_params{data} eq "" ) {
+      if ( $finalcontent eq "" ) {
         return( "FAILED file :$parcontent: not found or empty" );
       }
     } else {
@@ -1538,8 +1556,9 @@ sub TelegramBot_convertpeer($)
     Peer needs to be given without space or other separator, i.e. spaces should be replaced by underscore (e.g. first_last)</li>
 
     <li>sendPhoto &lt;file&gt; [&lt;caption&gt;]<br>Sends a photo to the default peer. 
-    File is specifying a filename and path that is local to the directory in which telegram-cli process is started. 
-    So this might be a path on the remote host where telegram-cli is running and therefore not local to fhem.</li>
+    File is specifying a filename and path to the image file to be send. 
+    Local paths should be given local to the root directory of fhem (the directory of fhem.pl e.g. /opt/fhem).
+    filenames containing spaces need to be given in parentheses.</li>
     <li>sendPhotoTo &lt;peer&gt; &lt;file&gt; [&lt;caption&gt;]<br>Sends a photo to the given peer, 
     other arguments are handled as with <code>sendPhoto</code></li>
 

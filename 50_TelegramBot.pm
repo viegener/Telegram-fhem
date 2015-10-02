@@ -96,6 +96,7 @@
 #   corrected documentation to describe local path
 #   FIX: file not found error on send photo works now
 #   caption for sendPhoto
+#   FIX #1 : crash when GetMe fails on http level
 #
 ##############################################################################
 # TODO 
@@ -1394,7 +1395,7 @@ sub TelegramBot_Setup($) {
   # getMe as connectivity check and set internals accordingly
   my $url = $hash->{URL}."getMe";
   my $meret = TelegramBot_DoUrlCommand( $hash, $url );
-  if ( defined($meret) ) {
+  if ( ( defined($meret) ) && ( ref($meret) eq "HASH" ) ) {
     $hash->{me} = TelegramBot_userObjectToString( $meret );
     $hash->{STATE} = "Setup";
 

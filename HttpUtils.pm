@@ -1,5 +1,5 @@
 ##############################################
-# $Id: HttpUtils.pm 9273 2015-09-19 11:55:23Z rudolfkoenig $
+# $Id: HttpUtils.pm 9318 2015-09-27 08:52:45Z rudolfkoenig $
 package main;
 
 use strict;
@@ -158,7 +158,6 @@ HttpUtils_Connect($)
         if($!{EINPROGRESS} || int($!)==10035) { # Nonblocking connect
 
           $hash->{FD} = $hash->{conn}->fileno();
-
           my %timerHash = ( hash => $hash );
           $hash->{directWriteFn} = sub() {
           
@@ -213,8 +212,6 @@ HttpUtils_Connect($)
             $hash->{callback}($hash, $err, "") if($err);
             return $err;
           };
-
-
           $hash->{NAME}="" if(!defined($hash->{NAME}));# Delete might check this
           $selectlist{$hash} = $hash;
           InternalTimer(gettimeofday()+$hash->{timeout},
@@ -332,7 +329,6 @@ HttpUtils_C2_Header($)
     $hdr .= "Content-Length: ".$dlength."\r\n";
     $hdr .= "Content-Type: application/x-www-form-urlencoded\r\n"
                 if ($hdr !~ "Content-Type:");
-#jvi
     Log3 $hash,$hash->{loglevel}, "data has length : ".$dlength.":";
   }
   $hdr .= "\r\n";
@@ -636,7 +632,6 @@ CustomGetFileFromURL($$@)
     Log3 undef, $hash->{loglevel}, "CustomGetFileFromURL $err";
     return undef;
   }
-#  print "HALLO: :$url: \r\n:$ret:\r\nENDE\r\n";
   return $ret;
 }
 

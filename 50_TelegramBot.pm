@@ -97,10 +97,14 @@
 #   FIX: file not found error on send photo works now
 #   caption for sendPhoto
 #   FIX #1 : crash when GetMe fails on http level
+
+#   Contacts written to log when updated or newly found
+#   URLs hidden for log file since they contain Authtoken
 #
 ##############################################################################
 # TODO 
 #
+#   increase polling id up to 256
 #
 #   get chat id for reply to
 #   mark url as unsafe for log in httputils
@@ -185,14 +189,16 @@ my %TelegramBot_hu_upd_params = (
                   method     => "GET",
                   header     => $TelegramBot_header,
                   isPolling  => "update",
+                  hideurl    => 1,
                   callback   => \&TelegramBot_Callback
 );
 
 my %TelegramBot_hu_do_params = (
                   url        => "",
-                  timeout    => 15,
+                  timeout    => 30,
                   method     => "GET",
                   header     => $TelegramBot_header,
+                  hideurl    => 1,
                   callback   => \&TelegramBot_Callback
 );
 
@@ -849,7 +855,7 @@ sub TelegramBot_UpdatePoll($)
 
   $hash->{STATE} = "Polling";
 
-  $hash->{POLLING} = 1;
+  $hash->{POLLING} = ( ( defined( $hash->{OLD_POLLING} ) )?$hash->{OLD_POLLING}:1 );
   HttpUtils_NonblockingGet( \%TelegramBot_hu_upd_params); 
 }
 
@@ -869,6 +875,9 @@ sub TelegramBot_Callback($$$)
 
   my $ret;
   my $result;
+  
+  $hash->{OLD_POLLING} = ( ( defined( $hash->{POLLING} ) )?$hash->{POLLING}:0 ) + 1;
+  $hash->{OLD_POLLING} = 1 if ( $hash->{OLD_POLLING} > 255 );
   
   $hash->{POLLING} = 0 if ( defined( $param->{isPolling} ) );
 
@@ -1202,10 +1211,10 @@ sub TelegramBot_IsKnownContact($$)
 
   TelegramBot_InternalContactsFromReading( $hash ) if ( ! defined( $hash->{Contacts} ) );
 
-  foreach my $key (keys $hash->{Contacts} )
-      {
-        Log3 $hash->{NAME}, 4, "Contact :$key: is  :".$hash->{Contacts}{$key}.":";
-      }
+#  foreach my $key (keys $hash->{Contacts} )
+#      {
+#        Log3 $hash->{NAME}, 4, "Contact :$key: is  :".$hash->{Contacts}{$key}.":";
+#      }
 
 
   return ( defined( $hash->{$mpeer} ) );
@@ -1276,7 +1285,13 @@ sub TelegramBot_ContactUpdate($@) {
   Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hasn before :".scalar(keys $hash->{Contacts}).":";
 
   foreach my $user ( @contacts ) {
-    $hash->{Contacts}{$user->{id}} = TelegramBot_userObjectToString( $user );
+    my $contactString = TelegramBot_userObjectToString( $user );
+    if ( ! defined( $hash->{Contacts}{$user->{id}} ) ) {
+      Log3 $hash->{NAME}, 3, "TelegramBot_ContactUpdate new contact :".$contactString.":";
+    } elsif ( $contactString ne $hash->{Contacts}{$user->{id}} ) {
+      Log3 $hash->{NAME}, 3, "TelegramBot_ContactUpdate updated contact :".$contactString.":";
+    }
+    $hash->{Contacts}{$user->{id}} = $contactString;
   }
 
   Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hasn after :".scalar(keys $hash->{Contacts}).":";

@@ -97,23 +97,26 @@
 #   FIX: file not found error on send photo works now
 #   caption for sendPhoto
 #   FIX #1 : crash when GetMe fails on http level
-
 #   Contacts written to log when updated or newly found
 #   URLs hidden for log file since they contain Authtoken
+#   increase polling id up to 256
+
+#   changed doc example and log entries (thanks to Maista from his notes)
+#
+#
 #
 ##############################################################################
 # TODO 
 #
-#   increase polling id up to 256
+#   Store last commands
+#   Sent last commands as return value on HandledCOmmand
 #
 #   get chat id for reply to
-#   mark url as unsafe for log in httputils
 #   
 #   Commands defined for bot
 #   Allow to specify commands for Bot and fhem commands accordingly
 #   
 #   add messageReplyTo
-#   Sent last commands as return value on HandledCOmmand
 #   add keyboards
 #
 #   dialogfunction for handling dialog communications
@@ -1282,7 +1285,7 @@ sub TelegramBot_ContactUpdate($@) {
 
   TelegramBot_InternalContactsFromReading( $hash ) if ( ! defined( $hash->{Contacts} ) );
   
-  Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hasn before :".scalar(keys $hash->{Contacts}).":";
+  Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hash before :".scalar(keys $hash->{Contacts}).":";
 
   foreach my $user ( @contacts ) {
     my $contactString = TelegramBot_userObjectToString( $user );
@@ -1294,7 +1297,7 @@ sub TelegramBot_ContactUpdate($@) {
     $hash->{Contacts}{$user->{id}} = $contactString;
   }
 
-  Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hasn after :".scalar(keys $hash->{Contacts}).":";
+  Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hash after :".scalar(keys $hash->{Contacts}).":";
 
   my $rc = "";
   foreach my $key (keys $hash->{Contacts} )
@@ -1639,6 +1642,19 @@ sub TelegramBot_convertpeer($)
   </ul>
   <br><br>
   
+  <a name="TelegramBotexamples"></a>
+  <b>Examples</b>
+  <br><br>
+  <ul>
+
+    <li>Send a telegram message if fhem has been newly started
+      <p>
+      <code>define notify_fhem_reload notify global:INITIALIZED set <telegrambot> message fhem newly started - just now !  </code>
+      </p> 
+    </li> 
+  </ul>
+  
+  <br><br>
 </ul>
 
 =end html

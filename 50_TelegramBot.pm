@@ -100,16 +100,21 @@
 #   Contacts written to log when updated or newly found
 #   URLs hidden for log file since they contain Authtoken
 #   increase polling id up to 256
-
 #   changed doc example and log entries (thanks to Maista from his notes)
+
+#   Store last commands
+#   FIX: allow contact cuser to be empty
+#   remove cmdNUmericIds
+#
 #
 #
 #
 ##############################################################################
 # TODO 
 #
-#   Store last commands
 #   Sent last commands as return value on HandledCOmmand
+#
+#   check where contacts are lost
 #
 #   get chat id for reply to
 #   
@@ -121,7 +126,7 @@
 #
 #   dialogfunction for handling dialog communications
 #
-#   Fix emoticons
+#   Fix emoticons --> decode utf-16 to utf-8
 #   
 #   honor attributes for gaining contacts - no new contacts etc
 #   
@@ -222,7 +227,7 @@ sub TelegramBot_Initialize($) {
 	$hash->{GetFn}      = "TelegramBot_Get";
 	$hash->{SetFn}      = "TelegramBot_Set";
 	$hash->{AttrFn}     = "TelegramBot_Attr";
-	$hash->{AttrList}   = "defaultPeer defaultSecret:0,1 pollingTimeout cmdKeyword cmdRestrictedPeer cmdTriggerOnly:0,1 cmdNumericIDs:0,1".
+	$hash->{AttrList}   = "defaultPeer defaultSecret:0,1 pollingTimeout cmdKeyword cmdRestrictedPeer cmdTriggerOnly:0,1".
 						$readingFnAttributes;           
 }
 
@@ -431,6 +436,7 @@ sub TelegramBot_Set($@)
       return "TelegramBot_Set: Command $cmd, need to specify contacts string separate by space and contacts in the form of <id>:<full_name>:[@<username>] ";
     }
     my $arg = join(" ", @args );
+    Log3 $name, 3, "TelegramBot_Set $name: set new contacts to :$arg: ";
     # first set the hash accordingly
     TelegramBot_CalcContactsHash($hash, $arg);
 
@@ -536,9 +542,6 @@ sub TelegramBot_Attr(@) {
 		} elsif ($aName eq 'cmdTriggerOnly') {
 			$attr{$name}{'cmdTriggerOnly'} = ($aVal eq "1")? "1": "0";
 
-		} elsif ($aName eq 'cmdNumericIDs') {
-			$attr{$name}{'cmdNumericIDs'} = ($aVal eq "1")? "1": "0";
-
     } elsif ($aName eq 'pollingTimeout') {
       if ( $aVal =~ /^[[:digit:]]+$/ ) {
         $attr{$name}{'pollingTimeout'} = $aVal;
@@ -602,6 +605,11 @@ sub TelegramBot_ReadHandleCommand($$$) {
     }
     
     Log3 $name, 5, "TelegramBot_ReadHandleCommand final cmd for analyze :".$cmd.": ";
+
+    # store last commands (original text)
+    TelegramBot_AddStoredCommands( $hash, $mtext );
+
+    # Execute command
     my $ret = AnalyzeCommand( undef, $cmd, "" );
 
     Log3 $name, 5, "TelegramBot_ReadHandleCommand result for analyze :".(defined($ret)?$ret:"<undef>").": ";
@@ -1247,13 +1255,17 @@ sub TelegramBot_CalcContactsHash($$)
     my ( $id, $cname, $cuser ) = split( ":", $contact, 3 );
     # add contact only if all three parts are there and 2nd part not empty and 3rd part either empty or start with @ and at least 3 chars
     # and id must be only digits
-    if ( ( ! defined( $cuser ) ) || ( ! defined( $cname ) ) ) {
+    $cuser = "" if ( ! defined( $cuser ) );
+    
+#  Log3 $hash->{NAME}, 4, "Contact add :$contact:   :$id:  :$cname: :$cuser:";
+  
+    if ( ! defined( $cname ) ) {
       next;
     } elsif ( length( $cname ) == 0 ) {
       next;
     } elsif ( ( length( $cuser ) > 0 ) && ( substr($cuser,0,1) ne "@" ) ) {
       next;
-    } elsif ( ( substr($cuser,0,1) ne "@" ) && ( length( $cuser ) < 3 ) ) {
+    } elsif ( ( length( $cuser ) > 0 ) && ( length( $cuser ) < 3 ) ) {
       next;
     } elsif ( $id !~ /^[[:digit:]]+$/ ) {
       next;
@@ -1333,6 +1345,42 @@ sub TelegramBot_userObjectToString($) {
   return $ret;
 }
 
+##############################################################################
+##############################################################################
+##
+## Command store and dialog handling
+##
+##############################################################################
+##############################################################################
+
+
+######################################
+#  add a command to the StoredCommands reading 
+#  hash, cmd
+sub TelegramBot_AddStoredCommands($$) {
+	my ($hash, $cmd) = @_;
+ 
+  my $stcmds = ReadingsVal($hash->{NAME},"StoredCommands","");
+  $stcmds = $stcmds;
+
+  if ( $stcmds !~ /^\Q$cmd\E$/m ) {
+    # add new cmd
+    $stcmds .= $cmd."\n";
+    
+    # check number lines 
+    my $num = ( $stcmds =~ tr/\n// );
+    if ( $num > 10 ) {
+      $stcmds =~ /^[^\n]+\n(.*)$/s;
+      $stcmds = $1;
+    }
+
+    # change reading  
+    readingsSingleUpdate($hash, "StoredCommands", $stcmds , 1); 
+    Log3 $hash->{NAME}, 4, "TelegramBot_AddStoredCommands :$stcmds: ";
+  }
+ 
+}
+    
 ##############################################################################
 ##############################################################################
 ##
@@ -1629,16 +1677,23 @@ sub TelegramBot_convertpeer($)
     <li>Contacts &lt;text&gt;<br>The current list of contacts known to the telegram bot. 
     Each contact is specified as a triple in the same form as described above. Multiple contacts separated by a space. </li> 
 
+  <br><br>
     <li>msgId &lt;text&gt;<br>The id of the last received message is stored in this reading. 
     For secret chats a value of -1 will be given, since the msgIds of secret messages are not part of the consecutive numbering</li> 
     <li>msgPeer &lt;text&gt;<br>The sender of the last received message as specified in the command.</li> 
     <li>msgPeerId &lt;text&gt;<br>The sender id of the last received message.</li> 
     <li>msgText &lt;text&gt;<br>The last received message text is stored in this reading.</li> 
 
+  <br><br>
+
     <li>prevMsgId &lt;text&gt;<br>The id of the SECOND last received message is stored in this reading.</li> 
     <li>prevMsgPeer &lt;text&gt;<br>The sender of the SECOND last received message.</li> 
     <li>prevMsgPeerId &lt;text&gt;<br>The sender id of the SECOND last received message.</li> 
     <li>prevMsgText &lt;text&gt;<br>The SECOND last received message text is stored in this reading.</li> 
+
+  <br><br>
+    <li>StoredCommands &lt;text&gt;<br>A list of the last commands executed through TelegramBot. Maximum 10 commands are stored.</li> 
+
   </ul>
   <br><br>
   

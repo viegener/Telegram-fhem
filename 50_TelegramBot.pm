@@ -109,6 +109,9 @@
 #   FIX: URL also hidden in timeout message
 #   Workaround: Run GetMe 2 times in case of failure especially due to message: "Can't connect(2) to https://api.telegram.org:443:  SSL wants a read first"
 #   Added timer for new polling cycle after attribute set and also on init 
+#   Favorites Command --> attribute cmdKeyFavorites
+#   Favorites Commandlist --> attribute cmdFavorites
+#   favorite commands can be executed
 
 #
 #
@@ -116,7 +119,6 @@
 ##############################################################################
 # TODO 
 #
-#   favorite commands
 #
 #   multiple polling cycles in parallel after rereadcfg --> although undef is called
 #
@@ -235,7 +237,7 @@ sub TelegramBot_Initialize($) {
 	$hash->{GetFn}      = "TelegramBot_Get";
 	$hash->{SetFn}      = "TelegramBot_Set";
 	$hash->{AttrFn}     = "TelegramBot_Attr";
-	$hash->{AttrList}   = "defaultPeer defaultSecret:0,1 pollingTimeout cmdKeyword cmdSentCommands cmdRestrictedPeer cmdTriggerOnly:0,1".
+	$hash->{AttrList}   = "defaultPeer defaultSecret:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1".
 						$readingFnAttributes;           
 }
 
@@ -543,6 +545,12 @@ sub TelegramBot_Attr(@) {
 		} elsif ($aName eq 'cmdSentCommands') {
 			$attr{$name}{'cmdSentCommands'} = $aVal;
 
+		} elsif ($aName eq 'cmdFavorites') {
+			$attr{$name}{'cmdFavorites'} = $aVal;
+
+		} elsif ($aName eq 'favorites') {
+			$attr{$name}{'favorites'} = $aVal;
+
 		} elsif ($aName eq 'cmdRestrictedPeer') {
       $aVal =~ s/^\s+|\s+$//g;
 
@@ -574,67 +582,130 @@ sub TelegramBot_Attr(@) {
 ##############################################################################
 ##############################################################################
 ##
-## Shared with 70_Telegram
+## Command handling
 ##
 ##############################################################################
 ##############################################################################
 
+#####################################
+#####################################
+# INTERNAL: Check for cmdkeyword given 
+sub TelegramBot_checkCmdKeyword($$$$) {
+  my ($hash, $mpeernorm, $mtext, $attrName ) = @_;
+  my $name = $hash->{NAME};
+
+  my $cmd;
+  
+  # command key word aus Attribut holen
+  my $ck = AttrVal($name,$attrName,undef);
+  
+  return $cmd if ( ! defined( $ck ) );
+
+  return $cmd if ( index($mtext,$ck) != 0 );
+
+  $cmd = substr( $mtext, length($ck) );
+  $cmd =~ s/^\s+|\s+$//g;
+
+  # get human readble name for peer
+  my $pname = TelegramBot_GetFullnameForContact( $hash, $mpeernorm );
+
+  # validate security criteria for commands and return cmd if succesful
+  return $cmd if ( TelegramBot_checkAllowedPeer( $hash, $mpeernorm ) );
+
+   # unauthorized fhem cmd
+  Log3 $name, 1, "TelegramBot_checkCmdKeyword($attrName) unauthorized cmd from user :$pname: ($mpeernorm) \n  Cmd: $cmd";
+  my $ret =  "UNAUTHORIZED: TelegramBot fhem request for $attrName from user :$pname: ($mpeernorm) \n  Cmd: $cmd";
+  
+  # send unauthorized to defaultpeer
+  my $defpeer = AttrVal($name,'defaultPeer',undef);
+  $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
+  if ( defined( $defpeer ) ) {
+    AnalyzeCommand( undef, "set $name message $ret", "" );
+  }
+  
+  return undef;
+}
+    
 
 #####################################
 #####################################
-# INTERNAL: execute command and sent return value 
+# INTERNAL: handle sentlast and favorites
+sub TelegramBot_SentFavorites($$$) {
+  my ($hash, $mpeernorm, $mtext ) = @_;
+  my $name = $hash->{NAME};
+
+  my $ret;
+  
+  my $cmd = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, 'cmdFavorites' );
+  return $ret if ( ! defined( $cmd ) );
+    
+  Log3 $name, 5, "TelegramBot_SentFavorites cmd correct peer ";
+
+  my $slc =  AttrVal($name,'favorites',"");
+#  Log3 $name, 3, "TelegramBot_SentFavorites Favorites :$slc: ";
+  my @clist = split( /;/, $slc);
+  
+  
+  # if given a number execute the numbered favorite as a command
+  if ( looks_like_number( $cmd ) ) {
+    my $cmdId = ($cmd-1);
+#    Log3 $name, 3, "TelegramBot_SentFavorites exec cmd :$cmdId: ";
+    if ( ( $cmdId >= 0 ) && ( $cmdId < scalar( @clist ) ) ) { 
+      $cmd = @clist[$cmdId];
+      $ret = TelegramBot_ExecuteCommand( $hash, $mpeernorm, $cmd );
+    }
+    
+  }
+  
+  # ret not defined means no favorite found that matches cmd or no fav given in cmd
+  if ( ! defined( $ret ) ) {
+#  Log3 $name, 3, "TelegramBot_SentFavorites Favorites :".scalar(@clist).": ";
+      my $cnt = 0;
+      $slc = "";
+
+      my $ck = AttrVal($name,'cmdKeyword',"");
+
+      foreach my $cs (  @clist ) {
+        $cnt += 1;
+        $slc .= $cnt."\n  $ck ".$cs."\n";
+      }  
+
+#      Log3 $name, 3, "TelegramBot_SentFavorites Joined Favorites :$slc: ";
+
+      my $defpeer = AttrVal($name,'defaultPeer',undef);
+      $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
+      
+      $ret = "TelegramBot fhem  : ($mpeernorm)\n Favorites \n\n".$slc;
+      
+      AnalyzeCommand( undef, "set $name message $ret", "" );
+  }
+  
+  return $ret;
+}
+
+  
+#####################################
+#####################################
+# INTERNAL: handle sentlast and favorites
 sub TelegramBot_SentLastCommand($$$) {
   my ($hash, $mpeernorm, $mtext ) = @_;
   my $name = $hash->{NAME};
 
   my $ret;
   
-  # command key word aus Attribut holen for lastSend Commands
-  my $ck = AttrVal($name,'cmdSentCommands',undef);
+  my $cmd = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, 'cmdSentCommands' );
+  return $ret if ( ! defined( $cmd ) );
+    
+  Log3 $name, 5, "TelegramBot_SentLastCommand cmd correct peer ";
+
+  my $slc =  ReadingsVal($name ,"StoredCommands","");
+
+  my $defpeer = AttrVal($name,'defaultPeer',undef);
+  $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
   
-  return $ret if ( ! defined( $ck ) );
-
-  # trim whitespace from message text
-  $mtext =~ s/^\s+|\s+$//g;
+  $ret = "TelegramBot fhem  : $mpeernorm \nLast Commands \n\n".$slc;
   
-  return $ret if ( index($mtext,$ck) != 0 );
-
-  # OK, cmdKeyword was found / extract cmd
-  my $cmd = substr( $mtext, length($ck) );
-  # trim also cmd
-  $cmd =~ s/^\s+|\s+$//g;
-
-#  Log3 $name, 3, "TelegramBot_SentLastCommand $name: cmd found :".$cmd.": ";
-  
-  # get human readble name for peer
-  my $pname = TelegramBot_GetFullnameForContact( $hash, $mpeernorm );
-
-  # validate security criteria for commands
-  if ( TelegramBot_checkAllowedPeer( $hash, $mpeernorm ) ) {
-    Log3 $name, 5, "TelegramBot_SentLastCommand cmd correct peer ";
-
-    my $slc =  ReadingsVal($name ,"StoredCommands","");
-
-    my $defpeer = AttrVal($name,'defaultPeer',undef);
-    $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
-    
-    my $ret = "TelegramBot fhem  : $pname ($mpeernorm)\n"." Last Commands \n\n".$slc;
-    
-    AnalyzeCommand( undef, "set $name message $ret", "" );
-
-  } else {
-    # unauthorized fhem cmd
-    Log3 $name, 1, "TelegramBot_ReadHandleCommand unauthorized cmd from user :$pname: ($mpeernorm)";
-    $ret =  "UNAUTHORIZED: TelegramBot fhem request for last commands from user :$pname: ($mpeernorm) \n";
-    
-    # send unauthorized to defaultpeer
-    my $defpeer = AttrVal($name,'defaultPeer',undef);
-    $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
-    if ( defined( $defpeer ) ) {
-      AnalyzeCommand( undef, "set $name message $ret", "" );
-    }
-    
-  }
+  AnalyzeCommand( undef, "set $name message $ret", "" );
 
   return $ret;
 }
@@ -649,81 +720,74 @@ sub TelegramBot_ReadHandleCommand($$$) {
 
   my $ret;
   
-  # command key word aus Attribut holen
-  my $ck = AttrVal($name,'cmdKeyword',undef);
-  
-  return $ret if ( ! defined( $ck ) );
-
-  # trim whitespace from message text
-  $mtext =~ s/^\s+|\s+$//g;
-  
-  return $ret if ( index($mtext,$ck) != 0 );
-
-  # OK, cmdKeyword was found / extract cmd
-  my $cmd = substr( $mtext, length($ck) );
-  # trim also cmd
-  $cmd =~ s/^\s+|\s+$//g;
+  my $cmd = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, 'cmdKeyword' );
+  return $ret if ( ! defined( $cmd ) );
 
   Log3 $name, 3, "TelegramBot_ReadHandleCommand $name: cmd found :".$cmd.": ";
   
   # get human readble name for peer
   my $pname = TelegramBot_GetFullnameForContact( $hash, $mpeernorm );
 
-  # validate security criteria for commands
-  if ( TelegramBot_checkAllowedPeer( $hash, $mpeernorm ) ) {
-    Log3 $name, 5, "TelegramBot_ReadHandleCommand cmd correct peer ";
-    # Either no peer defined or cmdpeer matches peer for message -> good to execute
-    my $cto = AttrVal($name,'cmdTriggerOnly',"0");
-    if ( $cto eq '1' ) {
-      $cmd = "trigger ".$cmd;
-    }
-    
-    Log3 $name, 5, "TelegramBot_ReadHandleCommand final cmd for analyze :".$cmd.": ";
+  Log3 $name, 5, "TelegramBot_ReadHandleCommand cmd correct peer ";
+  # Either no peer defined or cmdpeer matches peer for message -> good to execute
+  my $cto = AttrVal($name,'cmdTriggerOnly',"0");
+  if ( $cto eq '1' ) {
+    $cmd = "trigger ".$cmd;
+  }
+  
+  Log3 $name, 5, "TelegramBot_ReadHandleCommand final cmd for analyze :".$cmd.": ";
 
-    # store last commands (original text)
-    TelegramBot_AddStoredCommands( $hash, $mtext );
+  # store last commands (original text)
+  TelegramBot_AddStoredCommands( $hash, $mtext );
 
-    # Execute command
-    my $ret = AnalyzeCommand( undef, $cmd, "" );
+  $ret = TelegramBot_ExecuteCommand( $hash, $mpeernorm, $cmd );
 
-    Log3 $name, 5, "TelegramBot_ReadHandleCommand result for analyze :".(defined($ret)?$ret:"<undef>").": ";
+  return $ret;
+}
 
-    my $defpeer = AttrVal($name,'defaultPeer',undef);
-    $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
-    
-    my $retstart = "TelegramBot fhem";
-    $retstart .= " from $pname ($mpeernorm)" if ( $defpeer ne $mpeernorm );
-    
-    # undef is considered ok
-    if ( ( ! defined( $ret ) ) || ( length( $ret) == 0 ) ) {
-      $ret = "$retstart cmd :$cmd: result OK";
-    } else {
-      $ret = "$retstart cmd :$cmd: result :$ret:";
-    }
-    Log3 $name, 5, "TelegramBot_ReadHandleCommand $name: ".$ret.": ";
-    
-    # replace line ends with spaces
-    $ret =~ s/(\r|\n)/ /gm;
-    
-    AnalyzeCommand( undef, "set $name message $ret", "" );
-    if ( defined( $defpeer ) ) {
-#      if ( TelegramBot_convertpeer( $defpeer ) ne $mpeernorm ) {
-      if ( $defpeer ne $mpeernorm ) {
-        AnalyzeCommand( undef, "set $name messageTo $mpeernorm $ret", "" );
-      }
-    }
+  
+#####################################
+#####################################
+# INTERNAL: execute command and sent return value 
+sub TelegramBot_ExecuteCommand($$$) {
+  my ($hash, $mpeernorm, $cmd ) = @_;
+  my $name = $hash->{NAME};
+
+  my $ret;
+  
+  # get human readble name for peer
+  my $pname = TelegramBot_GetFullnameForContact( $hash, $mpeernorm );
+
+  Log3 $name, 5, "TelegramBot_ExecuteCommand final cmd for analyze :".$cmd.": ";
+
+  # Execute command
+  $ret = AnalyzeCommand( undef, $cmd, "" );
+
+  Log3 $name, 5, "TelegramBot_ExecuteCommand result for analyze :".(defined($ret)?$ret:"<undef>").": ";
+
+  my $defpeer = AttrVal($name,'defaultPeer',undef);
+  $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
+  
+  my $retstart = "TelegramBot fhem";
+  $retstart .= " from $pname ($mpeernorm)" if ( $defpeer ne $mpeernorm );
+  
+  # undef is considered ok
+  if ( ( ! defined( $ret ) ) || ( length( $ret) == 0 ) ) {
+    $ret = "$retstart cmd :$cmd: result OK";
   } else {
-    # unauthorized fhem cmd
-    Log3 $name, 1, "TelegramBot_ReadHandleCommand unauthorized cmd from user :$pname: ($mpeernorm)";
-    $ret =  "UNAUTHORIZED: TelegramBot fhem cmd :$cmd: from user :$pname: ($mpeernorm) \n";
-    
-    # send unauthorized to defaultpeer
-    my $defpeer = AttrVal($name,'defaultPeer',undef);
-    $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
-    if ( defined( $defpeer ) ) {
-      AnalyzeCommand( undef, "set $name message $ret", "" );
+    $ret = "$retstart cmd :$cmd: result :$ret:";
+  }
+  Log3 $name, 5, "TelegramBot_ExecuteCommand $name: ".$ret.": ";
+  
+  # replace line ends with spaces
+  $ret =~ s/(\r|\n)/ /gm;
+  
+  AnalyzeCommand( undef, "set $name message $ret", "" );
+  if ( defined( $defpeer ) ) {
+#      if ( TelegramBot_convertpeer( $defpeer ) ne $mpeernorm ) {
+    if ( $defpeer ne $mpeernorm ) {
+      AnalyzeCommand( undef, "set $name messageTo $mpeernorm $ret", "" );
     }
-    
   }
 
   return $ret;
@@ -1134,10 +1198,15 @@ sub TelegramBot_ParseMsg($$$)
 
     readingsEndUpdate($hash, 1);
     
+    # trim whitespace from message text
+    $mtext =~ s/^\s+|\s+$//g;
+
     my $cmdRet = TelegramBot_ReadHandleCommand( $hash, $mpeernorm, $mtext );
     #  ignore result of readhandlecommand since it leads to endless loop
 
     my $cmd2Ret = TelegramBot_SentLastCommand( $hash, $mpeernorm, $mtext );
+    
+    my $cmd3Ret = TelegramBot_SentFavorites( $hash, $mpeernorm, $mtext );
     
     
   } elsif ( scalar(@contacts) > 0 )  {
@@ -1760,11 +1829,21 @@ sub TelegramBot_convertpeer($)
     </li> 
     <li><code>cmdSentCommands &lt;keyword&gt;</code><br>Specify a specific text that will trigger sending the last commands back to the sender<br>
         Example: If this attribute is set to a value of <code>last cmd</code> a message of <code>last cmd</code> 
-        As a reply the list of the last sent fhem commands will be sent back.<br>
+        woud lead to a reply with the list of the last sent fhem commands will be sent back.<br>
         Please also consider cmdRestrictedPeer for restricting access to this feature!<br>
     </li> 
 
+  <br><br>
+    <li><code>cmdFavorites &lt;keyword&gt;</code><br>Specify a specific text that will trigger sending the list of defined favorites or executes a given favorite by number (the favorites are defined in attribute <code>favorites</code>).
+    <br>
+        Example: If this attribute is set to a value of <code>favorite</code> a message of <code>favorite</code> to the bot will return a list of defined favorite commands and their index number. In the same case the message <code>favorite &lt;n&gt;</code> (with n being a number) would execute the command that is the n-th command in the favorites list. The result of the command will be returned as in other command executions. 
+        Please also consider cmdRestrictedPeer for restricting access to this feature!<br>
+    </li> 
+    <li><code>favorites &lt;list of commands&gt;</code><br>Specify a list of favorite commands for Fhem (without cmdKeyword). Multiple commands are separated by semicolon (;). This also means that only simple commands (without embedded semicolon) can be defined. <br>
+    </li> 
 
+
+  <br><br>
     <li><code>cmdRestrictedPeer &lt;peername(s)&gt;</code><br>Restrict the execution of commands only to messages sent from the given peername or multiple peernames
     (specified in the form of contact id, username or full name, multiple peers to be separated by a space). 
     A message with the cmd and sender is sent to the default peer in case of another user trying to sent messages<br>

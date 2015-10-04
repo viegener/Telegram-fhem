@@ -101,10 +101,11 @@
 #   URLs hidden for log file since they contain Authtoken
 #   increase polling id up to 256
 #   changed doc example and log entries (thanks to Maista from his notes)
-
-#   Store last commands
+#   Store last commands --> reading StoredCommands
 #   FIX: allow contact cuser to be empty
 #   remove cmdNUmericIds
+
+#   Sent last commands as return value on HandledCOmmand --> attribute cmdSentCommands
 #
 #
 #
@@ -112,7 +113,8 @@
 ##############################################################################
 # TODO 
 #
-#   Sent last commands as return value on HandledCOmmand
+#   restrict file size for sent photos --> 2 MB (configurable ?)
+#   restrict message size to 4096 chars --> might split message in parts
 #
 #   check where contacts are lost
 #
@@ -227,7 +229,7 @@ sub TelegramBot_Initialize($) {
 	$hash->{GetFn}      = "TelegramBot_Get";
 	$hash->{SetFn}      = "TelegramBot_Set";
 	$hash->{AttrFn}     = "TelegramBot_Attr";
-	$hash->{AttrList}   = "defaultPeer defaultSecret:0,1 pollingTimeout cmdKeyword cmdRestrictedPeer cmdTriggerOnly:0,1".
+	$hash->{AttrList}   = "defaultPeer defaultSecret:0,1 pollingTimeout cmdKeyword cmdSentCommands cmdRestrictedPeer cmdTriggerOnly:0,1".
 						$readingFnAttributes;           
 }
 
@@ -532,6 +534,9 @@ sub TelegramBot_Attr(@) {
 		} elsif ($aName eq 'cmdKeyword') {
 			$attr{$name}{'cmdKeyword'} = $aVal;
 
+		} elsif ($aName eq 'cmdSentCommands') {
+			$attr{$name}{'cmdSentCommands'} = $aVal;
+
 		} elsif ($aName eq 'cmdRestrictedPeer') {
       $aVal =~ s/^\s+|\s+$//g;
 
@@ -566,6 +571,66 @@ sub TelegramBot_Attr(@) {
 ##############################################################################
 
 
+#####################################
+#####################################
+# INTERNAL: execute command and sent return value 
+sub TelegramBot_SentLastCommand($$$) {
+  my ($hash, $mpeernorm, $mtext ) = @_;
+  my $name = $hash->{NAME};
+
+  my $ret;
+  
+  # command key word aus Attribut holen for lastSend Commands
+  my $ck = AttrVal($name,'cmdSentCommands',undef);
+  
+  return $ret if ( ! defined( $ck ) );
+
+  # trim whitespace from message text
+  $mtext =~ s/^\s+|\s+$//g;
+  
+  return $ret if ( index($mtext,$ck) != 0 );
+
+  # OK, cmdKeyword was found / extract cmd
+  my $cmd = substr( $mtext, length($ck) );
+  # trim also cmd
+  $cmd =~ s/^\s+|\s+$//g;
+
+#  Log3 $name, 3, "TelegramBot_SentLastCommand $name: cmd found :".$cmd.": ";
+  
+  # get human readble name for peer
+  my $pname = TelegramBot_GetFullnameForContact( $hash, $mpeernorm );
+
+  # validate security criteria for commands
+  if ( TelegramBot_checkAllowedPeer( $hash, $mpeernorm ) ) {
+    Log3 $name, 5, "TelegramBot_SentLastCommand cmd correct peer ";
+
+    my $slc =  ReadingsVal($name ,"StoredCommands","");
+
+    my $defpeer = AttrVal($name,'defaultPeer',undef);
+    $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
+    
+    my $ret = "TelegramBot fhem  : $pname ($mpeernorm)\n"." Last Commands \n\n".$slc;
+    
+    AnalyzeCommand( undef, "set $name message $ret", "" );
+
+  } else {
+    # unauthorized fhem cmd
+    Log3 $name, 1, "TelegramBot_ReadHandleCommand unauthorized cmd from user :$pname: ($mpeernorm)";
+    $ret =  "UNAUTHORIZED: TelegramBot fhem request for last commands from user :$pname: ($mpeernorm) \n";
+    
+    # send unauthorized to defaultpeer
+    my $defpeer = AttrVal($name,'defaultPeer',undef);
+    $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
+    if ( defined( $defpeer ) ) {
+      AnalyzeCommand( undef, "set $name message $ret", "" );
+    }
+    
+  }
+
+  return $ret;
+}
+
+  
 #####################################
 #####################################
 # INTERNAL: execute command and sent return value 
@@ -1062,6 +1127,8 @@ sub TelegramBot_ParseMsg($$$)
     
     my $cmdRet = TelegramBot_ReadHandleCommand( $hash, $mpeernorm, $mtext );
     #  ignore result of readhandlecommand since it leads to endless loop
+
+    my $cmd2Ret = TelegramBot_SentLastCommand( $hash, $mpeernorm, $mtext );
     
     
   } elsif ( scalar(@contacts) > 0 )  {
@@ -1617,23 +1684,24 @@ sub TelegramBot_convertpeer($)
     <code>set &lt;name&gt; &lt;what&gt; [&lt;value&gt;]</code>
     <br><br>
     where &lt;what&gt; is one of
-    <br><br>
-    <li>message &lt;text&gt;<br>Sends the given message to the currently defined default peer user</li>
-    <li>messageTo &lt;peer&gt; &lt;text&gt;<br>Sends the given message to the given peer. 
+
+  <br><br>
+    <li><code>message &lt;text&gt;</code><br>Sends the given message to the currently defined default peer user</li>
+    <li><code>messageTo &lt;peer&gt; &lt;text&gt;</code><br>Sends the given message to the given peer. 
     Peer needs to be given without space or other separator, i.e. spaces should be replaced by underscore (e.g. first_last)</li>
 
-    <li>sendPhoto &lt;file&gt; [&lt;caption&gt;]<br>Sends a photo to the default peer. 
+  <br><br>
+    <li><code>sendPhoto &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the default peer. 
     File is specifying a filename and path to the image file to be send. 
     Local paths should be given local to the root directory of fhem (the directory of fhem.pl e.g. /opt/fhem).
     filenames containing spaces need to be given in parentheses.</li>
-    <li>sendPhotoTo &lt;peer&gt; &lt;file&gt; [&lt;caption&gt;]<br>Sends a photo to the given peer, 
+    <li><code>sendPhotoTo &lt;peer&gt; &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer, 
     other arguments are handled as with <code>sendPhoto</code></li>
 
-
-    <br><br>
-    <li>replaceContacts &lt;text&gt;<br>Set the contacts newly from a string. Multiple contacts can be separated by a space. 
+  <br><br>
+    <li><code>replaceContacts &lt;text&gt;</code><br>Set the contacts newly from a string. Multiple contacts can be separated by a space. 
     Each contact needs to be specified as a triple of contact id, full name and user name as explained above. </li>
-    <li>reset<br>Reset the internal state of the telegram bot. This is normally not needed, but can be used to reset the used URL, 
+    <li><code>reset</code><br>Reset the internal state of the telegram bot. This is normally not needed, but can be used to reset the used URL, 
     internal contact handling, queue of send items and polling <br>
     ATTENTION: Messages that might be queued on the telegram server side (especially commands) might be then worked off afterwards immedately. 
     If in doubt it is recommened to temporarily deactivate (delete) the cmdKeyword attribute before resetting.</li>
@@ -1645,22 +1713,34 @@ sub TelegramBot_convertpeer($)
   <b>Attributes</b>
   <br><br>
   <ul>
-    <li>defaultPeer &lt;name&gt;<br>Specify contact id, user name or full name of the default peer to be used for sending messages. </li> 
-    <li>cmdKeyword &lt;keyword&gt;<br>Specify a specific text that needs to be sent to make the rest of the message being executed as a command. 
+    <li><code>defaultPeer &lt;name&gt;</code><br>Specify contact id, user name or full name of the default peer to be used for sending messages. </li> 
+
+  <br><br>
+    <li><code>cmdKeyword &lt;keyword&gt;</code><br>Specify a specific text that needs to be sent to make the rest of the message being executed as a command. 
       So if for example cmdKeyword is set to <code>ok fhem</code> then a message starting with this string will be executed as fhem command 
         (see also cmdTriggerOnly).<br>
-        Example a message of <code>ok fhem attr telegram room IM</code> would execute the command  <code>attr telegram room IM</code> and set a device called telegram into room IM.
-        The result of the cmd is always sent as message to the defaultPeer 
+        Please also consider cmdRestrictedPeer for restricting access to this feature!<br>
+        Example: If this attribute is set to a value of <code>ok fhem</code> a message of <code>ok fhem attr telegram room IM</code> 
+        send to the bot would execute the command  <code>attr telegram room IM</code> and set a device called telegram into room IM.
+        The result of the cmd is sent to the requestor and in addition (if different) always sent also as message to the defaultPeer 
+    </li> 
+    <li><code>cmdSentCommands &lt;keyword&gt;</code><br>Specify a specific text that will trigger sending the last commands back to the sender<br>
+        Example: If this attribute is set to a value of <code>last cmd</code> a message of <code>last cmd</code> 
+        As a reply the list of the last sent fhem commands will be sent back.<br>
+        Please also consider cmdRestrictedPeer for restricting access to this feature!<br>
     </li> 
 
-    <li>cmdRestrictedPeer &lt;peername(s)&gt;<br>Restrict the execution of commands only to messages sent from the given peername or multiple peernames
+
+    <li><code>cmdRestrictedPeer &lt;peername(s)&gt;</code><br>Restrict the execution of commands only to messages sent from the given peername or multiple peernames
     (specified in the form of contact id, username or full name, multiple peers to be separated by a space). 
     A message with the cmd and sender is sent to the default peer in case of another user trying to sent messages<br>
     </li> 
-    <li>cmdTriggerOnly &lt;0 or 1&gt;<br>Restrict the execution of commands only to trigger command. If this attr is set (value 1), then only the name of the trigger even has to be given (i.e. without the preceding statement trigger). 
+    <li><code>cmdTriggerOnly &lt;0 or 1&gt;</code><br>Restrict the execution of commands only to trigger command. If this attr is set (value 1), then only the name of the trigger even has to be given (i.e. without the preceding statement trigger). 
           So if for example cmdKeyword is set to <code>ok fhem</code> and cmdTriggerOnly is set, then a message of <code>ok fhem someMacro</code> would execute the fhem command  <code>trigger someMacro</code>.
     </li> 
-    <li>pollingTimeout &lt;number&gt;<br>User to specify the timeout for long polling of updates. A value of 0 is switching off any long poll. 
+
+  <br><br>
+    <li><code>pollingTimeout &lt;number&gt;</code><br>User to specify the timeout for long polling of updates. A value of 0 is switching off any long poll. 
       In this case no updates are automatically received and therefore also no messages can be received. 
       As of now the long poll timeout is limited to a maximium of 20 sec, longer values will be ignored from the telegram service.
     </li> 

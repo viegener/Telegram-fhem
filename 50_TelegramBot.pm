@@ -105,16 +105,20 @@
 #   FIX: allow contact cuser to be empty
 #   remove cmdNUmericIds
 #   Sent last commands as return value on HandledCOmmand --> attribute cmdSentCommands
-
 #   FIX: undefined aVal in AttrFn}
 #   FIX: URL also hidden in timeout message
 #   Workaround: Run GetMe 2 times in case of failure especially due to message: "Can't connect(2) to https://api.telegram.org:443:  SSL wants a read first"
+#   Added timer for new polling cycle after attribute set and also on init 
+
+#
 #
 #
 ##############################################################################
 # TODO 
 #
 #   favorite commands
+#
+#   multiple polling cycles in parallel after rereadcfg --> although undef is called
 #
 #   restrict file size for sent photos --> 2 MB (configurable ?)
 #   restrict message size to 4096 chars --> might split message in parts
@@ -553,9 +557,12 @@ sub TelegramBot_Attr(@) {
       if ( $aVal =~ /^[[:digit:]]+$/ ) {
         $attr{$name}{'pollingTimeout'} = $aVal;
       }
-      if ( ! $hash->{POLLING} ) {
-        TelegramBot_UpdatePoll($hash);
-      }
+      # let all existing methods run into block
+      RemoveInternalTimer($hash);
+      $hash->{POLLING} = 1;
+      
+      # wait some time before next polling is starting
+      InternalTimer(gettimeofday()+45, "TelegramBot_ResetPolling", $hash,0); 
 
     }
 	}
@@ -1500,6 +1507,34 @@ sub TelegramBot_BinaryFileWrite($$$) {
 ######################################
 #  make sure a reinitialization is triggered on next update
 #  
+sub TelegramBot_ResetPolling($) {
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+
+  Log3 $name, 4, "TelegramBot_ResetPolling $name: called ";
+
+  RemoveInternalTimer($hash);
+
+  HttpUtils_Close(\%TelegramBot_hu_upd_params); 
+  HttpUtils_Close(\%TelegramBot_hu_do_params); 
+  
+  $hash->{WAIT} = 0;
+  $hash->{FAILS} = 0;
+
+  # Now polling can start
+  $hash->{POLLING} = 0;
+
+  # Initiate long poll for updates
+  TelegramBot_UpdatePoll($hash);
+
+  Log3 $name, 4, "TelegramBot_ResetPolling $name: finished ";
+
+}
+
+  
+######################################
+#  make sure a reinitialization is triggered on next update
+#  
 sub TelegramBot_Setup($) {
   my ($hash) = @_;
   my $name = $hash->{NAME};
@@ -1509,21 +1544,13 @@ sub TelegramBot_Setup($) {
   $hash->{me} = "<unknown>";
   $hash->{STATE} = "Undefined";
 
-  HttpUtils_Close(\%TelegramBot_hu_upd_params); 
-  
-  HttpUtils_Close(\%TelegramBot_hu_do_params); 
-  
+  $hash->{POLLING} = 1;
+
   # Ensure queueing is not happening
   delete( $hash->{sentQueue} );
   delete( $hash->{sentMsgResult} );
   
-
-  $hash->{WAIT} = 0;
-  $hash->{FAILS} = 0;
   $hash->{URL} = "https://api.telegram.org/bot".$hash->{Token}."/";
-
-  # ??? quick hack since polling seems to stop some times
-  $hash->{POLLING} = 0;
 
   $hash->{STATE} = "Defined";
 
@@ -1547,10 +1574,10 @@ sub TelegramBot_Setup($) {
   
   TelegramBot_InternalContactsFromReading( $hash);
 
+  TelegramBot_ResetPolling($hash);
+
   Log3 $name, 4, "TelegramBot_Setup $name: ended ";
 
-  # Initiate long poll for updates
-  TelegramBot_UpdatePoll($hash);
 }
 
   

@@ -104,14 +104,17 @@
 #   Store last commands --> reading StoredCommands
 #   FIX: allow contact cuser to be empty
 #   remove cmdNUmericIds
-
 #   Sent last commands as return value on HandledCOmmand --> attribute cmdSentCommands
-#
-#
+
+#   FIX: undefined aVal in AttrFn}
+#   FIX: URL also hidden in timeout message
+#   Workaround: Run GetMe 2 times in case of failure especially due to message: "Can't connect(2) to https://api.telegram.org:443:  SSL wants a read first"
 #
 #
 ##############################################################################
 # TODO 
+#
+#   favorite commands
 #
 #   restrict file size for sent photos --> 2 MB (configurable ?)
 #   restrict message size to 4096 chars --> might split message in parts
@@ -120,7 +123,6 @@
 #
 #   get chat id for reply to
 #   
-#   Commands defined for bot
 #   Allow to specify commands for Bot and fhem commands accordingly
 #   
 #   add messageReplyTo
@@ -519,7 +521,7 @@ sub TelegramBot_Attr(@) {
 
 	return "\"TelegramBot_Attr: \" $name does not exist" if (!defined($hash));
 
-  if (!defined($aVal)) {
+  if (defined($aVal)) {
     Log3 $name, 5, "TelegramBot_Attr $name: $cmd  on $aName to $aVal";
   } else {
     Log3 $name, 5, "TelegramBot_Attr $name: $cmd  on $aName to <undef>";
@@ -961,7 +963,7 @@ sub TelegramBot_Callback($$$)
 
   # Check for timeout   "read from $hash->{addr} timed out"
   if ( $err =~ /^read from.*timed out$/ ) {
-    $ret = "NonBlockingGet timed out on read from $param->{url}";
+    $ret = "NonBlockingGet timed out on read from ".($param->{hideurl}?"<hidden>":$param->{url})." after ".$param->{timeout}."s";
   } elsif ( $err ne "" ) {
     $ret = "NonBlockingGet: returned $err";
   } elsif ( $data ne "" ) {
@@ -1528,6 +1530,11 @@ sub TelegramBot_Setup($) {
   # getMe as connectivity check and set internals accordingly
   my $url = $hash->{URL}."getMe";
   my $meret = TelegramBot_DoUrlCommand( $hash, $url );
+  if ( ( ! defined($meret) ) || ( ref($meret) ne "HASH" ) ) {
+    # retry on first failure
+    $meret = TelegramBot_DoUrlCommand( $hash, $url );
+  }
+
   if ( ( defined($meret) ) && ( ref($meret) eq "HASH" ) ) {
     $hash->{me} = TelegramBot_userObjectToString( $meret );
     $hash->{STATE} = "Setup";
@@ -1784,7 +1791,7 @@ sub TelegramBot_convertpeer($)
 
     <li>Send a telegram message if fhem has been newly started
       <p>
-      <code>define notify_fhem_reload notify global:INITIALIZED set <telegrambot> message fhem newly started - just now !  </code>
+      <code>define notify_fhem_reload notify global:INITIALIZED set &lt;telegrambot&gt; message fhem newly started - just now !  </code>
       </p> 
     </li> 
   </ul>

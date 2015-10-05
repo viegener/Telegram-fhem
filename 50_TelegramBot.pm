@@ -113,17 +113,17 @@
 #   Favorites Commandlist --> attribute cmdFavorites
 #   favorite commands can be executed
 
-#
-#
+#   cmd results cut to 4000 char
+#   keep line feed / new line in cmd results
 #
 ##############################################################################
 # TODO 
 #
+#   define set according to msg module?
 #
 #   multiple polling cycles in parallel after rereadcfg --> although undef is called
 #
 #   restrict file size for sent photos --> 2 MB (configurable ?)
-#   restrict message size to 4096 chars --> might split message in parts
 #
 #   check where contacts are lost
 #
@@ -780,7 +780,13 @@ sub TelegramBot_ExecuteCommand($$$) {
   Log3 $name, 5, "TelegramBot_ExecuteCommand $name: ".$ret.": ";
   
   # replace line ends with spaces
-  $ret =~ s/(\r|\n)/ /gm;
+#  $ret =~ s/(\r|\n)/ /gm;
+  $ret =~ s/\r//gm;
+  
+  # shorten to 4096
+  if ( length($ret) > 4000 ) {
+    $ret = substr( $ret, 0, 4000 )."\n\n...";
+  }
   
   AnalyzeCommand( undef, "set $name message $ret", "" );
   if ( defined( $defpeer ) ) {

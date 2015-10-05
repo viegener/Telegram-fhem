@@ -112,14 +112,18 @@
 #   Favorites Command --> attribute cmdKeyFavorites
 #   Favorites Commandlist --> attribute cmdFavorites
 #   favorite commands can be executed
-
 #   cmd results cut to 4000 char
 #   keep line feed / new line in cmd results
+#   Last and favorites will sent repsonse to sender and not default
+#   make command result sent to default configurable --> defaultPeerCopy (default ON)
+#
+#
 #
 ##############################################################################
 # TODO 
 #
 #   define set according to msg module?
+#
 #
 #   multiple polling cycles in parallel after rereadcfg --> although undef is called
 #
@@ -142,13 +146,9 @@
 #   
 #   add watchdog for polling as workaround for stopping
 #   
-#   Merge TelegramBot into Telegram
-#   
-#
 ##############################################################################
 # Ideas / Future
-#
-#
+#   Merge TelegramBot into Telegram
 #
 #
 ##############################################################################
@@ -237,7 +237,7 @@ sub TelegramBot_Initialize($) {
 	$hash->{GetFn}      = "TelegramBot_Get";
 	$hash->{SetFn}      = "TelegramBot_Set";
 	$hash->{AttrFn}     = "TelegramBot_Attr";
-	$hash->{AttrList}   = "defaultPeer defaultSecret:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1".
+	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1".
 						$readingFnAttributes;           
 }
 
@@ -557,6 +557,9 @@ sub TelegramBot_Attr(@) {
       # allow multiple peers with spaces separated
       # $aVal =~ s/ /_/g;
       $attr{$name}{'cmdRestrictedPeer'} = $aVal;
+      
+		} elsif ($aName eq 'defaultPeerCopy') {
+			$attr{$name}{'defaultPeerCopy'} = ($aVal eq "1")? "1": "0";
 
 		} elsif ($aName eq 'cmdTriggerOnly') {
 			$attr{$name}{'cmdTriggerOnly'} = ($aVal eq "1")? "1": "0";
@@ -677,7 +680,7 @@ sub TelegramBot_SentFavorites($$$) {
       
       $ret = "TelegramBot fhem  : ($mpeernorm)\n Favorites \n\n".$slc;
       
-      AnalyzeCommand( undef, "set $name message $ret", "" );
+      AnalyzeCommand( undef, "set $name messageTo $mpeernorm $ret", "" );
   }
   
   return $ret;
@@ -705,7 +708,7 @@ sub TelegramBot_SentLastCommand($$$) {
   
   $ret = "TelegramBot fhem  : $mpeernorm \nLast Commands \n\n".$slc;
   
-  AnalyzeCommand( undef, "set $name message $ret", "" );
+  AnalyzeCommand( undef, "set $name messageTo $mpeernorm $ret", "" );
 
   return $ret;
 }
@@ -787,12 +790,14 @@ sub TelegramBot_ExecuteCommand($$$) {
   if ( length($ret) > 4000 ) {
     $ret = substr( $ret, 0, 4000 )."\n\n...";
   }
-  
-  AnalyzeCommand( undef, "set $name message $ret", "" );
-  if ( defined( $defpeer ) ) {
+
+  AnalyzeCommand( undef, "set $name messageTo $mpeernorm $ret", "" );
+
+  my $dpc = AttrVal($name,'defaultPeerCopy',1);
+  if ( ( $dpc ) && ( defined( $defpeer ) ) ) {
 #      if ( TelegramBot_convertpeer( $defpeer ) ne $mpeernorm ) {
     if ( $defpeer ne $mpeernorm ) {
-      AnalyzeCommand( undef, "set $name messageTo $mpeernorm $ret", "" );
+      AnalyzeCommand( undef, "set $name message $ret", "" );
     }
   }
 
@@ -1823,6 +1828,9 @@ sub TelegramBot_convertpeer($)
   <br><br>
   <ul>
     <li><code>defaultPeer &lt;name&gt;</code><br>Specify contact id, user name or full name of the default peer to be used for sending messages. </li> 
+    <li><code>defaultPeerCopy &lt;1 (default) or 0&gt;</code><br>Copy all command results also to the defined defaultPeer. If set results are sent both to the requestor and the defaultPeer if they are different. 
+    </li> 
+
 
   <br><br>
     <li><code>cmdKeyword &lt;keyword&gt;</code><br>Specify a specific text that needs to be sent to make the rest of the message being executed as a command. 

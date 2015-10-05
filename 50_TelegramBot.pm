@@ -116,39 +116,40 @@
 #   keep line feed / new line in cmd results
 #   Last and favorites will sent repsonse to sender and not default
 #   make command result sent to default configurable --> defaultPeerCopy (default ON)
+
+#
+#
+#
 #
 #
 #
 ##############################################################################
 # TODO 
 #
+#   add keyboards
+#
 #   define set according to msg module?
-#
-#
-#   multiple polling cycles in parallel after rereadcfg --> although undef is called
 #
 #   restrict file size for sent photos --> 2 MB (configurable ?)
 #
-#   check where contacts are lost
+#   Fix emoticons --> decode utf-16 to utf-8
+#   
+#   BUG? : check where contacts are lost
+#   BUG? : multiple polling cycles in parallel after rereadcfg --> although undef is called
 #
 #   get chat id for reply to
+#   add messageReplyTo
 #   
 #   Allow to specify commands for Bot and fhem commands accordingly
 #   
-#   add messageReplyTo
-#   add keyboards
-#
 #   dialogfunction for handling dialog communications
 #
-#   Fix emoticons --> decode utf-16 to utf-8
-#   
-#   honor attributes for gaining contacts - no new contacts etc
-#   
 #   add watchdog for polling as workaround for stopping
 #   
 ##############################################################################
 # Ideas / Future
 #   Merge TelegramBot into Telegram
+#   allow and honor attributes for gaining contacts - no new contacts etc
 #
 #
 ##############################################################################
@@ -1913,6 +1914,17 @@ sub TelegramBot_convertpeer($)
       <p>
       <code>define notify_fhem_reload notify global:INITIALIZED set &lt;telegrambot&gt; message fhem newly started - just now !  </code>
       </p> 
+    </li> 
+  <br><br>
+
+    <li>Allow telegram bot commands to be used<br>
+        If the keywords for commands are starting with a slash (/), the corresponding commands can be also defined with the <a href=http://botsfortelegram.com/project/the-bot-father/>Bot Father</a>. So if a slash is typed a list of the commands will be automatically shown.<br>
+        
+        Assuming that <code>cmdSentCommands</code> is set to <code>/History</code>. Then you can initiate the communication with the botfather, select the right bot and then with the command <code>/setcommands</code> define one or more commands like
+        <p>
+          <code>History-Show a history of the last 10 executed commands</code>
+        </p> 
+        When typing a slash, then the text above will immediately show up in the client.
     </li> 
   </ul>
   

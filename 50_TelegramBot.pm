@@ -831,7 +831,7 @@ sub TelegramBot_SendIt($$$$$)
     if ( ! defined( $hash->{sentQueue} ) ) {
       $hash->{sentQueue} = [];
     }
-    Log3 $name, 3, "TelegramBot_SendIt $name: add send to queue :$peer: -:$msg: - :$addPar:";
+    Log3 $name, 3, "TelegramBot_SendIt $name: add send to queue :$peer: -:$msg: - :".(defined($addPar)?$addPar:"<undef>").":";
     push( @{ $hash->{sentQueue} }, \@args );
     return;
   }  

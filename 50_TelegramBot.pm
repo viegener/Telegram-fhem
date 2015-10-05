@@ -655,7 +655,7 @@ sub TelegramBot_SentFavorites($$$) {
     my $cmdId = ($cmd-1);
 #    Log3 $name, 3, "TelegramBot_SentFavorites exec cmd :$cmdId: ";
     if ( ( $cmdId >= 0 ) && ( $cmdId < scalar( @clist ) ) ) { 
-      $cmd = @clist[$cmdId];
+      $cmd = $clist[$cmdId];
       $ret = TelegramBot_ExecuteCommand( $hash, $mpeernorm, $cmd );
     }
     

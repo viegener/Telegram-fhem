@@ -117,29 +117,26 @@
 #   Last and favorites will sent repsonse to sender and not default
 #   make command result sent to default configurable --> defaultPeerCopy (default ON)
 #   add set <device> msg (for compatibility)
-
 #   new attribute maxFileSize - for restricting size of images
 #   sendImage/sendImageto as addtl commands for sendPhoto/sendPhotoTo
+# 0.8 2015-10-10 extended cmd handling 
 #
 #
 #
 ##############################################################################
 # TODO 
 #
-#   FIX: delayed start leads to early messages failing - need to be queued
 #
 #   add keyboards
 #
 #   Fix emoticons --> decode utf-16 to utf-8
 #   
+#   BUG?: delayed start leads to early messages failing??
 #   BUG? : check where contacts are lost
 #   BUG? : multiple polling cycles in parallel after rereadcfg --> although undef is called
 #
 #   get chat id for reply to
 #   add messageReplyTo
-#   
-#   Allow to specify commands for Bot and fhem commands accordingly
-#   
 #   dialogfunction for handling dialog communications
 #
 #   add watchdog for polling as workaround for stopping

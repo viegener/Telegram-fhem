@@ -117,7 +117,7 @@
 #   Last and favorites will sent repsonse to sender and not default
 #   make command result sent to default configurable --> defaultPeerCopy (default ON)
 
-#
+#   add set <device> msg (for compatibility)
 #
 #
 #
@@ -127,8 +127,6 @@
 # TODO 
 #
 #   add keyboards
-#
-#   define set according to msg module?
 #
 #   restrict file size for sent photos --> 2 MB (configurable ?)
 #
@@ -184,6 +182,7 @@ sub TelegramBot_Callback($$$);
 # Globals
 my %sets = (
 	"message" => "textField",
+	"msg" => "textField",
 	"secretChat" => undef,
 	"messageTo" => "textField",
 #	"raw" => "textField",
@@ -369,7 +368,7 @@ sub TelegramBot_Set($@)
 
   my $ret = undef;
   
-	if($cmd eq 'message') {
+	if( ($cmd eq 'message') || ($cmd eq 'msg') ) {
     if ( $numberOfArgs < 2 ) {
       return "TelegramBot_Set: Command $cmd, no text specified";
     }

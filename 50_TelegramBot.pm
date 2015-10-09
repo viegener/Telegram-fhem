@@ -116,19 +116,19 @@
 #   keep line feed / new line in cmd results
 #   Last and favorites will sent repsonse to sender and not default
 #   make command result sent to default configurable --> defaultPeerCopy (default ON)
-
 #   add set <device> msg (for compatibility)
-#
-#
+
+#   new attribute maxFileSize - for restricting size of images
+#   sendImage/sendImageto as addtl commands for sendPhoto/sendPhotoTo
 #
 #
 #
 ##############################################################################
 # TODO 
 #
-#   add keyboards
+#   FIX: delayed start leads to early messages failing - need to be queued
 #
-#   restrict file size for sent photos --> 2 MB (configurable ?)
+#   add keyboards
 #
 #   Fix emoticons --> decode utf-16 to utf-8
 #   
@@ -188,6 +188,8 @@ my %sets = (
 #	"raw" => "textField",
 	"sendPhoto" => "textField",
 	"sendPhotoTo" => "textField",
+	"sendImage" => "textField",
+	"sendImageTo" => "textField",
 	"zDebug" => "textField",
   # BOTONLY
 	"replaceContacts" => "textField",
@@ -198,7 +200,7 @@ my %gets = (
 #	"msgById" => "textField"
 );
 
-my $TelegramBot_header = "agent: TelegramBot/0.0\r\nUser-Agent: TelegramBot/0.0\r\nAccept: application/json\r\nAccept-Charset: utf-8";
+my $TelegramBot_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0\r\nAccept: application/json\r\nAccept-Charset: utf-8";
 
 
 my %TelegramBot_hu_upd_params = (
@@ -237,7 +239,7 @@ sub TelegramBot_Initialize($) {
 	$hash->{GetFn}      = "TelegramBot_Get";
 	$hash->{SetFn}      = "TelegramBot_Set";
 	$hash->{AttrFn}     = "TelegramBot_Attr";
-	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1".
+	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 maxFileSize ".
 						$readingFnAttributes;           
 }
 
@@ -393,7 +395,7 @@ sub TelegramBot_Set($@)
     Log3 $name, 4, "TelegramBot_Set $name: start message send ";
     $ret = TelegramBot_SendIt( $hash, $peer, $arg, undef, 1 );
 
-  } elsif($cmd eq 'sendPhoto') {
+  } elsif ( ($cmd eq 'sendPhoto') || ($cmd eq 'sendImage')  ) {
     if ( $numberOfArgs < 2 ) {
       return "TelegramBot_Set: Command $cmd, need to specify filename ";
     }
@@ -413,7 +415,7 @@ sub TelegramBot_Set($@)
 #    $ret = "TelegramBot_Set: Command $cmd, not yet supported ";
     $ret = TelegramBot_SendIt( $hash, $peer, $file, $caption, 0 );
 
-	} elsif($cmd eq 'sendPhotoTo') {
+  } elsif ( ($cmd eq 'sendPhotoTo') || ($cmd eq 'sendImageTo')  ) {
     if ( $numberOfArgs < 3 ) {
       return "TelegramBot_Set: Command $cmd, need to specify peer and text ";
     }
@@ -563,6 +565,11 @@ sub TelegramBot_Attr(@) {
 
 		} elsif ($aName eq 'cmdTriggerOnly') {
 			$attr{$name}{'cmdTriggerOnly'} = ($aVal eq "1")? "1": "0";
+
+		} elsif ($aName eq 'maxFileSize') {
+      if ( $aVal =~ /^[[:digit:]]+$/ ) {
+        $attr{$name}{'maxFileSize'} = $aVal;
+      }
 
     } elsif ($aName eq 'pollingTimeout') {
       if ( $aVal =~ /^[[:digit:]]+$/ ) {
@@ -871,7 +878,7 @@ sub TelegramBot_SendIt($$$$$)
 
   } else {
     # Photo send    
-    $hash->{sentMsgText} = "Photo: $msg";
+    $hash->{sentMsgText} = "Image: $msg";
 
     $TelegramBot_hu_do_params{url} = $hash->{URL}."sendPhoto";
     #    $TelegramBot_hu_do_params{url} = "http://requestb.in/1fbddf61";
@@ -942,6 +949,13 @@ sub TelegramBot_AddMultipart($$$$$$)
     if ( $isFile ) {
       my $baseFilename =  basename($parcontent);
       $parheader = "Content-Disposition: form-data; name=\"".$parname."\"; filename=\"".$baseFilename."\"\r\n".$parheader."\r\n";
+
+      return( "FAILED file :$parcontent: not found or empty" ) if ( ! -e $parcontent ) ;
+      
+      my $size = -s $parcontent;
+      my $limit = AttrVal($name,'maxFileSize',10485760);
+      return( "FAILED file :$parcontent: is too large for transfer (current limit: ".$limit."B)" ) if ( $size >  $limit ) ;
+      
       $finalcontent = TelegramBot_BinaryFileRead( $hash, $parcontent );
       if ( $finalcontent eq "" ) {
         return( "FAILED file :$parcontent: not found or empty" );
@@ -1800,16 +1814,16 @@ sub TelegramBot_convertpeer($)
     where &lt;what&gt; is one of
 
   <br><br>
-    <li><code>message &lt;text&gt;</code><br>Sends the given message to the currently defined default peer user</li>
+    <li><code>message|msg &lt;text&gt;</code><br>Sends the given message to the currently defined default peer user</li>
     <li><code>messageTo &lt;peer&gt; &lt;text&gt;</code><br>Sends the given message to the given peer. 
     Peer needs to be given without space or other separator, i.e. spaces should be replaced by underscore (e.g. first_last)</li>
 
   <br><br>
-    <li><code>sendPhoto &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the default peer. 
+    <li><code>sendPhoto|sendImage &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the default peer. 
     File is specifying a filename and path to the image file to be send. 
     Local paths should be given local to the root directory of fhem (the directory of fhem.pl e.g. /opt/fhem).
     filenames containing spaces need to be given in parentheses.</li>
-    <li><code>sendPhotoTo &lt;peer&gt; &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer, 
+    <li><code>sendPhotoTo|sendImageTo &lt;peer&gt; &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer, 
     other arguments are handled as with <code>sendPhoto</code></li>
 
   <br><br>
@@ -1867,9 +1881,13 @@ sub TelegramBot_convertpeer($)
     </li> 
 
   <br><br>
-    <li><code>pollingTimeout &lt;number&gt;</code><br>User to specify the timeout for long polling of updates. A value of 0 is switching off any long poll. 
+    <li><code>pollingTimeout &lt;number&gt;</code><br>Used to specify the timeout for long polling of updates. A value of 0 is switching off any long poll. 
       In this case no updates are automatically received and therefore also no messages can be received. 
       As of now the long poll timeout is limited to a maximium of 20 sec, longer values will be ignored from the telegram service.
+    </li> 
+
+  <br><br>
+    <li><code>maxFileSize &lt;number of bytes&gt;</code><br>Maximum file size in bytes for transfer of files (images). If not set the internal limit is specified as 10MB (10485760B).
     </li> 
 
 

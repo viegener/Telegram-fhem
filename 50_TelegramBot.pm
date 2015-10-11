@@ -121,12 +121,18 @@
 #   sendImage/sendImageto as addtl commands for sendPhoto/sendPhotoTo
 # 0.8 2015-10-10 extended cmd handling 
 #
-
 #   FIX: changed error handling for sendIt (ensure unified error handling / avoid queuing up)
+
 #
 #
 ##############################################################################
 # TODO 
+#
+#   Check group communication - allow groups as contacts
+#
+#   Allow send to multiple recipients?
+#
+#   svn checkin + add to maintainer.txt + checkin with description new module + ankuendigungs post + telegram thread post + wiki change
 #
 #
 #   add keyboards

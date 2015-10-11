@@ -121,6 +121,8 @@
 #   sendImage/sendImageto as addtl commands for sendPhoto/sendPhotoTo
 # 0.8 2015-10-10 extended cmd handling 
 #
+
+#   FIX: changed error handling for sendIt (ensure unified error handling / avoid queuing up)
 #
 #
 ##############################################################################
@@ -826,7 +828,6 @@ sub TelegramBot_SendIt($$$$$)
 	my ( $peer, $msg, $addPar, $isText) = @args;
   my $name = $hash->{NAME};
 	
-  my $ret;
   Log3 $name, 5, "TelegramBot_SendIt $name: called ";
 
   if ( ( defined( $hash->{sentMsgResult} ) ) && ( $hash->{sentMsgResult} eq "WAITING" ) ){
@@ -839,6 +840,7 @@ sub TelegramBot_SendIt($$$$$)
     return;
   }  
     
+  my $ret;
   $hash->{sentMsgResult} = "WAITING";
 
   # trim and convert spaces in peer to underline 
@@ -847,6 +849,7 @@ sub TelegramBot_SendIt($$$$$)
 
   if ( ! defined( $peer2 ) ) {
     $ret = "FAILED peer not found :$peer:";
+    Log3 $name, 1, "TelegramBot_SendIt $name: failed with :".$ret.":";
     $peer2 = "";
   }
   
@@ -858,54 +861,60 @@ sub TelegramBot_SendIt($$$$$)
   $TelegramBot_hu_do_params{header} = $TelegramBot_header;
   delete( $TelegramBot_hu_do_params{boundary} );
 
-  # add chat / user id (no file) --> this will also do init
-  $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "chat_id", undef, $peer2, 0 );
+  # handle data creation only if no error so far
+  if ( ! defined( $ret ) ) {
 
-  if ( $isText ) {
-    $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage";
+    # add chat / user id (no file) --> this will also do init
+    $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "chat_id", undef, $peer2, 0 );
 
-    $hash->{sentMsgText} = $msg;
-#    my $c = chr(10);
-#    $msg =~ s/([^\\])\\n/$1$c/g;
+    if ( $isText ) {
+      $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage";
 
-    # add msg (no file)
-    $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "text", undef, $msg, 0 ) if ( ! defined( $ret ) );
-    
-#    $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage?chat_id=".$peer2."&text=".urlEncode($msg);
+      $hash->{sentMsgText} = $msg;
+  #    my $c = chr(10);
+  #    $msg =~ s/([^\\])\\n/$1$c/g;
 
-  } else {
-    # Photo send    
-    $hash->{sentMsgText} = "Image: $msg";
+      # add msg (no file)
+      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "text", undef, $msg, 0 ) if ( ! defined( $ret ) );
+      
+  #    $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage?chat_id=".$peer2."&text=".urlEncode($msg);
 
-    $TelegramBot_hu_do_params{url} = $hash->{URL}."sendPhoto";
-    #    $TelegramBot_hu_do_params{url} = "http://requestb.in/1fbddf61";
+    } else {
+      # Photo send    
+      $hash->{sentMsgText} = "Image: $msg";
 
-    # add caption
-    if ( defined( $addPar ) ) {
-      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "caption", undef, $addPar, 0 ) if ( ! defined( $ret ) );
+      $TelegramBot_hu_do_params{url} = $hash->{URL}."sendPhoto";
+      #    $TelegramBot_hu_do_params{url} = "http://requestb.in/1fbddf61";
+
+      # add caption
+      if ( defined( $addPar ) ) {
+        $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "caption", undef, $addPar, 0 ) if ( ! defined( $ret ) );
+      }
+      
+      # add msg (no file)
+      Log3 $name, 3, "TelegramBot_SendIt $name: Filename for image file :$msg:";
+      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "photo", undef, $msg, 1 ) if ( ! defined( $ret ) );
+      
+      # only for test / debug               
+      $TelegramBot_hu_do_params{loglevel} = 3;
+  #    TelegramBot_BinaryFileWrite( $hash, "/opt/fhem/test.bin", $TelegramBot_hu_do_params{data} );
     }
-    
-    # add msg (no file)
-    Log3 $name, 3, "TelegramBot_SendIt $name: Filename for image file :$msg:";
-    $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "photo", undef, $msg, 1 ) if ( ! defined( $ret ) );
-    
-    # only for test / debug               
-    $TelegramBot_hu_do_params{loglevel} = 3;
-#    TelegramBot_BinaryFileWrite( $hash, "/opt/fhem/test.bin", $TelegramBot_hu_do_params{data} );
+
+    # finalize multipart 
+    $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, undef, undef, undef, 0 ) if ( ! defined( $ret ) );
+
+    #  Log3 $name, 3, "TelegramBot_SendIt $name: multipart data :".$TelegramBot_hu_do_params{data}.":";
   }
-
-  # finalize multipart 
-  $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, undef, undef, undef, 0 ) if ( ! defined( $ret ) );
-
-#  Log3 $name, 3, "TelegramBot_SendIt $name: multipart data :".$TelegramBot_hu_do_params{data}.":";
 
   
   if ( defined( $ret ) ) {
-    Log3 $name, 3, "TelegramBot_SendIt $name: :$ret:";
-    $hash->{sentMsgResult} = $ret;
-  }
+    Log3 $name, 3, "TelegramBot_SendIt $name: Failed with :$ret:";
+    TelegramBot_Callback( \%TelegramBot_hu_do_params, $ret, "");
 
-  HttpUtils_NonblockingGet( \%TelegramBot_hu_do_params) if ( ! defined( $ret ) );
+  } else {
+    HttpUtils_NonblockingGet( \%TelegramBot_hu_do_params);
+
+  }
   
   return $ret;
 }
@@ -1047,11 +1056,13 @@ sub TelegramBot_Callback($$$)
   my $ret;
   my $result;
   
-  $hash->{OLD_POLLING} = ( ( defined( $hash->{POLLING} ) )?$hash->{POLLING}:0 ) + 1;
-  $hash->{OLD_POLLING} = 1 if ( $hash->{OLD_POLLING} > 255 );
+  if ( defined( $param->{isPolling} ) ) {
+    $hash->{OLD_POLLING} = ( ( defined( $hash->{POLLING} ) )?$hash->{POLLING}:0 ) + 1;
+    $hash->{OLD_POLLING} = 1 if ( $hash->{OLD_POLLING} > 255 );
+    
+    $hash->{POLLING} = 0 if ( defined( $param->{isPolling} ) );
+  }
   
-  $hash->{POLLING} = 0 if ( defined( $param->{isPolling} ) );
-
   Log3 $name, 5, "TelegramBot_Callback $name: called from ".(( defined( $param->{isPolling} ) )?"Polling":"SendIt");
 
   # Check for timeout   "read from $hash->{addr} timed out"

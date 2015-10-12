@@ -122,42 +122,34 @@
 # 0.8 2015-10-10 extended cmd handling 
 #
 #   FIX: changed error handling for sendIt (ensure unified error handling / avoid queuing up)
-
 #   Allow also negative values for contacts (prep for chats/groups)
 #   Allow also # in 3rd part of contacts for groups
 #   Encode user names and full names in contacts (: to _ / remove multiple spaces / space to _ )
 #   Get chatid from communication to allow answering to groups
 #
 ##############################################################################
-# TODO 
+# TASKS 
 #
-#   Allow send to multiple recipients?
-#
+#   Fix emoticons --> decode utf-16 to utf-8 ??
+#   
 #   svn checkin + add to maintainer.txt + checkin with description new module + ankuendigungs post + telegram thread post + wiki change
-#
 #
 #   add keyboards
 #
-#   Fix emoticons --> decode utf-16 to utf-8
-#   
 #   BUG?: delayed start leads to early messages failing??
-#   BUG? : check where contacts are lost
-#   BUG? : multiple polling cycles in parallel after rereadcfg --> although undef is called
+#   BUG?: contacts got lost on shutdown and restart
+#   BUG?: multiple polling cycles in parallel after rereadcfg --> although undef is called
 #
-#   get chat id for reply to
+#   Allow send to multiple recipients?
 #   add messageReplyTo
-#   dialogfunction for handling dialog communications
 #
-#   add watchdog for polling as workaround for stopping
-#   
 ##############################################################################
 # Ideas / Future
 #   Merge TelegramBot into Telegram
 #   allow and honor attributes for gaining contacts - no new contacts etc
 #
-#
 ##############################################################################
-# Info: Max time out for getUpdates seem to be 20 s
+# Info: Max time out for getUpdates seem to be 20 s (TelegramBot)
 #	
 ##############################################################################
 

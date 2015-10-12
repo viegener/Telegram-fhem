@@ -123,12 +123,13 @@
 #
 #   FIX: changed error handling for sendIt (ensure unified error handling / avoid queuing up)
 
-#
+#   Allow also negative values for contacts (prep for chats/groups)
+#   Allow also # in 3rd part of contacts for groups
+#   Encode user names and full names in contacts (: to _ / remove multiple spaces / space to _ )
+#   Get chatid from communication to allow answering to groups
 #
 ##############################################################################
 # TODO 
-#
-#   Check group communication - allow groups as contacts
 #
 #   Allow send to multiple recipients?
 #
@@ -450,7 +451,7 @@ sub TelegramBot_Set($@)
 
   } elsif($cmd eq 'replaceContacts') {
     if ( $numberOfArgs < 2 ) {
-      return "TelegramBot_Set: Command $cmd, need to specify contacts string separate by space and contacts in the form of <id>:<full_name>:[@<username>] ";
+      return "TelegramBot_Set: Command $cmd, need to specify contacts string separate by space and contacts in the form of <id>:<full_name>:[@<username>|#<groupname>] ";
     }
     my $arg = join(" ", @args );
     Log3 $name, 3, "TelegramBot_Set $name: set new contacts to :$arg: ";
@@ -1201,6 +1202,11 @@ sub TelegramBot_ParseMsg($$$)
   # check peers beside from only contact (shared contact) and new_chat_participant are checked
   push( @contacts, $from );
 
+  my $chat = $message->{chat};
+  if ( defined( $chat ) ) {
+    push( @contacts, $chat );
+  }
+
   my $user = $message->{contact};
   if ( defined( $user ) ) {
     push( @contacts, $user );
@@ -1324,6 +1330,7 @@ sub TelegramBot_DoUrlCommand($$)
 # INTERNAL: get id for a peer
 #   if only digits --> assume id
 #   if start with @ --> assume username
+#   if start with # --> assume groupname
 #   else --> assume full name
 sub TelegramBot_GetIdForPeer($$)
 {
@@ -1333,10 +1340,10 @@ sub TelegramBot_GetIdForPeer($$)
 
   my $id;
   
-  if ( $mpeer =~ /^[[:digit:]]+$/ ) {
+  if ( $mpeer =~ /^\-?[[:digit:]]+$/ ) {
     # check if id is in hash 
     $id = $mpeer if ( defined( $hash->{Contacts}{$mpeer} ) );
-  } elsif ( $mpeer =~ /^@.*$/ ) {
+  } elsif ( $mpeer =~ /^[@#].*$/ ) {
     foreach  my $mkey ( keys $hash->{Contacts} ) {
       my @clist = split( /:/, $hash->{Contacts}{$mkey} );
       if ( $clist[2] eq $mpeer ) {
@@ -1437,7 +1444,7 @@ sub TelegramBot_CalcContactsHash($$)
   # for each element - get id as hashtag and full contact as value
   foreach  my $contact ( @contactList ) {
     my ( $id, $cname, $cuser ) = split( ":", $contact, 3 );
-    # add contact only if all three parts are there and 2nd part not empty and 3rd part either empty or start with @ and at least 3 chars
+    # add contact only if all three parts are there and 2nd part not empty and 3rd part either empty or start with @ or # and at least 3 chars
     # and id must be only digits
     $cuser = "" if ( ! defined( $cuser ) );
     
@@ -1447,17 +1454,17 @@ sub TelegramBot_CalcContactsHash($$)
       next;
     } elsif ( length( $cname ) == 0 ) {
       next;
-    } elsif ( ( length( $cuser ) > 0 ) && ( substr($cuser,0,1) ne "@" ) ) {
+    } elsif ( ( length( $cuser ) > 0 ) && ( $cuser =~ /^[@#]/ ) ) {
       next;
     } elsif ( ( length( $cuser ) > 0 ) && ( length( $cuser ) < 3 ) ) {
       next;
-    } elsif ( $id !~ /^[[:digit:]]+$/ ) {
+    } elsif ( $id !~ /^\-?[[:digit:]]+$/ ) {
       next;
     } else {
-      $cname =~ s/^\s+|\s+$//g;
-      $cname =~ s/ /_/g;
-      $cuser =~ s/^\s+|\s+$//g;
-      $cuser =~ s/ /_/g;
+      $cname =~ TelegramBot_encodeContactString( $cname );
+
+      $cuser =~ TelegramBot_encodeContactString( $cuser );
+      
       $hash->{Contacts}{$id} = $id.":".$cname.":".$cuser;
     }
   }
@@ -1509,24 +1516,43 @@ sub TelegramBot_ContactUpdate($@) {
 }
   
 #####################################
-# INTERNAL: Convert TelegramBot user object to string
+# INTERNAL: Convert TelegramBot user and chat object to string
 sub TelegramBot_userObjectToString($) {
 
 	my ( $user ) = @_;
   
   my $ret = $user->{id}.":";
   
-  $ret .= $user->{first_name};
-  $ret .= " ".$user->{last_name} if ( defined( $user->{last_name} ) );
+  # user objects do not contain a type field / chat objects need to contain a type but only if type=group it is really a group
+  if ( ( defined( $user->{type} ) ) && ( $user->{type} eq "group" ) ) {
+    
+    $ret .= ":";
 
-  $ret .= ":";
+    $ret .= "#".TelegramBot_encodeContactString($user->{title}) if ( defined( $user->{title} ) );
 
-  $ret .= "@".$user->{username} if ( defined( $user->{username} ) );
+  } else {
 
-  $ret =~ s/^\s+|\s+$//g;
-  $ret =~ s/ /_/g;
+    my $part = $user->{first_name};
+    $part .= " ".$user->{last_name} if ( defined( $user->{last_name} ) );
+
+    $ret .= TelegramBot_encodeContactString($part).":";
+
+    $ret .= "@".TelegramBot_encodeContactString($user->{username}) if ( defined( $user->{username} ) );
+  }
 
   return $ret;
+}
+
+#####################################
+# INTERNAL: Convert TelegramBot user and chat object to string
+sub TelegramBot_encodeContactString($) {
+	my ($str) = @_;
+
+    $str =~ s/:/_/g;
+    $str =~ s/^\s+|\s+$//g;
+    $str =~ s/ /_/g;
+
+  return $str;
 }
 
 ##############################################################################
@@ -1794,9 +1820,9 @@ sub TelegramBot_convertpeer($)
 
   The TelegramBot module allows receiving of (text) messages from any peer (telegram user) and can send text messages to known users.
   The contacts/peers, that are known to the bot are stored in a reading (named <code>Contacts</code>) and also internally in the module in a hashed list to allow the usage 
-  of contact ids and also full names and usernames. Contact ids are made up from only digits, user names are prefixed with a @. 
+  of contact ids and also full names and usernames. Contact ids are made up from only digits, user names are prefixed with a @, group names are prefixed with a #. 
   All other names will be considered as full names of contacts. Here any spaces in the name need to be replaced by underscores (_).
-  Each contact is considered a triple of contact id, full name (spaces replaced by underscores) and username prefixed by @. 
+  Each contact is considered a triple of contact id, full name (spaces replaced by underscores) and username or groupname prefixed by @ respectively #. 
   The three parts are separated by a colon (:).
   <br>
   Contacts are collected automatically during communication by new users contacting the bot or users mentioned in messages.

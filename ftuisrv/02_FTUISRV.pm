@@ -1,16 +1,22 @@
+################################################################
 #
 #
-# 02_FTUIHTTPSRV.pm
-# written by Dr. Boris Neubert 2012-08-27
-# modified from Johannes Viegener for usage with FTUI 
-# e-mail: omega at online dot de
+# 02_FTUISRV.pm
 #
-##############################################
-# filenames need to include .ftui. before extension to be parsed
+#   written by Johannes Viegener
+#   based on 02_HTTPSRV written by Dr. Boris Neubert 2012-08-27
+#
+################################################################
+# 0.0 Initial version FTUIHTTPSRV
+#   enable include und key value replacement
+#   also recursive operation
+#   show missing key definitions
+#
+# 0.1 First working version FTUISRV
 #
 #
 #
-##############################################
+################################################################
 #TODO:
 #
 # Allow if for separate sections
@@ -21,6 +27,11 @@
 # remove call back handling?
 # deepcopy only if new keys found
 ##############################################
+# filenames need to include .ftui. before extension to be parsed
+#
+#
+#
+################################################################
 
 package main;
 use strict;
@@ -28,18 +39,29 @@ use warnings;
 use vars qw(%data);
 #use HttpUtils;
 
-my $FTUIHTTPSRV_matchlink = "^\/?(([^\/]*(\/[^\/]+)*)\/?)\$";
+my $FTUISRV_matchlink = "^\/?(([^\/]*(\/[^\/]+)*)\/?)\$";
 
-my $FTUIHTTPSRV_matchtemplatefile = "^.*\.ftui\.[^\.]+\$";
+my $FTUISRV_matchtemplatefile = "^.*\.ftui\.[^\.]+\$";
 
 ##### <\?ftui-inc="([^"\?]+)"\s+([^\?]*)\?>
-my $FTUIHTTPSRV_ftuimatch_inc = '<\?ftui-inc="([^"\?]+)"\s+([^\?]*)\?>';
-my $FTUIHTTPSRV_ftuimatch_keysegment = '^\s*([^=\s]+)="([^"]*)"\s*';
-my $FTUIHTTPSRV_ftuimatch_keygeneric = '<\?ftui-key=([^\s]+)\s*\?>';
+my $FTUISRV_ftuimatch_inc = '<\?ftui-inc="([^"\?]+)"\s+([^\?]*)\?>';
+my $FTUISRV_ftuimatch_keysegment = '^\s*([^=\s]+)="([^"]*)"\s*';
+my $FTUISRV_ftuimatch_keygeneric = '<\?ftui-key=([^\s]+)\s*\?>';
+
+#########################
+# FORWARD DECLARATIONS
+
+sub FTUISRV_handletemplatefile( $$$ );
+
+
+
+
+
+
 
 #########################
 sub
-FTUIHTTPSRV_addExtension($$$$) {
+FTUISRV_addExtension($$$$) {
     my ($name,$func,$link,$friendlyname)= @_;
 
     # do some cleanup on link/url
@@ -47,12 +69,12 @@ FTUIHTTPSRV_addExtension($$$$) {
     #   url should only contain the directory piece with a leading / but no trailing /
     #   $1 is complete link without potentially leading /
     #   $2 is complete link without potentially leading / and trailing /
-    $link =~ /$FTUIHTTPSRV_matchlink/;
+    $link =~ /$FTUISRV_matchlink/;
 
     my $url = "/".$2;
     my $modlink = $1;
 
-    Log3 $name, 3, "Registering FTUIHTTPSRV $name for URL $url   and assigned link $modlink ...";
+    Log3 $name, 3, "Registering FTUISRV $name for URL $url   and assigned link $modlink ...";
     $data{FWEXT}{$url}{deviceName}= $name;
     $data{FWEXT}{$url}{FUNC} = $func;
     $data{FWEXT}{$url}{LINK} = $modlink;
@@ -60,7 +82,7 @@ FTUIHTTPSRV_addExtension($$$$) {
 }
 
 sub 
-FTUIHTTPSRV_removeExtension($) {
+FTUISRV_removeExtension($) {
     my ($link)= @_;
 
     # do some cleanup on link/url
@@ -68,40 +90,40 @@ FTUIHTTPSRV_removeExtension($) {
     #   url should only contain the directory piece with a leading / but no trailing /
     #   $1 is complete link without potentially leading /
     #   $2 is complete link without potentially leading / and trailing /
-    $link =~ /$FTUIHTTPSRV_matchlink/;
+    $link =~ /$FTUISRV_matchlink/;
 
     my $url = "/".$2;
 
     my $name= $data{FWEXT}{$url}{deviceName};
-    Log3 $name, 3, "Unregistering FTUIHTTPSRV $name for URL $url...";
+    Log3 $name, 3, "Unregistering FTUISRV $name for URL $url...";
     delete $data{FWEXT}{$url};
 }
 
 ##################
 sub
-FTUIHTTPSRV_Initialize($) {
+FTUISRV_Initialize($) {
     my ($hash) = @_;
-    $hash->{DefFn}     = "FTUIHTTPSRV_Define";
-    $hash->{DefFn}     = "FTUIHTTPSRV_Define";
-    $hash->{UndefFn}   = "FTUIHTTPSRV_Undef";
-    #$hash->{AttrFn}    = "FTUIHTTPSRV_Attr";
+    $hash->{DefFn}     = "FTUISRV_Define";
+    $hash->{DefFn}     = "FTUISRV_Define";
+    $hash->{UndefFn}   = "FTUISRV_Undef";
+    #$hash->{AttrFn}    = "FTUISRV_Attr";
     $hash->{AttrList}  = "directoryindex " .
                         "readings";
-    $hash->{AttrFn}    = "FTUIHTTPSRV_Attr";                    
-    #$hash->{SetFn}     = "FTUIHTTPSRV_Set";
+    $hash->{AttrFn}    = "FTUISRV_Attr";                    
+    #$hash->{SetFn}     = "FTUISRV_Set";
 
     return undef;
  }
 
 ##################
 sub
-FTUIHTTPSRV_Define($$) {
+FTUISRV_Define($$) {
 
   my ($hash, $def) = @_;
 
   my @a = split("[ \t]+", $def, 6);
 
-  return "Usage: define <name> FTUIHTTPSRV <infix> <directory> [&<callbackfn>] <friendlyname>"  if(( int(@a) != 5) && ( int(@a) != 6) );
+  return "Usage: define <name> FTUISRV <infix> <directory> [&<callbackfn>] <friendlyname>"  if(( int(@a) != 5) && ( int(@a) != 6) );
   my $name= $a[0];
   my $infix= $a[2];
   my $directory= $a[3];
@@ -123,7 +145,7 @@ FTUIHTTPSRV_Define($$) {
 
   Log3 $name, 3, "$name: new ext defined infix:$infix: dir:$directory:";
 
-  FTUIHTTPSRV_addExtension($name, "FTUIHTTPSRV_CGI", $infix, $friendlyname);
+  FTUISRV_addExtension($name, "FTUISRV_CGI", $infix, $friendlyname);
   
   $hash->{STATE} = $name;
   return undef;
@@ -131,18 +153,18 @@ FTUIHTTPSRV_Define($$) {
 
 ##################
 sub
-FTUIHTTPSRV_Undef($$) {
+FTUISRV_Undef($$) {
 
   my ($hash, $name) = @_;
 
-  FTUIHTTPSRV_removeExtension($hash->{fhem}{infix});
+  FTUISRV_removeExtension($hash->{fhem}{infix});
 
   return undef;
 }
 
 ##################
 sub
-FTUIHTTPSRV_Attr(@)
+FTUISRV_Attr(@)
 {
     my ($cmd,$name,$aName,$aVal) = @_;
     if ($cmd eq "set") {        
@@ -163,7 +185,7 @@ FTUIHTTPSRV_Attr(@)
 #
 # here we answer any request to http://host:port/fhem/$infix and below
 
-sub FTUIHTTPSRV_CGI() {
+sub FTUISRV_CGI() {
 
   my ($request) = @_;   # /$infix/filename
 
@@ -191,7 +213,7 @@ sub FTUIHTTPSRV_CGI() {
 #    Debug "name= $name";
 
     # return error if no such device
-    return("text/plain; charset=utf-8", "No FTUIHTTPSRV device for $link") unless($name);
+    return("text/plain; charset=utf-8", "No FTUISRV device for $link") unless($name);
 
     my $fullName = $filename;
     foreach my $reading (split (/,/, AttrVal($name, "readings", "")))  {
@@ -216,7 +238,7 @@ sub FTUIHTTPSRV_CGI() {
     
     my $parhash = {};
     
-    my ($err, $content) = FTUIHTTPSRV_handletemplatefile( $name, $filename, $parhash );
+    my ($err, $content) = FTUISRV_handletemplatefile( $name, $filename, $parhash );
 
     return("text/plain; charset=utf-8", "Error in filehandling: $err") if ( defined($err) );
       
@@ -247,7 +269,7 @@ sub FTUIHTTPSRV_CGI() {
 # returns
 #   err
 #   contents
-sub FTUIHTTPSRV_handletemplatefile( $$$ ) {
+sub FTUISRV_handletemplatefile( $$$ ) {
 
   my ($name, $filename, $parhash) = @_;
 
@@ -256,10 +278,10 @@ sub FTUIHTTPSRV_handletemplatefile( $$$ ) {
   
   Log3 $name, 5, "$name: handletemplatefile :$filename:";
 
-  $content = FTUIHTTPSRV_BinaryFileRead( $filename );
+  $content = FTUISRV_BinaryFileRead( $filename );
   return ("$name: File not existing or empty :$filename:", $content) if ( length($content) == 0 );
 
-  if ( $filename =~ /$FTUIHTTPSRV_matchtemplatefile/ ) {
+  if ( $filename =~ /$FTUISRV_matchtemplatefile/ ) {
     Log3 $name, 4, "$name: is real template :$filename:";
 
     my ($dum, $curdir) = fileparse( $filename );
@@ -271,14 +293,14 @@ sub FTUIHTTPSRV_handletemplatefile( $$$ ) {
       Log3 $name, 4, "$name: start replace in :$filename:    key :$key:   val :$value:";
     }
 
-#    while ( $content =~ /$FTUIHTTPSRV_ftuimatch_keygeneric/s ) {
+#    while ( $content =~ /$FTUISRV_ftuimatch_keygeneric/s ) {
     while ( $content =~ /<\?ftui-key=([^\s]+)\s*\?>/g ) {
       Log3 $name, 4, "$name: unmatched key in file :$filename:    key :$1:";
     }
 
     Log3 $name, 4, "$name: look for includes :$filename:";
 
-    while ( $content =~ /$FTUIHTTPSRV_ftuimatch_inc/s ) {
+    while ( $content =~ /$FTUISRV_ftuimatch_inc/s ) {
       my $incfile = $1;
       my $values = $2;
 
@@ -290,7 +312,7 @@ sub FTUIHTTPSRV_handletemplatefile( $$$ ) {
 
       # parse $values + add keys to inchash
       # ??? check if this can not be handled in a real loop wthout midfying $values each time
-      while ( $values =~ /$FTUIHTTPSRV_ftuimatch_keysegment/s ) {
+      while ( $values =~ /$FTUISRV_ftuimatch_keysegment/s ) {
         my $skey = $1;
         my $sval = $2;
       
@@ -298,7 +320,7 @@ sub FTUIHTTPSRV_handletemplatefile( $$$ ) {
 
         $incparhash->{$skey} = $sval;
 
-        $values =~ s/$FTUIHTTPSRV_ftuimatch_keysegment//s;
+        $values =~ s/$FTUISRV_ftuimatch_keysegment//s;
       }
      
       # build new filename (if not absolute already)
@@ -306,14 +328,14 @@ sub FTUIHTTPSRV_handletemplatefile( $$$ ) {
         
       Log3 $name, 4, "$name: start handling include (rec) :$incfile:";
       my $inccontent;
-      ($err, $inccontent) = FTUIHTTPSRV_handletemplatefile( $name, $incfile, $incparhash );
+      ($err, $inccontent) = FTUISRV_handletemplatefile( $name, $incfile, $incparhash );
       
       Log3 $name, 4, "$name: done handling include (rec) :$incfile: ".(defined($err)?"Err: ".$err:"ok");
 
       # error will always result in stopping recursion
       return ($err." (included)", $content) if ( defined($err) );
                     
-      $content =~ s/$FTUIHTTPSRV_ftuimatch_inc/$inccontent/s;
+      $content =~ s/$FTUISRV_ftuimatch_inc/$inccontent/s;
 #      Log3 $name, 3, "$name: done handling include new content:----------------\n$content\n--------------------";
     }
   }
@@ -352,7 +374,7 @@ sub deepcopy
 ##################
 #
 # Callback for FTUI handling
-sub FTUIHTTPSRV_returnFileContent($$) {
+sub FTUISRV_returnFileContent($$) {
   my ($name, $request) = @_;   # name of extension and request (url)
 
   # split request
@@ -386,7 +408,7 @@ sub FTUIHTTPSRV_returnFileContent($$) {
 ######################################
 #  read binary file for Phototransfer - returns undef or empty string on error
 #  
-sub FTUIHTTPSRV_BinaryFileRead($) {
+sub FTUISRV_BinaryFileRead($) {
 	my ($fileName) = @_;
 
   return '' if ( ! (-e $fileName) );
@@ -406,7 +428,7 @@ sub FTUIHTTPSRV_BinaryFileRead($) {
 ##################
 #
 # Callback for FTUI handling
-sub FTUIHTTPSRV_callback($$) {
+sub FTUISRV_callback($$) {
    
   my ($name, $request) = @_;   # name of extension and request (url)
    
@@ -430,14 +452,14 @@ sub FTUIHTTPSRV_callback($$) {
 =pod
 =begin html
 
-<a name="FTUIHTTPSRV"></a>
-<h3>FTUIHTTPSRV</h3>
+<a name="FTUISRV"></a>
+<h3>FTUISRV</h3>
 <ul>
   Provides a mini HTTP server plugin for FHEMWEB for the specific use with FTUI. It serves files from a given directory and parses them according to specific rules.
   
-  FTUIHTTPSRV is an extension to <a href="FTUIHTTPSRV">FHEMWEB</a>. You must install FHEMWEB to use FTUIHTTPSRV.</p>
+  FTUISRV is an extension to <a href="FTUISRV">FHEMWEB</a>. You must install FHEMWEB to use FTUISRV.</p>
 
-  <a name="FTUIHTTPSRVdefine"></a>
+  <a name="FTUISRVdefine"></a>
   <b>Define</b>
   <ul>
     <code>define &lt;name&gt; &lt;infix&gt; &lt;directory&gt; &lt;friendlyname&gt;</code><br><br>
@@ -448,14 +470,14 @@ sub FTUIHTTPSRV_callback($$) {
     <br>
   </ul>
 
-  <a name="FTUIHTTPSRVset"></a>
+  <a name="FTUISRVset"></a>
   <b>Set</b>
   <ul>
     n/a
   </ul>
   <br><br>
 
-  <a name="FTUIHTTPSRVattr"></a>
+  <a name="FTUISRVattr"></a>
   <b>Attributes</b>
   <br><br>
   <ul>

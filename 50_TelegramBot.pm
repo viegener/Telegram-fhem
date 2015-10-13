@@ -126,6 +126,8 @@
 #   Allow also # in 3rd part of contacts for groups
 #   Encode user names and full names in contacts (: to _ / remove multiple spaces / space to _ )
 #   Get chatid from communication to allow answering to groups
+#   Contacts can also have empty names (but either name or user must be set)
+#   FIX: multiple polling cycles in parallel after rereadcfg --> all resetpollings delayed by some time to end current cycles
 #
 ##############################################################################
 # TASKS 
@@ -138,7 +140,6 @@
 #
 #   BUG?: delayed start leads to early messages failing??
 #   BUG?: contacts got lost on shutdown and restart
-#   BUG?: multiple polling cycles in parallel after rereadcfg --> although undef is called
 #
 #   Allow send to multiple recipients?
 #   add messageReplyTo
@@ -281,7 +282,7 @@ sub TelegramBot_Define($$) {
   $hash->{WAIT} = 0;
   $hash->{FAILS} = 0;
   $hash->{UPDATER} = 0;
-  $hash->{POLLING} = 0;
+  $hash->{POLLING} = -1;
 
   $hash->{HU_UPD_PARAMS} = \%TelegramBot_hu_upd_params;
   $hash->{HU_DO_PARAMS} = \%TelegramBot_hu_do_params;
@@ -575,10 +576,10 @@ sub TelegramBot_Attr(@) {
       }
       # let all existing methods run into block
       RemoveInternalTimer($hash);
-      $hash->{POLLING} = 1;
+      $hash->{POLLING} = -1;
       
       # wait some time before next polling is starting
-      InternalTimer(gettimeofday()+45, "TelegramBot_ResetPolling", $hash,0); 
+      TelegramBot_ResetPolling( $hash );
 
     }
 	}
@@ -1054,12 +1055,12 @@ sub TelegramBot_Callback($$$)
 
   my $ret;
   my $result;
-  
+
   if ( defined( $param->{isPolling} ) ) {
     $hash->{OLD_POLLING} = ( ( defined( $hash->{POLLING} ) )?$hash->{POLLING}:0 ) + 1;
     $hash->{OLD_POLLING} = 1 if ( $hash->{OLD_POLLING} > 255 );
     
-    $hash->{POLLING} = 0 if ( defined( $param->{isPolling} ) );
+    $hash->{POLLING} = 0 if ( $hash->{POLLING} != -1 ) ;
   }
   
   Log3 $name, 5, "TelegramBot_Callback $name: called from ".(( defined( $param->{isPolling} ) )?"Polling":"SendIt");
@@ -1436,21 +1437,24 @@ sub TelegramBot_CalcContactsHash($$)
   # for each element - get id as hashtag and full contact as value
   foreach  my $contact ( @contactList ) {
     my ( $id, $cname, $cuser ) = split( ":", $contact, 3 );
-    # add contact only if all three parts are there and 2nd part not empty and 3rd part either empty or start with @ or # and at least 3 chars
+    # add contact only if all three parts are there and either 2nd or 3rd part not empty and 3rd part either empty or start with @ or # and at least 3 chars
     # and id must be only digits
     $cuser = "" if ( ! defined( $cuser ) );
+    $cname = "" if ( ! defined( $cname ) );
     
-#  Log3 $hash->{NAME}, 4, "Contact add :$contact:   :$id:  :$cname: :$cuser:";
+    Log3 $hash->{NAME}, 5, "Contact add :$contact:   :$id:  :$cname: :$cuser:";
   
-    if ( ! defined( $cname ) ) {
-      next;
-    } elsif ( length( $cname ) == 0 ) {
-      next;
-    } elsif ( ( length( $cuser ) > 0 ) && ( $cuser =~ /^[@#]/ ) ) {
+    if ( ( length( $cname ) == 0 ) && ( length( $cuser ) == 0 ) ) {
+      Log3 $hash->{NAME}, 5, "Contact add :$contact: has empty cname and cuser:";
       next;
     } elsif ( ( length( $cuser ) > 0 ) && ( length( $cuser ) < 3 ) ) {
+      Log3 $hash->{NAME}, 5, "Contact add :$contact: cuser not long enough (3):";
+      next;
+    } elsif ( ( length( $cuser ) > 0 ) && ( $cuser !~ /^[\@#]/ ) ) {
+      Log3 $hash->{NAME}, 5, "Contact add :$contact: cuser not matching start chars:";
       next;
     } elsif ( $id !~ /^\-?[[:digit:]]+$/ ) {
+      Log3 $hash->{NAME}, 5, "Contact add :$contact: cid is not number or -number:";
       next;
     } else {
       $cname =~ TelegramBot_encodeContactString( $cname );
@@ -1647,13 +1651,33 @@ sub TelegramBot_ResetPolling($) {
   $hash->{WAIT} = 0;
   $hash->{FAILS} = 0;
 
+  # let all existing methods first run into block
+  $hash->{POLLING} = -1;
+  
+  # wait some time before next polling is starting
+  InternalTimer(gettimeofday()+45, "TelegramBot_RestartPolling", $hash,0); 
+
+  Log3 $name, 4, "TelegramBot_ResetPolling $name: finished ";
+
+}
+
+  
+######################################
+#  make sure a reinitialization is triggered on next update
+#  
+sub TelegramBot_RestartPolling($) {
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+
+  Log3 $name, 4, "TelegramBot_RestartPolling $name: called ";
+
   # Now polling can start
   $hash->{POLLING} = 0;
 
-  # Initiate long poll for updates
+  # wait some time before next polling is starting
   TelegramBot_UpdatePoll($hash);
 
-  Log3 $name, 4, "TelegramBot_ResetPolling $name: finished ";
+  Log3 $name, 4, "TelegramBot_RestartPolling $name: finished ";
 
 }
 
@@ -1670,7 +1694,7 @@ sub TelegramBot_Setup($) {
   $hash->{me} = "<unknown>";
   $hash->{STATE} = "Undefined";
 
-  $hash->{POLLING} = 1;
+  $hash->{POLLING} = -1;
 
   # Ensure queueing is not happening
   delete( $hash->{sentQueue} );

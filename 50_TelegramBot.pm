@@ -132,10 +132,17 @@
 ##############################################################################
 # TASKS 
 #
+#   unify message and messageTo (contacts to be specified with leading @ (@@ for usernames))
+#   deprecated *To calls (not in list for web / deprecated in documentation / but still existing)
+#
+#   show in msgPeer (and similar readings/internals) always user readable name (fullname or username)
+#
 #   Fix emoticons --> decode utf-16 to utf-8 ??
 #   
 #   svn checkin + add to maintainer.txt + checkin with description new module + ankuendigungs post + telegram thread post + wiki change
 #
+#   add chat id on received messages
+#   
 #   add keyboards
 #
 #   BUG?: delayed start leads to early messages failing??
@@ -160,6 +167,7 @@ use strict;
 use warnings;
 #use DevIo;
 use HttpUtils;
+use Encode;
 use JSON; 
 
 use File::Basename;
@@ -869,6 +877,7 @@ sub TelegramBot_SendIt($$$$$)
 
     if ( $isText ) {
       $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage";
+      # $TelegramBot_hu_do_params{url} = "http://requestb.in/q6o06yq6";
 
       $hash->{sentMsgText} = $msg;
   #    my $c = chr(10);
@@ -884,7 +893,7 @@ sub TelegramBot_SendIt($$$$$)
       $hash->{sentMsgText} = "Image: $msg";
 
       $TelegramBot_hu_do_params{url} = $hash->{URL}."sendPhoto";
-      #    $TelegramBot_hu_do_params{url} = "http://requestb.in/1fbddf61";
+      #    $TelegramBot_hu_do_params{url} = "http://requestb.in/q6o06yq6";
 
       # add caption
       if ( defined( $addPar ) ) {
@@ -1075,38 +1084,78 @@ sub TelegramBot_Callback($$$)
     Log3 $name, 5, "TelegramBot_ParseUpdate $name: data returned :$data:";
     my $jo;
  
-###################### 
+
+### basic version with masking of unicodes 
      eval {
        # quick hack for emoticons ??? - replace \u with \\u
-         $data =~ s/(\\u[0-9a-f]{4})/\\$1/g;
-         $jo = decode_json( $data );
-  #     $data =~ s/(\\u[0-9a-f]{4})/\\\1/g;
-  #     $jo = from_json( $data, {ascii => 1});
-     };
-
- #   eval {
-# print "CODE:";
-# print $data;
-# print ";\n";
+#       $data =~ s/(\\u[0-9a-f]{4})/%M%\\$1%M%/g;
+       $data = encode( 'latin1', $data );
+ Debug "-----AFTER------\n".$data."\n-------UC=".${^UNICODE} ."-----\n";
+       $jo = decode_json( $data );
+    };
  
-# $jo = from_json( $data );
-#       $jo = decode_json( encode( 'utf8', $data ) );
-#my $json = JSON->new;
+ 
+ 
+ 
+#use utf8;
+#Debug "-----BEFORE------\n".$data."\n-------------\n";
+# ###################### 
+     # eval {
+       # # quick hack for emoticons ??? - replace \u with \\u
+# #       use utf8;
+       # my $data2 = $data;
+       # $data2 = encode( 'utf8', $data );
+# #         $data2 =~ s/(\\u[0-9a-f]{4})/\\$1\x00\xf6/g;
+         # $data2 =~ s/\\u([0-9a-f]{2})([0-9a-f]{2})/x$1x$2/g;
 
 
-#       $jo = from_json( $data, {ascii => 1});
+# Debug "-----AFTER------\n".$data2."\n-------UC=".${^UNICODE} ."-----\n";
+# #_utf8_on($data2);
+# #         $jo = decode_json( $data2 );
+          # $jo = JSON->new->ascii(1)->utf8(1)->latin1(0)->decode( $data2 );
+         
+# #         $jo = JSON->new->utf8->decode($data2);
+         
+# # works but afterwards is coded in Western / ISO - ok in linux terminal but wrong in browser
+# #       use utf8;
+# #       my $data2 = encode( 'utf8', $data );
+# #       Debug "-----AFTER------\n".$data."\n-------------\n";
+# #       $jo = JSON->new->utf8->decode($data2);
+
+
+
+
+
+
+  # #     $data =~ s/(\\u[0-9a-f]{4})/\\\1/g;
+  # #     $jo = from_json( $data, {ascii => 1});
+# #     };
+
+ # #   eval {
+# # print "CODE:";
+# # print $data;
+# # print ";\n";
+ 
+# # $jo = from_json( $data );
+# #       $jo = decode_json( encode( 'utf8', $data ) );
+# #my $json = JSON->new;
+
+
+# #       $jo = from_json( $data, {ascii => 1});
        
-       #      my $json        = JSON->new->utf8;
-#      $jo = $json->ascii(1)->utf8(0)->decode( $data );
- #   };
+       # #      my $json        = JSON->new->utf8;
+# #      $jo = $json->ascii(1)->utf8(0)->decode( $data );
+  # };
 
 ###################### 
  
-    if ( ! defined( $jo ) ) {
+    if ( $@ ) {
+      $ret = "Callback returned no valid JSON: $@ ";
+    } elsif ( ! defined( $jo ) ) {
       $ret = "Callback returned no valid JSON !";
     } elsif ( ! $jo->{ok} ) {
       if ( defined( $jo->{description} ) ) {
-        $ret = "Callback returned error:".$jo->{description}.":";
+        $ret = "Callback returned error:".TelegramBot_GetUTF8Back( $jo->{description} ).":";
       } else {
         $ret = "Callback returned error without description";
       }
@@ -1175,6 +1224,20 @@ sub TelegramBot_Callback($$$)
 }
 
 
+
+sub TelegramBot_GetUTF8Back( $ ) {
+  my ( $data ) = @_;
+  
+  $data =~ s/%M%(\\u[0-9a-f]{4})%M%/$1/g;
+
+  return encode('utf8', $data);
+}
+  
+
+
+
+
+
 #####################################
 #  INTERNAL: _ParseMsg handle a message from the update call 
 #   params are the hash, the updateid and the actual message
@@ -1212,8 +1275,12 @@ sub TelegramBot_ParseMsg($$$)
 
   # handle text message
   if ( defined( $message->{text} ) ) {
-    my $mtext = $message->{text};
-   
+    my $mtext = TelegramBot_GetUTF8Back( $message->{text} );
+
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: text   :$mtext:";
+
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: text utf8  :".encode( 'utf8', $mtext).":";
+    
     my $mpeernorm = $mpeer;
     $mpeernorm =~ s/^\s+|\s+$//g;
     $mpeernorm =~ s/ /_/g;
@@ -1227,12 +1294,14 @@ sub TelegramBot_ParseMsg($$$)
     readingsBulkUpdate($hash, "prevMsgPeerId", $hash->{READINGS}{msgPeerId}{VAL});				
     readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
 
+    readingsBulkUpdate($hash, "Contacts", TelegramBot_ContactUpdate( $hash, @contacts )) if ( scalar(@contacts) > 0 );
+
     readingsBulkUpdate($hash, "msgId", $mid);				
     readingsBulkUpdate($hash, "msgPeer", TelegramBot_GetFullnameForContact( $hash, $mpeernorm ));				
     readingsBulkUpdate($hash, "msgPeerId", $mpeernorm);				
     readingsBulkUpdate($hash, "msgText", $mtext);				
+#    readingsBulkUpdate($hash, "msgText", encode( 'utf8', $mtext));				
 
-    readingsBulkUpdate($hash, "Contacts", TelegramBot_ContactUpdate( $hash, @contacts )) if ( scalar(@contacts) > 0 );
 
     readingsEndUpdate($hash, 1);
     
@@ -1548,7 +1617,7 @@ sub TelegramBot_encodeContactString($) {
     $str =~ s/^\s+|\s+$//g;
     $str =~ s/ /_/g;
 
-  return $str;
+  return TelegramBot_GetUTF8Back( $str );
 }
 
 ##############################################################################

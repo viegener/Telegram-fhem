@@ -128,9 +128,8 @@
 #   Get chatid from communication to allow answering to groups
 #   Contacts can also have empty names (but either name or user must be set)
 #   FIX: multiple polling cycles in parallel after rereadcfg --> all resetpollings delayed by some time to end current cycles
-
 #   Support for emoticons (by strangely marking the data as latin-1 then now conversion is happening)
-#
+#   utf8 conversion needs to be done before using in print etc 
 #
 ##############################################################################
 # TASKS 
@@ -1176,8 +1175,6 @@ sub TelegramBot_Callback($$$)
 sub TelegramBot_GetUTF8Back( $ ) {
   my ( $data ) = @_;
   
-  $data =~ s/%M%(\\u[0-9a-f]{4})%M%/$1/g;
-
   return encode('utf8', $data);
 }
   
@@ -1223,7 +1220,7 @@ sub TelegramBot_ParseMsg($$$)
 
   # handle text message
   if ( defined( $message->{text} ) ) {
-    my $mtext = $message->{text};
+    my $mtext = TelegramBot_GetUTF8Back( $message->{text} );
 
     Log3 $name, 4, "TelegramBot_ParseMsg $name: text   :$mtext:";
 

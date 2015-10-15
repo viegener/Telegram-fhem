@@ -1087,67 +1087,13 @@ sub TelegramBot_Callback($$$)
     my $jo;
  
 
-### basic version with masking of unicodes 
+### mark as latin1 to ensure no conversion is happening (this works surprisingly)
      eval {
-       # quick hack for emoticons ??? - replace \u with \\u
-#       $data =~ s/(\\u[0-9a-f]{4})/%M%\\$1%M%/g;
        $data = encode( 'latin1', $data );
- Debug "-----AFTER------\n".$data."\n-------UC=".${^UNICODE} ."-----\n";
+# Debug "-----AFTER------\n".$data."\n-------UC=".${^UNICODE} ."-----\n";
        $jo = decode_json( $data );
     };
  
- 
- 
- 
-#use utf8;
-#Debug "-----BEFORE------\n".$data."\n-------------\n";
-# ###################### 
-     # eval {
-       # # quick hack for emoticons ??? - replace \u with \\u
-# #       use utf8;
-       # my $data2 = $data;
-       # $data2 = encode( 'utf8', $data );
-# #         $data2 =~ s/(\\u[0-9a-f]{4})/\\$1\x00\xf6/g;
-         # $data2 =~ s/\\u([0-9a-f]{2})([0-9a-f]{2})/x$1x$2/g;
-
-
-# Debug "-----AFTER------\n".$data2."\n-------UC=".${^UNICODE} ."-----\n";
-# #_utf8_on($data2);
-# #         $jo = decode_json( $data2 );
-          # $jo = JSON->new->ascii(1)->utf8(1)->latin1(0)->decode( $data2 );
-         
-# #         $jo = JSON->new->utf8->decode($data2);
-         
-# # works but afterwards is coded in Western / ISO - ok in linux terminal but wrong in browser
-# #       use utf8;
-# #       my $data2 = encode( 'utf8', $data );
-# #       Debug "-----AFTER------\n".$data."\n-------------\n";
-# #       $jo = JSON->new->utf8->decode($data2);
-
-
-
-
-
-
-  # #     $data =~ s/(\\u[0-9a-f]{4})/\\\1/g;
-  # #     $jo = from_json( $data, {ascii => 1});
-# #     };
-
- # #   eval {
-# # print "CODE:";
-# # print $data;
-# # print ";\n";
- 
-# # $jo = from_json( $data );
-# #       $jo = decode_json( encode( 'utf8', $data ) );
-# #my $json = JSON->new;
-
-
-# #       $jo = from_json( $data, {ascii => 1});
-       
-       # #      my $json        = JSON->new->utf8;
-# #      $jo = $json->ascii(1)->utf8(0)->decode( $data );
-  # };
 
 ###################### 
  
@@ -1277,11 +1223,11 @@ sub TelegramBot_ParseMsg($$$)
 
   # handle text message
   if ( defined( $message->{text} ) ) {
-    my $mtext = TelegramBot_GetUTF8Back( $message->{text} );
+    my $mtext = $message->{text};
 
     Log3 $name, 4, "TelegramBot_ParseMsg $name: text   :$mtext:";
 
-    Log3 $name, 4, "TelegramBot_ParseMsg $name: text utf8  :".encode( 'utf8', $mtext).":";
+#    Log3 $name, 4, "TelegramBot_ParseMsg $name: text utf8  :".encode( 'utf8', $mtext).":";
     
     my $mpeernorm = $mpeer;
     $mpeernorm =~ s/^\s+|\s+$//g;

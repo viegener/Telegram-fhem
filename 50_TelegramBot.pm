@@ -137,6 +137,7 @@
 #   deprecated messageTo / sendImageTo (not showing up in web) but still working
 #   show in msgPeer (and other readings) user readable name (fullname or username or id if both not found) 
 #   add chat id on received messages
+# 0.9 2015-10-15 alignment of commands (ATTENTION), support for unicode and emojis, chat-group support 
 #   
 #   
 #   

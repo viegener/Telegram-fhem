@@ -130,19 +130,17 @@
 #   FIX: multiple polling cycles in parallel after rereadcfg --> all resetpollings delayed by some time to end current cycles
 #   Support for emoticons (by strangely marking the data as latin-1 then now conversion is happening)
 #   utf8 conversion needs to be done before using in print etc 
-
 #   removed sendPhoto / sendPhotoTo --> only sendImage
-#   
-#   
-#   
+
+#   message / sendImage are accepting an optional peerid with prefix @ (@@ for usernames)
+#       set telegrambot message @123456 a message to be send
+#   deprecated messageTo / sendImageTo (not showing up in web) but still working
+#   changed documentation on message and sendImage
 #   
 #   
 #
 ##############################################################################
 # TASKS 
-#
-#   unify message and messageTo (contacts to be specified with leading @ (@@ for usernames))
-#   deprecated *To calls (not in list for web / deprecated in documentation / but still existing)
 #
 #   show in msgPeer (and similar readings/internals) always user readable name (fullname or username)
 #
@@ -385,17 +383,50 @@ sub TelegramBot_Set($@)
   
 	if( ($cmd eq 'message') || ($cmd eq 'msg') ) {
     if ( $numberOfArgs < 2 ) {
-      return "TelegramBot_Set: Command $cmd, no text specified";
+      return "TelegramBot_Set: Command $cmd, no text (and no optional peer) specified";
     }
-    my $peer = AttrVal($name,'defaultPeer',undef);
-    if ( ! defined($peer) ) {
-      return "TelegramBot_Set: Command $cmd, requires defaultPeer being set";
+    my $peer;
+    if ( $args[0] =~ /^@(..+)$/ ) {
+      $peer = $1;
+      shift @args;
+      return "TelegramBot_Set: Command $cmd, no text specified" if ( $numberOfArgs < 3 );
+    } else {
+      $peer = AttrVal($name,'defaultPeer',undef);
+      return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peer) );
     }
+
     # should return undef if succesful
     Log3 $name, 4, "TelegramBot_Set $name: start message send ";
     my $arg = join(" ", @args );
     $ret = TelegramBot_SendIt( $hash, $peer, $arg, undef, 1 );
 
+  } elsif ( ($cmd eq 'sendPhoto') || ($cmd eq 'sendImage')  ) {
+    if ( $numberOfArgs < 2 ) {
+      return "TelegramBot_Set: Command $cmd, need to specify filename ";
+    }
+
+    my $peer;
+    if ( $args[0] =~ /^@(..+)$/ ) {
+      $peer = $1;
+      shift @args;
+      return "TelegramBot_Set: Command $cmd, need to specify filename" if ( $numberOfArgs < 3 );
+    } else {
+      $peer = AttrVal($name,'defaultPeer',undef);
+      return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peer) );
+    }
+
+    # should return undef if succesful
+    my $file = shift @args;
+    $file = $1 if ( $file =~ /^\"(.*)\"$/ );
+    
+    my $caption;
+    $caption = join(" ", @args ) if ( int(@args) > 0 );
+
+    Log3 $name, 5, "TelegramBot_Set $name: start photo send ";
+#    $ret = "TelegramBot_Set: Command $cmd, not yet supported ";
+    $ret = TelegramBot_SendIt( $hash, $peer, $file, $caption, 0 );
+
+  # DEPRECATED
 	} elsif($cmd eq 'messageTo') {
     if ( $numberOfArgs < 3 ) {
       return "TelegramBot_Set: Command $cmd, need to specify peer and text ";
@@ -407,27 +438,8 @@ sub TelegramBot_Set($@)
 
     Log3 $name, 4, "TelegramBot_Set $name: start message send ";
     $ret = TelegramBot_SendIt( $hash, $peer, $arg, undef, 1 );
-
-  } elsif ( ($cmd eq 'sendPhoto') || ($cmd eq 'sendImage')  ) {
-    if ( $numberOfArgs < 2 ) {
-      return "TelegramBot_Set: Command $cmd, need to specify filename ";
-    }
-
-    # should return undef if succesful
-    my $peer = AttrVal($name,'defaultPeer',undef);
-    if ( ! defined($peer) ) {
-      return "TelegramBot_Set: Command $cmd, requires defaultPeer being set";
-    }
-    my $file = shift @args;
-    $file = $1 if ( $file =~ /^\"(.*)\"$/ );
-    
-    my $caption;
-    $caption = join(" ", @args ) if ( $numberOfArgs > 2 );
-
-    Log3 $name, 5, "TelegramBot_Set $name: start photo send ";
-#    $ret = "TelegramBot_Set: Command $cmd, not yet supported ";
-    $ret = TelegramBot_SendIt( $hash, $peer, $file, $caption, 0 );
-
+ 
+  # DEPRECATED
   } elsif ($cmd eq 'sendImageTo') {
     if ( $numberOfArgs < 3 ) {
       return "TelegramBot_Set: Command $cmd, need to specify peer and text ";
@@ -1358,7 +1370,7 @@ sub TelegramBot_GetIdForPeer($$)
   } elsif ( $mpeer =~ /^[@#].*$/ ) {
     foreach  my $mkey ( keys $hash->{Contacts} ) {
       my @clist = split( /:/, $hash->{Contacts}{$mkey} );
-      if ( $clist[2] eq $mpeer ) {
+      if ( (defined($clist[2])) && ( $clist[2] eq $mpeer ) ) {
         $id = $clist[0];
         last;
       }
@@ -1368,7 +1380,7 @@ sub TelegramBot_GetIdForPeer($$)
     $mpeer =~ s/ /_/g;
     foreach  my $mkey ( keys $hash->{Contacts} ) {
       my @clist = split( /:/, $hash->{Contacts}{$mkey} );
-      if ( $clist[1] eq $mpeer ) {
+      if ( (defined($clist[1])) && ( $clist[1] eq $mpeer ) ) {
         $id = $clist[0];
         last;
       }
@@ -1889,18 +1901,26 @@ sub TelegramBot_convertpeer($)
     where &lt;what&gt; is one of
 
   <br><br>
-    <li><code>message|msg &lt;text&gt;</code><br>Sends the given message to the currently defined default peer user</li>
-    <li><code>messageTo &lt;peer&gt; &lt;text&gt;</code><br>Sends the given message to the given peer. 
-    Peer needs to be given without space or other separator, i.e. spaces should be replaced by underscore (e.g. first_last)</li>
-
-  <br><br>
-    <li><code>sendImage &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the default peer. 
+    <li><code>message|msg [@&lt;peer&gt;] &lt;text&gt;</code><br>Sends the given message to the given peer or if peer is ommitted currently defined default peer user. If a peer is given it needs to be always prefixed with a '@'. Peers can be specified as contact ids, full names (with underscore instead of space), usernames (prefixed with another @) or chat names (also known as groups in telegram groups must be prefixed with #).<br>
+    Messages do not need to be quoted if containing spaces.<br>
+    Examples:<br>
+      <dl>
+        <dt><code>set aTelegramBotDevice message @@someusername a message to be sent</code></dt>
+          <dd> to send to a user having someusername as username (not first and last name) in telegram <br> </dd>
+        <dt><code>set aTelegramBotDevice message @Ralf_Mustermann another message</code></dt>
+          <dd> to send to a user Ralf as firstname and Mustermann as last name in telegram   <br></dd>
+        <dt><code>set aTelegramBotDevice message @#justchatting Hello</code></dt>
+          <dd> to send the message "Hello" to a chat with the name "justchatting"   <br></dd>
+        <dt><code>set aTelegramBotDevice message @1234567 Bye</code></dt>
+          <dd> to send the message "Bye" to a contact or chat with the id "1234567". Chat ids might be negative and need to be specified with a leading hyphen (-). <br></dd>
+      <dl>
+    </li>
+    <li><code>sendImage [@&lt;peer&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given or if ommitted to the default peer. 
     File is specifying a filename and path to the image file to be send. 
     Local paths should be given local to the root directory of fhem (the directory of fhem.pl e.g. /opt/fhem).
-    filenames containing spaces need to be given in parentheses.</li>
-    <li><code>sendImageTo &lt;peer&gt; &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer, 
-    other arguments are handled as with <code>sendPhoto</code></li>
-
+    filenames containing spaces need to be given in parentheses.<br>
+    Rule for specifying peers are the same as for messages. Captions can also contain multiple words and do not need to be quoted.
+    </li>
   <br><br>
     <li><code>replaceContacts &lt;text&gt;</code><br>Set the contacts newly from a string. Multiple contacts can be separated by a space. 
     Each contact needs to be specified as a triple of contact id, full name and user name as explained above. </li>
@@ -1908,6 +1928,12 @@ sub TelegramBot_convertpeer($)
     internal contact handling, queue of send items and polling <br>
     ATTENTION: Messages that might be queued on the telegram server side (especially commands) might be then worked off afterwards immedately. 
     If in doubt it is recommened to temporarily deactivate (delete) the cmdKeyword attribute before resetting.</li>
+
+  <br><br>
+    <li>DEPRECATED: <code>sendImageTo &lt;peer&gt; &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer, 
+    other arguments are handled as with <code>sendPhoto</code></li>
+    <li>DEPRECATED: <code>messageTo &lt;peer&gt; &lt;text&gt;</code><br>Sends the given message to the given peer. 
+    Peer needs to be given without space or other separator, i.e. spaces should be replaced by underscore (e.g. first_last)</li>
 
   </ul>
   <br><br>

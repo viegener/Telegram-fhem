@@ -131,23 +131,25 @@
 #   Support for emoticons (by strangely marking the data as latin-1 then now conversion is happening)
 #   utf8 conversion needs to be done before using in print etc 
 #   removed sendPhoto / sendPhotoTo --> only sendImage
-
 #   message / sendImage are accepting an optional peerid with prefix @ (@@ for usernames)
 #       set telegrambot message @123456 a message to be send
-#   deprecated messageTo / sendImageTo (not showing up in web) but still working
 #   changed documentation on message and sendImage
+#   deprecated messageTo / sendImageTo (not showing up in web) but still working
+#   show in msgPeer (and other readings) user readable name (fullname or username or id if both not found) 
+
+#   
+#   
 #   
 #   
 #
 ##############################################################################
 # TASKS 
 #
-#   show in msgPeer (and similar readings/internals) always user readable name (fullname or username)
-#
 #   add chat id on received messages
 #   
 #   svn checkin + add to maintainer.txt + checkin with description new module + ankuendigungs post + telegram thread post + wiki change
 #
+#   allow sending to contacts not known if user id is specified
 #
 #   add keyboards
 #
@@ -195,13 +197,14 @@ sub TelegramBot_Callback($$$);
 my %sets = (
 	"message" => "textField",
 	"msg" => "textField",
-	"secretChat" => undef,
-	"messageTo" => "textField",   
-#	"sendPhoto" => "textField",   deprecated
-#	"sendPhotoTo" => "textField", deprecated
 	"sendImage" => "textField",
-	"sendImageTo" => "textField",  
 	"zDebug" => "textField",
+
+#	"messageTo" => "textField",   deprecated
+#	"sendImageTo" => "textField", deprecated
+#	"sendPhoto" => "textField",   removed
+#	"sendPhotoTo" => "textField", removed
+
   # BOTONLY
 	"replaceContacts" => "textField",
 	"reset" => undef
@@ -879,7 +882,7 @@ sub TelegramBot_SendIt($$$$$)
     $peer2 = "";
   }
   
-  $hash->{sentMsgPeer} = $peer;
+  $hash->{sentMsgPeer} = TelegramBot_GetFullnameForContact( $hash, $peer2 );
   $hash->{sentMsgPeerId} = $peer2;
   
   # init param hash
@@ -1420,6 +1423,8 @@ sub TelegramBot_GetFullnameForContact($$)
       Log3 $hash->{NAME}, 4, "TelegramBot_GetFullnameForContact # Contacts is $contact:";
       my @clist = split( /:/, $contact );
       $ret = $clist[1];
+      $ret = $clist[2] if ( ! $ret);
+      $ret = $clist[0] if ( ! $ret);
       Log3 $hash->{NAME}, 4, "TelegramBot_GetFullnameForContact # name is $ret";
   } else {
     Log3 $hash->{NAME}, 4, "TelegramBot_GetFullnameForContact # Contacts is <undef>";
@@ -2006,16 +2011,16 @@ sub TelegramBot_convertpeer($)
   <br><br>
     <li>msgId &lt;text&gt;<br>The id of the last received message is stored in this reading. 
     For secret chats a value of -1 will be given, since the msgIds of secret messages are not part of the consecutive numbering</li> 
-    <li>msgPeer &lt;text&gt;<br>The sender of the last received message as specified in the command.</li> 
-    <li>msgPeerId &lt;text&gt;<br>The sender id of the last received message.</li> 
+    <li>msgPeer &lt;text&gt;<br>The sender name of the last received message (either full name or if not available @username)</li> 
+    <li>msgPeerId &lt;text&gt;<br>The sender id of the last received message</li> 
     <li>msgText &lt;text&gt;<br>The last received message text is stored in this reading.</li> 
 
   <br><br>
 
-    <li>prevMsgId &lt;text&gt;<br>The id of the SECOND last received message is stored in this reading.</li> 
-    <li>prevMsgPeer &lt;text&gt;<br>The sender of the SECOND last received message.</li> 
-    <li>prevMsgPeerId &lt;text&gt;<br>The sender id of the SECOND last received message.</li> 
-    <li>prevMsgText &lt;text&gt;<br>The SECOND last received message text is stored in this reading.</li> 
+    <li>prevMsgId &lt;text&gt;<br>The id of the SECOND last received message is stored in this reading</li> 
+    <li>prevMsgPeer &lt;text&gt;<br>The sender name of the SECOND last received message (either full name or if not available @username)</li> 
+    <li>prevMsgPeerId &lt;text&gt;<br>The sender id of the SECOND last received message</li> 
+    <li>prevMsgText &lt;text&gt;<br>The SECOND last received message text is stored in this reading</li> 
 
   <br><br>
     <li>StoredCommands &lt;text&gt;<br>A list of the last commands executed through TelegramBot. Maximum 10 commands are stored.</li> 

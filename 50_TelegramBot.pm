@@ -136,7 +136,8 @@
 #   changed documentation on message and sendImage
 #   deprecated messageTo / sendImageTo (not showing up in web) but still working
 #   show in msgPeer (and other readings) user readable name (fullname or username or id if both not found) 
-
+#   add chat id on received messages
+#   
 #   
 #   
 #   
@@ -145,23 +146,16 @@
 ##############################################################################
 # TASKS 
 #
-#   add chat id on received messages
-#   
 #   svn checkin + add to maintainer.txt + checkin with description new module + ankuendigungs post + telegram thread post + wiki change
-#
-#   allow sending to contacts not known if user id is specified
 #
 #   add keyboards
 #
-#   BUG?: delayed start leads to early messages failing??
-#
-#   Allow send to multiple recipients?
-#   add messageReplyTo
 #
 ##############################################################################
 # Ideas / Future
 #   Merge TelegramBot into Telegram
-#   allow and honor attributes for gaining contacts - no new contacts etc
+#   Allow send to multiple recipients?
+#   add replyTo
 #
 ##############################################################################
 # Info: Max time out for getUpdates seem to be 20 s (TelegramBot)
@@ -1223,9 +1217,11 @@ sub TelegramBot_ParseMsg($$$)
   # check peers beside from only contact (shared contact) and new_chat_participant are checked
   push( @contacts, $from );
 
+  my $chatId = "";
   my $chat = $message->{chat};
-  if ( defined( $chat ) ) {
+  if ( ( defined( $chat ) ) && ( $chat->{type} ne "private" ) ) {
     push( @contacts, $chat );
+    $chatId = $chat->{id};
   }
 
   my $user = $message->{contact};
@@ -1257,12 +1253,14 @@ sub TelegramBot_ParseMsg($$$)
     readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});				
     readingsBulkUpdate($hash, "prevMsgPeer", $hash->{READINGS}{msgPeer}{VAL});				
     readingsBulkUpdate($hash, "prevMsgPeerId", $hash->{READINGS}{msgPeerId}{VAL});				
+    readingsBulkUpdate($hash, "prevMsgChat", $hash->{READINGS}{msgChat}{VAL});				
     readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
 
     readingsBulkUpdate($hash, "Contacts", TelegramBot_ContactUpdate( $hash, @contacts )) if ( scalar(@contacts) > 0 );
 
     readingsBulkUpdate($hash, "msgId", $mid);				
     readingsBulkUpdate($hash, "msgPeer", TelegramBot_GetFullnameForContact( $hash, $mpeernorm ));				
+    readingsBulkUpdate($hash, "msgChat", TelegramBot_GetFullnameForChat( $hash, $chatId ) );				
     readingsBulkUpdate($hash, "msgPeerId", $mpeernorm);				
     readingsBulkUpdate($hash, "msgText", $mtext);				
 #    readingsBulkUpdate($hash, "msgText", encode( 'utf8', $mtext));				
@@ -1416,7 +1414,7 @@ sub TelegramBot_GetFullnameForContact($$)
   my ($hash,$mcid) = @_;
 
   my $contact = TelegramBot_GetContactInfoForContact( $hash,$mcid );
-  my $ret;
+  my $ret = "";
   
 
   if ( defined( $contact ) ) {
@@ -1428,6 +1426,29 @@ sub TelegramBot_GetFullnameForContact($$)
       Log3 $hash->{NAME}, 4, "TelegramBot_GetFullnameForContact # name is $ret";
   } else {
     Log3 $hash->{NAME}, 4, "TelegramBot_GetFullnameForContact # Contacts is <undef>";
+  }
+  
+  return $ret;
+}
+  
+  
+#####################################
+# INTERNAL: get full name for a chat
+sub TelegramBot_GetFullnameForChat($$)
+{
+  my ($hash,$mcid) = @_;
+  my $ret = "";
+
+  return $ret if ( ! $mcid );
+
+  my $contact = TelegramBot_GetContactInfoForContact( $hash,$mcid );
+  
+
+  if ( defined( $contact ) ) {
+      my @clist = split( /:/, $contact );
+      $ret = $clist[0];
+      $ret .= " (".$clist[2].")" if ( $clist[2] );
+      Log3 $hash->{NAME}, 4, "TelegramBot_GetFullnameForChat # $mcid is $ret";
   }
   
   return $ret;

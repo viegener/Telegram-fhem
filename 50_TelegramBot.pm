@@ -128,6 +128,9 @@
 #   Get chatid from communication to allow answering to groups
 #   Contacts can also have empty names (but either name or user must be set)
 #   FIX: multiple polling cycles in parallel after rereadcfg --> all resetpollings delayed by some time to end current cycles
+
+#   Support for emoticons (by strangely marking the data as latin-1 then now conversion is happening)
+#
 #
 ##############################################################################
 # TASKS 
@@ -137,7 +140,6 @@
 #
 #   show in msgPeer (and similar readings/internals) always user readable name (fullname or username)
 #
-#   Fix emoticons --> decode utf-16 to utf-8 ??
 #   
 #   svn checkin + add to maintainer.txt + checkin with description new module + ankuendigungs post + telegram thread post + wiki change
 #

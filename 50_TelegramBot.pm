@@ -130,6 +130,13 @@
 #   FIX: multiple polling cycles in parallel after rereadcfg --> all resetpollings delayed by some time to end current cycles
 #   Support for emoticons (by strangely marking the data as latin-1 then now conversion is happening)
 #   utf8 conversion needs to be done before using in print etc 
+
+#   removed sendPhoto / sendPhotoTo --> only sendImage
+#   
+#   
+#   
+#   
+#   
 #
 ##############################################################################
 # TASKS 
@@ -139,15 +146,14 @@
 #
 #   show in msgPeer (and similar readings/internals) always user readable name (fullname or username)
 #
+#   add chat id on received messages
 #   
 #   svn checkin + add to maintainer.txt + checkin with description new module + ankuendigungs post + telegram thread post + wiki change
 #
-#   add chat id on received messages
-#   
+#
 #   add keyboards
 #
 #   BUG?: delayed start leads to early messages failing??
-#   BUG?: contacts got lost on shutdown and restart
 #
 #   Allow send to multiple recipients?
 #   add messageReplyTo
@@ -192,12 +198,11 @@ my %sets = (
 	"message" => "textField",
 	"msg" => "textField",
 	"secretChat" => undef,
-	"messageTo" => "textField",
-#	"raw" => "textField",
-	"sendPhoto" => "textField",
-	"sendPhotoTo" => "textField",
+	"messageTo" => "textField",   
+#	"sendPhoto" => "textField",   deprecated
+#	"sendPhotoTo" => "textField", deprecated
 	"sendImage" => "textField",
-	"sendImageTo" => "textField",
+	"sendImageTo" => "textField",  
 	"zDebug" => "textField",
   # BOTONLY
 	"replaceContacts" => "textField",
@@ -423,7 +428,7 @@ sub TelegramBot_Set($@)
 #    $ret = "TelegramBot_Set: Command $cmd, not yet supported ";
     $ret = TelegramBot_SendIt( $hash, $peer, $file, $caption, 0 );
 
-  } elsif ( ($cmd eq 'sendPhotoTo') || ($cmd eq 'sendImageTo')  ) {
+  } elsif ($cmd eq 'sendImageTo') {
     if ( $numberOfArgs < 3 ) {
       return "TelegramBot_Set: Command $cmd, need to specify peer and text ";
     }
@@ -1889,11 +1894,11 @@ sub TelegramBot_convertpeer($)
     Peer needs to be given without space or other separator, i.e. spaces should be replaced by underscore (e.g. first_last)</li>
 
   <br><br>
-    <li><code>sendPhoto|sendImage &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the default peer. 
+    <li><code>sendImage &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the default peer. 
     File is specifying a filename and path to the image file to be send. 
     Local paths should be given local to the root directory of fhem (the directory of fhem.pl e.g. /opt/fhem).
     filenames containing spaces need to be given in parentheses.</li>
-    <li><code>sendPhotoTo|sendImageTo &lt;peer&gt; &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer, 
+    <li><code>sendImageTo &lt;peer&gt; &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer, 
     other arguments are handled as with <code>sendPhoto</code></li>
 
   <br><br>

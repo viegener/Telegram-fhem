@@ -130,15 +130,16 @@
 #   FIX: multiple polling cycles in parallel after rereadcfg --> all resetpollings delayed by some time to end current cycles
 #   Support for emoticons (by strangely marking the data as latin-1 then now conversion is happening)
 #   utf8 conversion needs to be done before using in print etc 
-#   removed sendPhoto / sendPhotoTo --> only sendImage
 #   message / sendImage are accepting an optional peerid with prefix @ (@@ for usernames)
 #       set telegrambot message @123456 a message to be send
 #   changed documentation on message and sendImage
 #   deprecated messageTo / sendImageTo (not showing up in web) but still working
 #   show in msgPeer (and other readings) user readable name (fullname or username or id if both not found) 
 #   add chat id on received messages
+#   reduced logging (3 is normal / 2 is only issues) 
+#   deprecated sendPhoto / sendPhotoTo --> only sendImage
+#   captions also mentioned in internal after send
 # 0.9 2015-10-15 alignment of commands (ATTENTION), support for unicode and emojis, chat-group support 
-#   
 #   
 #   
 #   
@@ -351,7 +352,7 @@ sub TelegramBot_Set($@)
 {
 	my ( $hash, $name, @args ) = @_;
 	
-  Log3 $name, 3, "TelegramBot_Set $name: called ";
+  Log3 $name, 4, "TelegramBot_Set $name: called ";
 
 	### Check Args
 	my $numberOfArgs  = int(@args);
@@ -359,7 +360,7 @@ sub TelegramBot_Set($@)
 
 	my $cmd = shift @args;
 
-  Log3 $name, 3, "TelegramBot_Set $name: Processing TelegramBot_Set( $cmd )";
+  Log3 $name, 4, "TelegramBot_Set $name: Processing TelegramBot_Set( $cmd )";
 
 	if(!exists($sets{$cmd})) {
 		my @cList;
@@ -438,7 +439,7 @@ sub TelegramBot_Set($@)
     $ret = TelegramBot_SendIt( $hash, $peer, $arg, undef, 1 );
  
   # DEPRECATED
-  } elsif ($cmd eq 'sendImageTo') {
+  } elsif ( ($cmd eq 'sendPhotoTo') || ($cmd eq 'sendImageTo') ) {
     if ( $numberOfArgs < 3 ) {
       return "TelegramBot_Set: Command $cmd, need to specify peer and text ";
     }
@@ -873,7 +874,7 @@ sub TelegramBot_SendIt($$$$$)
 
   if ( ! defined( $peer2 ) ) {
     $ret = "FAILED peer not found :$peer:";
-    Log3 $name, 1, "TelegramBot_SendIt $name: failed with :".$ret.":";
+#    Log3 $name, 2, "TelegramBot_SendIt $name: failed with :".$ret.":";
     $peer2 = "";
   }
   
@@ -906,7 +907,7 @@ sub TelegramBot_SendIt($$$$$)
 
     } else {
       # Photo send    
-      $hash->{sentMsgText} = "Image: $msg";
+      $hash->{sentMsgText} = "Image: $msg".(( defined( $addPar ) )?" - ".$addPar:"");
 
       $TelegramBot_hu_do_params{url} = $hash->{URL}."sendPhoto";
       #    $TelegramBot_hu_do_params{url} = "http://requestb.in/q6o06yq6";
@@ -917,7 +918,7 @@ sub TelegramBot_SendIt($$$$$)
       }
       
       # add msg (no file)
-      Log3 $name, 3, "TelegramBot_SendIt $name: Filename for image file :$msg:";
+      Log3 $name, 4, "TelegramBot_SendIt $name: Filename for image file :$msg:";
       $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "photo", undef, $msg, 1 ) if ( ! defined( $ret ) );
       
       # only for test / debug               
@@ -1169,7 +1170,7 @@ sub TelegramBot_Callback($$$)
     $TelegramBot_hu_do_params{data} = "";
   }
   
-  my $ll = ( ( defined( $ret ) )?3:5);
+  my $ll = ( ( defined( $ret ) )?3:4);
 
   $ret = "SUCCESS" if ( ! defined( $ret ) );
   Log3 $name, $ll, "TelegramBot_Callback $name: resulted in :$ret: from ".(( defined( $param->{isPolling} ) )?"Polling":"SendIt");

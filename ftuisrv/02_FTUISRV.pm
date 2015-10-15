@@ -11,8 +11,11 @@
 #   enable include und key value replacement
 #   also recursive operation
 #   show missing key definitions
-#
 # 0.1 First working version FTUISRV
+#
+#   check and warn for remaining keys
+#   added header for includes also for defining default values
+#   changed key replacement to run through all content instead of list of keys
 #
 #
 #
@@ -21,8 +24,6 @@
 #
 # Allow if for separate sections
 # log count of replacements
-# check and warn for remaining keys
-# default values in a file header (as key def)
 #
 # remove call back handling?
 # deepcopy only if new keys found
@@ -45,7 +46,10 @@ my $FTUISRV_matchtemplatefile = "^.*\.ftui\.[^\.]+\$";
 
 ##### <\?ftui-inc="([^"\?]+)"\s+([^\?]*)\?>
 my $FTUISRV_ftuimatch_inc = '<\?ftui-inc="([^"\?]+)"\s+([^\?]*)\?>';
-my $FTUISRV_ftuimatch_keysegment = '^\s*([^=\s]+)="([^"]*)"\s*';
+my $FTUISRV_ftuimatch_header = '<\?ftui-header="([^"\?]*)"\s+([^\?]*)\?>';
+
+my $FTUISRV_ftuimatch_keysegment = '^\s*([^=\s]+)(="([^"]*)")?\s*';
+
 my $FTUISRV_ftuimatch_keygeneric = '<\?ftui-key=([^\s]+)\s*\?>';
 
 #########################
@@ -286,11 +290,36 @@ sub FTUISRV_handletemplatefile( $$$ ) {
 
     my ($dum, $curdir) = fileparse( $filename );
 
+    # Get file header with keys / default values (optional)
+    if ( $content =~ /$FTUISRV_ftuimatch_header/s ) {
+      my $hvalues = $2;
+      Log3 $name, 4, "$name: found header with hvalues :$hvalues: ";
+
+      # grab keys for default values from header
+      while ( $hvalues =~ /$FTUISRV_ftuimatch_keysegment/s ) {
+        my $skey = $1;
+        my $sval = $3;
+      
+        if ( defined($sval) ) {
+          Log3 $name, 4, "$name: default value for key :$skey: = :$sval: ";
+          $parhash->{$skey} = $sval if ( ! defined($parhash->{$skey} ) )
+        }
+        $hvalues =~ s/$FTUISRV_ftuimatch_keysegment//s;
+      }
+      # remove header from output 
+      $content =~ s/$FTUISRV_ftuimatch_header//s
+    }
+
     # make replacements of keys from hash
-    for my $key (keys %$parhash) {
+    while ( $content =~ /<\?ftui-key=([^\s]+)\s*\?>/g ) {
+      my $key = $1;
+      
       my $value = $parhash->{$key};
+      if ( ! defined( $value ) ) {
+        Log3 $name, 4, "$name: unmatched key in file :$filename:    key :$1:";
+        $value = "";
+      }
       $content =~ s/<\?ftui-key=$key\s*\?>/$value/sg;
-      Log3 $name, 4, "$name: start replace in :$filename:    key :$key:   val :$value:";
     }
 
 #    while ( $content =~ /$FTUISRV_ftuimatch_keygeneric/s ) {
@@ -314,7 +343,7 @@ sub FTUISRV_handletemplatefile( $$$ ) {
       # ??? check if this can not be handled in a real loop wthout midfying $values each time
       while ( $values =~ /$FTUISRV_ftuimatch_keysegment/s ) {
         my $skey = $1;
-        my $sval = $2;
+        my $sval = $3;
       
         Log3 $name, 4, "$name: a key :$skey: = :$sval: ";
 

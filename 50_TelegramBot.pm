@@ -141,8 +141,8 @@
 #   captions also mentioned in internal after send
 # 0.9 2015-10-15 alignment of commands (ATTENTION), support for unicode and emojis, chat-group support 
 #   
-#   
-#   
+#   FIX: deprecated sets not executed in set
+#   Internal: Change send on commands to message command
 #   
 #
 ##############################################################################
@@ -204,6 +204,14 @@ my %sets = (
   # BOTONLY
 	"replaceContacts" => "textField",
 	"reset" => undef
+);
+
+my %deprecatedsets = (
+
+	"messageTo" => "textField",   
+	"sendImageTo" => "textField", 
+	"sendPhoto" => "textField",   
+	"sendPhotoTo" => "textField"
 );
 
 my %gets = (
@@ -362,7 +370,7 @@ sub TelegramBot_Set($@)
 
   Log3 $name, 4, "TelegramBot_Set $name: Processing TelegramBot_Set( $cmd )";
 
-	if(!exists($sets{$cmd})) {
+	if( (!exists($sets{$cmd})) && (!exists($deprecatedsets{$cmd})) ) {
 		my @cList;
 		foreach my $k (sort keys %sets) {
 			my $opts = undef;
@@ -633,6 +641,8 @@ sub TelegramBot_checkCmdKeyword($$$$) {
   # command key word aus Attribut holen
   my $ck = AttrVal($name,$attrName,undef);
   
+#  Log3 $name, 3, "TelegramBot_checkCmdKeyword $name: check :".$mtext.":   against defined :".$ck.":   results in ".index($mtext,$ck);
+
   return $cmd if ( ! defined( $ck ) );
 
   return $cmd if ( index($mtext,$ck) != 0 );
@@ -673,7 +683,7 @@ sub TelegramBot_SentFavorites($$$) {
   my $cmd = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, 'cmdFavorites' );
   return $ret if ( ! defined( $cmd ) );
     
-  Log3 $name, 5, "TelegramBot_SentFavorites cmd correct peer ";
+  Log3 $name, 4, "TelegramBot_SentFavorites cmd correct peer ";
 
   my $slc =  AttrVal($name,'favorites',"");
 #  Log3 $name, 3, "TelegramBot_SentFavorites Favorites :$slc: ";
@@ -711,7 +721,7 @@ sub TelegramBot_SentFavorites($$$) {
       
       $ret = "TelegramBot fhem  : ($mpeernorm)\n Favorites \n\n".$slc;
       
-      AnalyzeCommand( undef, "set $name messageTo $mpeernorm $ret", "" );
+      AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
   }
   
   return $ret;
@@ -739,7 +749,7 @@ sub TelegramBot_SentLastCommand($$$) {
   
   $ret = "TelegramBot fhem  : $mpeernorm \nLast Commands \n\n".$slc;
   
-  AnalyzeCommand( undef, "set $name messageTo $mpeernorm $ret", "" );
+  AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
 
   return $ret;
 }
@@ -822,7 +832,7 @@ sub TelegramBot_ExecuteCommand($$$) {
     $ret = substr( $ret, 0, 4000 )."\n\n...";
   }
 
-  AnalyzeCommand( undef, "set $name messageTo $mpeernorm $ret", "" );
+  AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
 
   my $dpc = AttrVal($name,'defaultPeerCopy',1);
   if ( ( $dpc ) && ( defined( $defpeer ) ) ) {

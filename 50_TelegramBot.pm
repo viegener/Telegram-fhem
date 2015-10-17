@@ -25,6 +25,8 @@
 # TelegramBot is making use of the Telegrom Bot API (see https://core.telegram.org/bots and https://core.telegram.org/bots/api)
 # For using it with fhem an telegram BOT API key is needed! --> see https://core.telegram.org/bots/api#authorizing-your-bot
 #
+# $Id$
+#
 ##############################################################################
 # 0.0 2015-09-16 Started
 #
@@ -143,6 +145,8 @@
 #   
 #   FIX: deprecated sets not executed in set
 #   Internal: Change send on commands to message command
+#   Final edits for SVN
+# 1.0 2015-10-17 Initial SVN-Version 
 #   
 #
 ##############################################################################
@@ -150,11 +154,10 @@
 #
 #   svn checkin + add to maintainer.txt + checkin with description new module + ankuendigungs post + telegram thread post + wiki change
 #
-#   add keyboards
-#
 #
 ##############################################################################
 # Ideas / Future
+#   add keyboards
 #   Merge TelegramBot into Telegram
 #   Allow send to multiple recipients?
 #   add replyTo
@@ -168,7 +171,7 @@ package main;
 
 use strict;
 use warnings;
-#use DevIo;
+
 use HttpUtils;
 use Encode;
 use JSON; 
@@ -1197,17 +1200,14 @@ sub TelegramBot_Callback($$$)
 }
 
 
-
+#####################################
+#  INTERNAL: Convert (Mark) a scalar as UTF8
 sub TelegramBot_GetUTF8Back( $ ) {
   my ( $data ) = @_;
   
   return encode('utf8', $data);
 }
   
-
-
-
-
 
 #####################################
 #  INTERNAL: _ParseMsg handle a message from the update call 
@@ -1403,8 +1403,6 @@ sub TelegramBot_GetIdForPeer($$)
   return $id
 }
   
-  
-
 
 
 #####################################
@@ -1798,8 +1796,6 @@ sub TelegramBot_Setup($) {
   Log3 $name, 4, "TelegramBot_Setup $name: ended ";
 
 }
-
-  
 
   
 #####################################

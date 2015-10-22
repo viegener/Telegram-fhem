@@ -25,7 +25,7 @@
 # TelegramBot is making use of the Telegrom Bot API (see https://core.telegram.org/bots and https://core.telegram.org/bots/api)
 # For using it with fhem an telegram BOT API key is needed! --> see https://core.telegram.org/bots/api#authorizing-your-bot
 #
-# $Id$
+# $Id: 50_TelegramBot.pm 9502 2015-10-17 20:36:21Z viegener $
 #
 ##############################################################################
 # 0.0 2015-09-16 Started
@@ -152,14 +152,22 @@
 ##############################################################################
 # TASKS 
 #
-#   svn checkin + add to maintainer.txt + checkin with description new module + ankuendigungs post + telegram thread post + wiki change
-#
+#   reduce log (err-level4, #fails, last fail, attr to reduce log)
+#   
+#   dialog function
+#   keyboards
+#   
+#   allowed commands
+#   
+#   addtl commands from yowsup module
+#   
+#   
+#   
 #
 ##############################################################################
 # Ideas / Future
 #   add keyboards
 #   Merge TelegramBot into Telegram
-#   Allow send to multiple recipients?
 #   add replyTo
 #
 ##############################################################################
@@ -590,9 +598,6 @@ sub TelegramBot_Attr(@) {
 
 		} elsif ($aName eq 'cmdRestrictedPeer') {
       $aVal =~ s/^\s+|\s+$//g;
-
-      # allow multiple peers with spaces separated
-      # $aVal =~ s/ /_/g;
       $attr{$name}{'cmdRestrictedPeer'} = $aVal;
       
 		} elsif ($aName eq 'defaultPeerCopy') {

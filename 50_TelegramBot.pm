@@ -148,6 +148,9 @@
 #   Final edits for SVN
 # 1.0 2015-10-17 Initial SVN-Version 
 #   
+#   INTERNAL: sendIt allows providing a keyboard json
+#   Favorites sent as keyboard
+#   
 #
 ##############################################################################
 # TASKS 
@@ -155,10 +158,8 @@
 #   reduce log (err-level4, #fails, last fail, attr to reduce log)
 #   
 #   dialog function
-#   keyboards
 #   
 #   allowed commands
-#   
 #   addtl commands from yowsup module
 #   
 #   
@@ -682,8 +683,8 @@ sub TelegramBot_checkCmdKeyword($$$$) {
 #####################################
 #####################################
 # INTERNAL: handle sentlast and favorites
-sub TelegramBot_SentFavorites($$$) {
-  my ($hash, $mpeernorm, $mtext ) = @_;
+sub TelegramBot_SentFavorites($$$$) {
+  my ($hash, $mpeernorm, $mtext, $mid ) = @_;
   my $name = $hash->{NAME};
 
   my $ret;
@@ -697,42 +698,71 @@ sub TelegramBot_SentFavorites($$$) {
 #  Log3 $name, 3, "TelegramBot_SentFavorites Favorites :$slc: ";
   my @clist = split( /;/, $slc);
   
+  $cmd = $1 if ( $cmd =~ /^\s*([0-9]+)[^0-9=]*=.*$/ );
   
   # if given a number execute the numbered favorite as a command
   if ( looks_like_number( $cmd ) ) {
+    return $ret if ( $cmd == 0 );
     my $cmdId = ($cmd-1);
 #    Log3 $name, 3, "TelegramBot_SentFavorites exec cmd :$cmdId: ";
     if ( ( $cmdId >= 0 ) && ( $cmdId < scalar( @clist ) ) ) { 
       $cmd = $clist[$cmdId];
       $ret = TelegramBot_ExecuteCommand( $hash, $mpeernorm, $cmd );
+    } else {
+      Log3 $name, 3, "TelegramBot_SentFavorites not existing cmdId found :$cmdId: ";
     }
     
   }
   
   # ret not defined means no favorite found that matches cmd or no fav given in cmd
   if ( ! defined( $ret ) ) {
-#  Log3 $name, 3, "TelegramBot_SentFavorites Favorites :".scalar(@clist).": ";
       my $cnt = 0;
-      $slc = "";
+      my @keys = ();
 
-      my $ck = AttrVal($name,'cmdKeyword',"");
-
+      my $fcmd = AttrVal($name,'cmdFavorites',undef);
+      
       foreach my $cs (  @clist ) {
         $cnt += 1;
-        $slc .= $cnt."\n  $ck ".$cs."\n";
-      }  
+        my @tmparr = ( $fcmd.$cnt." = ".$cs );
+        push( @keys, \@tmparr );
+      }
+      my @tmparr = ( $fcmd."0 = Abbruch" );
+      push( @keys, \@tmparr );
 
-#      Log3 $name, 3, "TelegramBot_SentFavorites Joined Favorites :$slc: ";
+      my $jsonkb = TelegramBot_MakeKeyboard( $hash, 1, @keys );
 
-      my $defpeer = AttrVal($name,'defaultPeer',undef);
-      $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
+      Log3 $name, 5, "TelegramBot_SentFavorites keyboard:".$jsonkb.": ";
       
-      $ret = "TelegramBot fhem  : ($mpeernorm)\n Favorites \n\n".$slc;
+      $ret = "TelegramBot fhem  : ($mpeernorm)\n Favorites \n";
       
-      AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
-  }
+      $ret = TelegramBot_SendIt( $hash, $mpeernorm, $ret, $jsonkb, 1 );
   
+  
+  
+#  Log3 $name, 3, "TelegramBot_SentFavorites Favorites :".scalar(@clist).": ";
+      # my $cnt = 0;
+      # $slc = "";
+
+      # my $ck = AttrVal($name,'cmdKeyword',"");
+
+      # foreach my $cs (  @clist ) {
+        # $cnt += 1;
+        # $slc .= $cnt."\n  $ck ".$cs."\n";
+      # }  
+
+# #      Log3 $name, 3, "TelegramBot_SentFavorites Joined Favorites :$slc: ";
+
+      # my $defpeer = AttrVal($name,'defaultPeer',undef);
+      # $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
+      
+      # $ret = "TelegramBot fhem  : ($mpeernorm)\n Favorites \n\n".$slc;
+      
+      # $ret = TelegramBot_SendIt( $hash, $defpeer, $ret, $mid, 1 );
+      
+#????      AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
+  }
   return $ret;
+  
 }
 
   
@@ -864,6 +894,7 @@ sub TelegramBot_ExecuteCommand($$$) {
 
 #####################################
 # INTERNAL: Function to send a photo (and text message) to a peer and handle result
+# addPar is caption for images / keyboard for text
 sub TelegramBot_SendIt($$$$$)
 {
 	my ( $hash, @args) = @_;
@@ -912,7 +943,7 @@ sub TelegramBot_SendIt($$$$$)
 
     if ( $isText ) {
       $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage";
-      # $TelegramBot_hu_do_params{url} = "http://requestb.in/q6o06yq6";
+#      $TelegramBot_hu_do_params{url} = "http://requestb.in/1dvvb8u1";
 
       $hash->{sentMsgText} = $msg;
   #    my $c = chr(10);
@@ -920,6 +951,29 @@ sub TelegramBot_SendIt($$$$$)
 
       # add msg (no file)
       $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "text", undef, $msg, 0 ) if ( ! defined( $ret ) );
+
+      
+      if ( defined( $addPar ) ) {
+        $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "reply_markup", undef, $addPar, 0 ) if ( ! defined( $ret ) );
+      }
+
+
+      # my @kb =  ( [ "abc" ],
+                     # [ "ssdef" ],
+                     # [ "ghi" ]
+                    # );
+      # my %repkb = (
+                  # one_time_keyboard => JSON::true,
+                  # keyboard   => \@kb,
+                  # );
+      # my $refkb = \%repkb;
+      
+      # my $jsonkb = encode_json( $refkb );
+# #       $data = encode( 'latin1', $data );
+
+      # $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "reply_markup", undef, $jsonkb, 0 ) if ( ! defined( $ret ) );
+# #      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "reply_markup", undef, '{"hide_keyboard": true}', 0 ) if ( ! defined( $ret ) );
+# #      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "reply_markup", undef, '{"keyboard":[["abc"],["def"],["ghi"]],"one_time_keyboard": true}', 0 ) if ( ! defined( $ret ) );
       
   #    $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage?chat_id=".$peer2."&text=".urlEncode($msg);
 
@@ -1024,6 +1078,39 @@ sub TelegramBot_AddMultipart($$$$$$)
   return undef;
 }
 
+
+#####################################
+# INTERNAL: Build a keyboard string for sendMessage
+# Parameter
+#   hash (device hash)
+#   onetime/hide --> true means onetime / false means hide / undef means nothing
+#   keys array of arrays for keyboard
+#   > returns string in case of error or undef
+sub TelegramBot_MakeKeyboard($$@)
+{
+	my ( $hash, $onetime_hide, @keys ) = @_;
+  my $name = $hash->{NAME};
+
+  my $ret;
+  
+  my %par;
+  
+  if ( ( defined( $onetime_hide ) ) && ( ! $onetime_hide ) ) {
+    %par = ( "hide_keyboard" => JSON::true );
+  } else {
+    return $ret if ( ! defined( @keys ) );
+    %par = ( "one_time_keyboard" => (( ( defined( $onetime_hide ) ) && ( $onetime_hide ) )?JSON::true:JSON::true ) );
+    $par{keyboard} = \@keys;
+  }
+  
+  my $refkb = \%par;
+  
+  my $ret = encode_json( $refkb );
+
+  return $ret;
+}
+
+  
   
 
 #####################################
@@ -1293,7 +1380,7 @@ sub TelegramBot_ParseMsg($$$)
 
     my $cmd2Ret = TelegramBot_SentLastCommand( $hash, $mpeernorm, $mtext );
     
-    my $cmd3Ret = TelegramBot_SentFavorites( $hash, $mpeernorm, $mtext );
+    my $cmd3Ret = TelegramBot_SentFavorites( $hash, $mpeernorm, $mtext, $mid );
     
     
   } elsif ( scalar(@contacts) > 0 )  {

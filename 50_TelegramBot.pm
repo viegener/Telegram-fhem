@@ -150,6 +150,8 @@
 #   
 #   INTERNAL: sendIt allows providing a keyboard json
 #   Favorites sent as keyboard
+#   INTERNAL: sendIt allows providing a keyboard json
+#   Favorites sent as keyboard
 #   
 #
 ##############################################################################
@@ -1098,14 +1100,14 @@ sub TelegramBot_MakeKeyboard($$@)
   if ( ( defined( $onetime_hide ) ) && ( ! $onetime_hide ) ) {
     %par = ( "hide_keyboard" => JSON::true );
   } else {
-    return $ret if ( ! defined( @keys ) );
+    return $ret if ( ! @keys );
     %par = ( "one_time_keyboard" => (( ( defined( $onetime_hide ) ) && ( $onetime_hide ) )?JSON::true:JSON::true ) );
     $par{keyboard} = \@keys;
   }
   
   my $refkb = \%par;
   
-  my $ret = encode_json( $refkb );
+  $ret = encode_json( $refkb );
 
   return $ret;
 }

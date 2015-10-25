@@ -152,18 +152,20 @@
 #   Favorites sent as keyboard
 #   allow sending to contacts not in the contacts list (by giving id of user)
 #   added comment on save (statefile) for correct operation in documentation
-#   
+#   contacts changed on new contacts found
+#   saveStateOnContactChange attribute to disaloow statefile save on contact change
+#   writeStatefile on contact change?
 #
 ##############################################################################
 # TASKS 
 #
 #   Do not allow shutdown as command for execution
-#   writeStateFile on contact change (msgID change)?
 #
 #   ret from command handlings are ignored
 #
 #   make contact restore simpler --> whenever new contact found write all contacts into log with loglevel 1$c/g
 #   add attribute log contacts to switch this off
+#
 #   reduce log (err-level4, #fails, last fail, attr to reduce log)
 #   
 #   dialog function
@@ -278,7 +280,7 @@ sub TelegramBot_Initialize($) {
 	$hash->{GetFn}      = "TelegramBot_Get";
 	$hash->{SetFn}      = "TelegramBot_Set";
 	$hash->{AttrFn}     = "TelegramBot_Attr";
-	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 maxFileSize ".
+	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize ".
 						$readingFnAttributes;           
 }
 
@@ -505,7 +507,7 @@ sub TelegramBot_Set($@)
     # first set the hash accordingly
     TelegramBot_CalcContactsHash($hash, $arg);
 
-    # then calculate correct string reading and put this into the rading
+    # then calculate correct string reading and put this into the reading
     my @dumarr;
     readingsSingleUpdate($hash, "Contacts", TelegramBot_ContactUpdate($hash, @dumarr) , 1); 
 
@@ -612,6 +614,9 @@ sub TelegramBot_Attr(@) {
       
 		} elsif ($aName eq 'defaultPeerCopy') {
 			$attr{$name}{'defaultPeerCopy'} = ($aVal eq "1")? "1": "0";
+
+		} elsif ($aName eq 'saveStateOnContactChange') {
+			$attr{$name}{'saveStateOnContactChange'} = ($aVal eq "1")? "1": "0";
 
 		} elsif ($aName eq 'cmdTriggerOnly') {
 			$attr{$name}{'cmdTriggerOnly'} = ($aVal eq "1")? "1": "0";
@@ -1634,6 +1639,7 @@ sub TelegramBot_CalcContactsHash($$)
       $hash->{Contacts}{$id} = $id.":".$cname.":".$cuser;
     }
   }
+
 }
 
 
@@ -1652,6 +1658,8 @@ sub TelegramBot_ContactUpdate($@) {
 
   my ($hash, @contacts) = @_;
 
+  my $newfound = ( int(@contacts) == 0 );
+
   TelegramBot_InternalContactsFromReading( $hash ) if ( ! defined( $hash->{Contacts} ) );
   
   Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hash before :".scalar(keys $hash->{Contacts}).":";
@@ -1660,6 +1668,7 @@ sub TelegramBot_ContactUpdate($@) {
     my $contactString = TelegramBot_userObjectToString( $user );
     if ( ! defined( $hash->{Contacts}{$user->{id}} ) ) {
       Log3 $hash->{NAME}, 3, "TelegramBot_ContactUpdate new contact :".$contactString.":";
+      $newfound = 1;
     } elsif ( $contactString ne $hash->{Contacts}{$user->{id}} ) {
       Log3 $hash->{NAME}, 3, "TelegramBot_ContactUpdate updated contact :".$contactString.":";
     }
@@ -1678,6 +1687,12 @@ sub TelegramBot_ContactUpdate($@) {
       }
     }
 
+  # save state file on new contact 
+  if ( $newfound ) {
+    WriteStatefile() if ( AttrVal($hash->{NAME}, 'saveStateOnContactChange', 1) ) ;
+    Log3 $hash->{NAME}, 2, "TelegramBot_ContactUpdate Updated Contact list :".$rc.":";
+  }
+  
   return $rc;		
 }
   
@@ -2128,6 +2143,9 @@ sub TelegramBot_convertpeer($)
   <br><br>
     <li><code>maxFileSize &lt;number of bytes&gt;</code><br>Maximum file size in bytes for transfer of files (images). If not set the internal limit is specified as 10MB (10485760B).
     </li> 
+    <li><code>saveStateOnContactChange &lt;1 or 0&gt;</code><br>Allow statefile being written on every new contact found, ensures new contacts not being lost on any loss of statefile. Default is on (1).
+    </li> 
+
 
 
     <li><a href="#verbose">verbose</a></li>

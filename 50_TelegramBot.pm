@@ -155,16 +155,18 @@
 #   contacts changed on new contacts found
 #   saveStateOnContactChange attribute to disaloow statefile save on contact change
 #   writeStatefile on contact change?
+#   make contact restore simpler --> whenever new contact found write all contacts into log with loglevel 1
+
+#   Do not allow shutdown as command for execution
+#   
+#   
+#   
 #
 ##############################################################################
 # TASKS 
 #
-#   Do not allow shutdown as command for execution
 #
 #   ret from command handlings are ignored
-#
-#   make contact restore simpler --> whenever new contact found write all contacts into log with loglevel 1$c/g
-#   add attribute log contacts to switch this off
 #
 #   reduce log (err-level4, #fails, last fail, attr to reduce log)
 #   
@@ -856,8 +858,11 @@ sub TelegramBot_ExecuteCommand($$$) {
 
   Log3 $name, 5, "TelegramBot_ExecuteCommand final cmd for analyze :".$cmd.": ";
 
+  # special case shutdown caught here to avoid endless loop
+  $ret = "shutdown command can not be executed" if ( $cmd =~ /^shutdown(\s+.*)?$/ );
+  
   # Execute command
-  $ret = AnalyzeCommand( undef, $cmd, "" );
+  $ret = AnalyzeCommand( undef, $cmd, "" ) if ( ! defined( $ret ) );
 
   Log3 $name, 5, "TelegramBot_ExecuteCommand result for analyze :".(defined($ret)?$ret:"<undef>").": ";
 
@@ -2107,7 +2112,9 @@ sub TelegramBot_convertpeer($)
         Please also consider cmdRestrictedPeer for restricting access to this feature!<br>
         Example: If this attribute is set to a value of <code>ok fhem</code> a message of <code>ok fhem attr telegram room IM</code> 
         send to the bot would execute the command  <code>attr telegram room IM</code> and set a device called telegram into room IM.
-        The result of the cmd is sent to the requestor and in addition (if different) always sent also as message to the defaultPeer 
+        The result of the cmd is sent to the requestor and in addition (if different) always sent also as message to the defaultPeer.
+    <br>
+        Note: <code>shutdown</code> is not supported as a command (also in favorites) and will be rejected. This is needed to avoid reexecution of the shutdown command directly after restart (endless loop !).
     </li> 
     <li><code>cmdSentCommands &lt;keyword&gt;</code><br>Specify a specific text that will trigger sending the last commands back to the sender<br>
         Example: If this attribute is set to a value of <code>last cmd</code> a message of <code>last cmd</code> 

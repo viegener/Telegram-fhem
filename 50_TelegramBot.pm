@@ -156,17 +156,17 @@
 #   saveStateOnContactChange attribute to disaloow statefile save on contact change
 #   writeStatefile on contact change?
 #   make contact restore simpler --> whenever new contact found write all contacts into log with loglevel 1
-
 #   Do not allow shutdown as command for execution
-#   
-#   
+
+#   ret from command handlings logged
+#   maxReturnSize for command results
+#   limit sentMsgTxt internal to 1000 chars (even if longer texts are sent)
 #   
 #
 ##############################################################################
 # TASKS 
 #
 #
-#   ret from command handlings are ignored
 #
 #   reduce log (err-level4, #fails, last fail, attr to reduce log)
 #   
@@ -282,7 +282,7 @@ sub TelegramBot_Initialize($) {
 	$hash->{GetFn}      = "TelegramBot_Get";
 	$hash->{SetFn}      = "TelegramBot_Set";
 	$hash->{AttrFn}     = "TelegramBot_Attr";
-	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize ".
+	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize ".
 						$readingFnAttributes;           
 }
 
@@ -628,6 +628,11 @@ sub TelegramBot_Attr(@) {
         $attr{$name}{'maxFileSize'} = $aVal;
       }
 
+		} elsif ($aName eq 'maxReturnSize') {
+      if ( $aVal =~ /^[[:digit:]]+$/ ) {
+        $attr{$name}{'maxReturnSize'} = $aVal;
+      }
+
     } elsif ($aName eq 'pollingTimeout') {
       if ( $aVal =~ /^[[:digit:]]+$/ ) {
         $attr{$name}{'pollingTimeout'} = $aVal;
@@ -725,7 +730,7 @@ sub TelegramBot_SentFavorites($$$$) {
       $cmd = $clist[$cmdId];
       $ret = TelegramBot_ExecuteCommand( $hash, $mpeernorm, $cmd );
     } else {
-      Log3 $name, 3, "TelegramBot_SentFavorites not existing cmdId found :$cmdId: ";
+      Log3 $name, 3, "TelegramBot_SentFavorites cmd id not defined :($cmdId+1): ";
     }
     
   }
@@ -803,7 +808,8 @@ sub TelegramBot_SentLastCommand($$$) {
   
   $ret = "TelegramBot fhem  : $mpeernorm \nLast Commands \n\n".$slc;
   
-  AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
+  # overwrite ret with result from Analyzecommand --> send response
+  $ret = AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
 
   return $ret;
 }
@@ -884,12 +890,14 @@ sub TelegramBot_ExecuteCommand($$$) {
 #  $ret =~ s/(\r|\n)/ /gm;
   $ret =~ s/\r//gm;
   
-  # shorten to 4096
-  if ( length($ret) > 4000 ) {
-    $ret = substr( $ret, 0, 4000 )."\n\n...";
+  # shorten to maxReturnSize if set
+  my $limit = AttrVal($name,'maxReturnSize',0);
+
+  if ( ( length($ret) > $limit ) && ( $limit != 0 ) ) {
+    $ret = substr( $ret, 0, $limit )."\n\n...";
   }
 
-  AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
+  $ret = AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
 
   my $dpc = AttrVal($name,'defaultPeerCopy',1);
   if ( ( $dpc ) && ( defined( $defpeer ) ) ) {
@@ -964,7 +972,11 @@ sub TelegramBot_SendIt($$$$$)
       $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage";
 #      $TelegramBot_hu_do_params{url} = "http://requestb.in/1dvvb8u1";
 
-      $hash->{sentMsgText} = $msg;
+      if ( length($msg) > 1000 ) {
+        $hash->{sentMsgText} = substr($msg,0, 1000)."...";
+       } else {
+        $hash->{sentMsgText} = $msg;
+       }
   #    my $c = chr(10);
   #    $msg =~ s/([^\\])\\n/$1$c/g;
 
@@ -1394,12 +1406,18 @@ sub TelegramBot_ParseMsg($$$)
     # trim whitespace from message text
     $mtext =~ s/^\s+|\s+$//g;
 
-    my $cmdRet = TelegramBot_ReadHandleCommand( $hash, $mpeernorm, $mtext );
+    my $cmdRet;
+    
+    $cmdRet = TelegramBot_ReadHandleCommand( $hash, $mpeernorm, $mtext );
+    Log3 $name, 3, "TelegramBot_ParseMsg $name: ReadHandleCommand returned :$cmdRet:" if ( defined($cmdRet) );
+    
     #  ignore result of readhandlecommand since it leads to endless loop
 
-    my $cmd2Ret = TelegramBot_SentLastCommand( $hash, $mpeernorm, $mtext );
+    $cmdRet = TelegramBot_SentLastCommand( $hash, $mpeernorm, $mtext );
+    Log3 $name, 3, "TelegramBot_ParseMsg $name: SentLastCommand returned :$cmdRet:" if ( defined($cmdRet) );
     
-    my $cmd3Ret = TelegramBot_SentFavorites( $hash, $mpeernorm, $mtext, $mid );
+    $cmdRet = TelegramBot_SentFavorites( $hash, $mpeernorm, $mtext, $mid );
+    Log3 $name, 3, "TelegramBot_ParseMsg $name: SentFavorites returned :$cmdRet:" if ( defined($cmdRet) );
     
     
   } elsif ( scalar(@contacts) > 0 )  {
@@ -2112,7 +2130,9 @@ sub TelegramBot_convertpeer($)
         Please also consider cmdRestrictedPeer for restricting access to this feature!<br>
         Example: If this attribute is set to a value of <code>ok fhem</code> a message of <code>ok fhem attr telegram room IM</code> 
         send to the bot would execute the command  <code>attr telegram room IM</code> and set a device called telegram into room IM.
-        The result of the cmd is sent to the requestor and in addition (if different) always sent also as message to the defaultPeer.
+        The result of the cmd is sent to the requestor and in addition (if different) sent also as message to the defaultPeer (This can be controlled with the attribute <code>defaultPeerCopy</code>). 
+    <br>
+        Note: <code>shutdown</code> is not supported as a command (also in favorites) and will be rejected. This is needed to avoid reexecution of the shutdown command directly after restart (endless loop !).
     <br>
         Note: <code>shutdown</code> is not supported as a command (also in favorites) and will be rejected. This is needed to avoid reexecution of the shutdown command directly after restart (endless loop !).
     </li> 
@@ -2150,6 +2170,10 @@ sub TelegramBot_convertpeer($)
   <br><br>
     <li><code>maxFileSize &lt;number of bytes&gt;</code><br>Maximum file size in bytes for transfer of files (images). If not set the internal limit is specified as 10MB (10485760B).
     </li> 
+    <li><code>maxReturnSize &lt;number of chars&gt;</code><br>Maximum size of command result returned as a text message including header (Default is unlimited). The internal shown on the device is limited to 1000 chars.
+    </li> 
+
+    <br><br>
     <li><code>saveStateOnContactChange &lt;1 or 0&gt;</code><br>Allow statefile being written on every new contact found, ensures new contacts not being lost on any loss of statefile. Default is on (1).
     </li> 
 

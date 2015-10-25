@@ -157,10 +157,11 @@
 #   writeStatefile on contact change?
 #   make contact restore simpler --> whenever new contact found write all contacts into log with loglevel 1
 #   Do not allow shutdown as command for execution
-
 #   ret from command handlings logged
 #   maxReturnSize for command results
 #   limit sentMsgTxt internal to 1000 chars (even if longer texts are sent)
+#   contact reading now written in contacts_update before statefile written
+
 #   
 #
 ##############################################################################
@@ -511,7 +512,8 @@ sub TelegramBot_Set($@)
 
     # then calculate correct string reading and put this into the reading
     my @dumarr;
-    readingsSingleUpdate($hash, "Contacts", TelegramBot_ContactUpdate($hash, @dumarr) , 1); 
+    
+    TelegramBot_ContactUpdate($hash, @dumarr);
 
     Log3 $name, 5, "TelegramBot_Set $name: contacts newly set ";
 
@@ -1382,6 +1384,9 @@ sub TelegramBot_ParseMsg($$$)
     $mpeernorm =~ s/ /_/g;
 
 #    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer :$mtext:";
+
+    # contacts handled separately since readings are updated in here
+    TelegramBot_ContactUpdate($hash, @contacts) if ( scalar(@contacts) > 0 );
     
     readingsBeginUpdate($hash);
 
@@ -1390,8 +1395,6 @@ sub TelegramBot_ParseMsg($$$)
     readingsBulkUpdate($hash, "prevMsgPeerId", $hash->{READINGS}{msgPeerId}{VAL});				
     readingsBulkUpdate($hash, "prevMsgChat", $hash->{READINGS}{msgChat}{VAL});				
     readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
-
-    readingsBulkUpdate($hash, "Contacts", TelegramBot_ContactUpdate( $hash, @contacts )) if ( scalar(@contacts) > 0 );
 
     readingsBulkUpdate($hash, "msgId", $mid);				
     readingsBulkUpdate($hash, "msgPeer", TelegramBot_GetFullnameForContact( $hash, $mpeernorm ));				
@@ -1421,7 +1424,8 @@ sub TelegramBot_ParseMsg($$$)
     
     
   } elsif ( scalar(@contacts) > 0 )  {
-    readingsSingleUpdate($hash, "Contacts", TelegramBot_ContactUpdate( $hash, @contacts ), 1); 
+    # will also update reading
+    TelegramBot_ContactUpdate( $hash, @contacts );
 
     Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer without text but with contacts";
 
@@ -1676,7 +1680,7 @@ sub TelegramBot_InternalContactsFromReading($)
 
 
 #####################################
-# INTERNAL: update contacts hash and return complete readings string
+# INTERNAL: update contacts hash and change readings string (no return)
 sub TelegramBot_ContactUpdate($@) {
 
   my ($hash, @contacts) = @_;
@@ -1710,13 +1714,16 @@ sub TelegramBot_ContactUpdate($@) {
       }
     }
 
+  # Do a readings change directly for contacts
+  readingsSingleUpdate($hash, "Contacts", $rc , 1); 
+    
   # save state file on new contact 
   if ( $newfound ) {
     WriteStatefile() if ( AttrVal($hash->{NAME}, 'saveStateOnContactChange', 1) ) ;
     Log3 $hash->{NAME}, 2, "TelegramBot_ContactUpdate Updated Contact list :".$rc.":";
   }
   
-  return $rc;		
+  return;		
 }
   
 #####################################

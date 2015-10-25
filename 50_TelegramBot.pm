@@ -150,13 +150,20 @@
 #   
 #   INTERNAL: sendIt allows providing a keyboard json
 #   Favorites sent as keyboard
-#   INTERNAL: sendIt allows providing a keyboard json
-#   Favorites sent as keyboard
+#   allow sending to contacts not in the contacts list (by giving id of user)
+#   added comment on save (statefile) for correct operation in documentation
 #   
 #
 ##############################################################################
 # TASKS 
 #
+#   Do not allow shutdown as command for execution
+#   writeStateFile on contact change (msgID change)?
+#
+#   ret from command handlings are ignored
+#
+#   make contact restore simpler --> whenever new contact found write all contacts into log with loglevel 1$c/g
+#   add attribute log contacts to switch this off
 #   reduce log (err-level4, #fails, last fail, attr to reduce log)
 #   
 #   dialog function
@@ -1473,7 +1480,9 @@ sub TelegramBot_GetIdForPeer($$)
   
   if ( $mpeer =~ /^\-?[[:digit:]]+$/ ) {
     # check if id is in hash 
-    $id = $mpeer if ( defined( $hash->{Contacts}{$mpeer} ) );
+#    $id = $mpeer if ( defined( $hash->{Contacts}{$mpeer} ) );
+    # Allow also sending to ids which are not in the contacts list
+    $id = $mpeer;
   } elsif ( $mpeer =~ /^[@#].*$/ ) {
     foreach  my $mkey ( keys $hash->{Contacts} ) {
       my @clist = split( /:/, $hash->{Contacts}{$mkey} );
@@ -1990,6 +1999,7 @@ sub TelegramBot_convertpeer($)
     <li>This module requires the perl JSON module.<br>
         Please install the module (e.g. with <code>sudo apt-get install libjson-perl</code>) or the correct method for the underlying platform/system.</li>
     <li>The attribute pollingTimeout needs to be set to a value greater than zero, to define the interval of receiving messages (if not set or set to 0, no messages will be received!)</li>
+    <li>Multiple infomations are stored in readings (esp contacts) and internals that are needed for the bot operation, so having an recent statefile will help in correct operation of the bot. Generally it is recommended to regularly store the statefile (see save command)</li>
   </ul>   
   <br><br>
 

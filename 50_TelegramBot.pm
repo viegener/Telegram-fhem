@@ -154,13 +154,13 @@
 #   added comment on save (statefile) for correct operation in documentation
 #   contacts changed on new contacts found
 #   saveStateOnContactChange attribute to disaloow statefile save on contact change
-#   writeStatefile on contact change?
+#   writeStatefile on contact change
 #   make contact restore simpler --> whenever new contact found write all contacts into log with loglevel 1
 #   Do not allow shutdown as command for execution
 #   ret from command handlings logged
 #   maxReturnSize for command results
 #   limit sentMsgTxt internal to 1000 chars (even if longer texts are sent)
-#   contact reading now written in contacts_update before statefile written
+#   contact reading now written in contactsupdate before statefile written
 
 #   
 #

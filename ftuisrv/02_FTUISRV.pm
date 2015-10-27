@@ -28,7 +28,7 @@
 # remove call back handling?
 # deepcopy only if new keys found
 ##############################################
-# filenames need to include .ftui. before extension to be parsed
+# filenames need to have .ftui. before extension to be parsed
 #
 #
 #
@@ -127,25 +127,26 @@ FTUISRV_Define($$) {
 
   my @a = split("[ \t]+", $def, 6);
 
-  return "Usage: define <name> FTUISRV <infix> <directory> [&<callbackfn>] <friendlyname>"  if(( int(@a) != 5) && ( int(@a) != 6) );
+#cb  return "Usage: define <name> FTUISRV <infix> <directory> [&<callbackfn>] <friendlyname>"  if(( int(@a) != 5) && ( int(@a) != 6) );
+  return "Usage: define <name> FTUISRV <infix> <directory> <friendlyname>"  if(( int(@a) != 5) );
   my $name= $a[0];
   my $infix= $a[2];
   my $directory= $a[3];
   my $friendlyname;
-  my $callback;
+#cb  my $callback;
   
-  if ( $a[4] =~ /^&(.*)/ ) {
-      # callback needs to be a function with two params $name (name of device of this type and $request (the request url) 
-      $callback = $1;
-      $friendlyname = $a[5];
-  } else {
+#cb  if ( $a[4] =~ /^&(.*)/ ) {
+#cb      # callback needs to be a function with two params $name (name of device of this type and $request (the request url) 
+#cb      $callback = $1;
+#cb      $friendlyname = $a[5];
+#cb  } else {
       $friendlyname = $a[4].(( int(@a) == 6 )?" ".$a[5]:"");
-  }
+#cb  }
   
   $hash->{fhem}{infix}= $infix;
   $hash->{fhem}{directory}= $directory;
   $hash->{fhem}{friendlyname}= $friendlyname;
-  $hash->{fhem}{callback}= $callback;
+#cb  $hash->{fhem}{callback}= $callback;
 
   Log3 $name, 3, "$name: new ext defined infix:$infix: dir:$directory:";
 
@@ -258,7 +259,7 @@ sub FTUISRV_CGI() {
 ##############################################
 ##############################################
 ##
-## Callback handling to be separated
+## Template handling
 ##
 ##############################################
 ##############################################

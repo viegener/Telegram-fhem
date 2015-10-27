@@ -161,9 +161,12 @@
 #   maxReturnSize for command results
 #   limit sentMsgTxt internal to 1000 chars (even if longer texts are sent)
 #   contact reading now written in contactsupdate before statefile written
+#   documentation corrected - forum#msg350873
 
 #   
-#
+#   
+#   
+#   
 ##############################################################################
 # TASKS 
 #
@@ -2138,8 +2141,6 @@ sub TelegramBot_convertpeer($)
         Example: If this attribute is set to a value of <code>ok fhem</code> a message of <code>ok fhem attr telegram room IM</code> 
         send to the bot would execute the command  <code>attr telegram room IM</code> and set a device called telegram into room IM.
         The result of the cmd is sent to the requestor and in addition (if different) sent also as message to the defaultPeer (This can be controlled with the attribute <code>defaultPeerCopy</code>). 
-    <br>
-        Note: <code>shutdown</code> is not supported as a command (also in favorites) and will be rejected. This is needed to avoid reexecution of the shutdown command directly after restart (endless loop !).
     <br>
         Note: <code>shutdown</code> is not supported as a command (also in favorites) and will be rejected. This is needed to avoid reexecution of the shutdown command directly after restart (endless loop !).
     </li> 

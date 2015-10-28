@@ -1,0 +1,119 @@
+# 0.0 2015-09-16 Started
+#
+#   Convert Telegram to TelegramBot 
+#
+# 0.1 2015-09-17 Send only
+#
+#   Add a nonBlocking Get for Update
+#   Read Message 
+#   added polling internal and pollingtimeout
+#
+# 0.2 2015-09-17 Basic send and receive
+#
+#   Extend DoUrlCommand to correctly analyze return
+#   GetMe as connectivity check
+#   pollingTimeout is now default 0 (no reception possible without pollingtimeout set > 0)
+#   Handle state - Polling / Static / Failed
+#   in case of failures wait before starting next poll
+#   avoid excessive update with increasing delays
+#   exception handling for json decoder
+#
+# 0.3 2015-09-18 Stable receive / define / error handling
+#
+#   handle contacts from received messages
+#   manage contacts as interna and readings
+#   new set: reset internal contacts from attribute / reading / URLs reset also
+#   Contacts will be updated every reception
+#   fixed contact handling on restart
+#   new set: contacts to allow manual contact setting
+#   ensure correct contacts on set
+#   show names instead of ids (names is full_name)
+#   ensure contacts without spaces and ids only digits for set contacts
+#   replaceContacts (instead of just set contacts)
+#   Allow usage of names (either username starting with @ or full name not only digits)
+#   peer / peerId in received and sent message
+#   unauthorized result handled correctly and sent to defaultpeer
+#   
+# 0.4 2015-09-20 Contact management available
+#   
+#   initial doccumentation
+#   quick hack for emoticons ??? - replace \u with \\u (so it gets not converted to multibyte
+#   
+# 0.5 2015-09-21 Contact management available
+#   
+#   FIX: undef is returned from AnalyzeCommand - accept as ok
+#   reset will reinitiate polling independant of current polling state
+#   FIX: Allow underscores in tokens
+#   FIX: Allow only a single updater loop
+#   return message on commands could be shortened (no double user ids)
+#   return message on commands to include readable name
+#   translate \n into %0A for message
+#   put complete hash into internals
+#   httputil_close on undef/shutdown/reset
+#   removed non working raw set command
+#   added JSON comment in documentation
+#   Increased timeout on nonblocking get - due to changes on telegram side
+# 0.6 2015-09-27 Stabilized / Multi line return
+#
+#   send Photos
+#   align sendIt mit sendText 
+#   method cleanup
+#   Only one callback for all nonBlockingGets
+#   Allow also usernames and full names in cmdRestrictedpeer
+#   Queuuing for message and photo sending
+#   streamline sendPhoto(sendIt) with new httputil 
+#   Change message send to Post
+# 0.7 2015-09-30 sendPhoto (relying on new HTTPUtils) / all sendIt on Post
+#   
+#   corrected documentation to describe local path
+#   FIX: file not found error on send photo works now
+#   caption for sendPhoto
+#   FIX #1 : crash when GetMe fails on http level
+#   Contacts written to log when updated or newly found
+#   URLs hidden for log file since they contain Authtoken
+#   increase polling id up to 256
+#   changed doc example and log entries (thanks to Maista from his notes)
+#   Store last commands --> reading StoredCommands
+#   FIX: allow contact cuser to be empty
+#   remove cmdNUmericIds
+#   Sent last commands as return value on HandledCOmmand --> attribute cmdSentCommands
+#   FIX: undefined aVal in AttrFn}
+#   FIX: URL also hidden in timeout message
+#   Workaround: Run GetMe 2 times in case of failure especially due to message: "Can't connect(2) to https://api.telegram.org:443:  SSL wants a read first"
+#   Added timer for new polling cycle after attribute set and also on init 
+#   Favorites Command --> attribute cmdKeyFavorites
+#   Favorites Commandlist --> attribute cmdFavorites
+#   favorite commands can be executed
+#   cmd results cut to 4000 char
+#   keep line feed / new line in cmd results
+#   Last and favorites will sent repsonse to sender and not default
+#   make command result sent to default configurable --> defaultPeerCopy (default ON)
+#   add set <device> msg (for compatibility)
+#   new attribute maxFileSize - for restricting size of images
+#   sendImage/sendImageto as addtl commands for sendPhoto/sendPhotoTo
+# 0.8 2015-10-10 extended cmd handling 
+#
+#   FIX: changed error handling for sendIt (ensure unified error handling / avoid queuing up)
+#   Allow also negative values for contacts (prep for chats/groups)
+#   Allow also # in 3rd part of contacts for groups
+#   Encode user names and full names in contacts (: to _ / remove multiple spaces / space to _ )
+#   Get chatid from communication to allow answering to groups
+#   Contacts can also have empty names (but either name or user must be set)
+#   FIX: multiple polling cycles in parallel after rereadcfg --> all resetpollings delayed by some time to end current cycles
+#   Support for emoticons (by strangely marking the data as latin-1 then now conversion is happening)
+#   utf8 conversion needs to be done before using in print etc 
+#   message / sendImage are accepting an optional peerid with prefix @ (@@ for usernames)
+#       set telegrambot message @123456 a message to be send
+#   changed documentation on message and sendImage
+#   deprecated messageTo / sendImageTo (not showing up in web) but still working
+#   show in msgPeer (and other readings) user readable name (fullname or username or id if both not found) 
+#   add chat id on received messages
+#   reduced logging (3 is normal / 2 is only issues) 
+#   deprecated sendPhoto / sendPhotoTo --> only sendImage
+#   captions also mentioned in internal after send
+# 0.9 2015-10-15 alignment of commands (ATTENTION), support for unicode and emojis, chat-group support 
+#   
+#   FIX: deprecated sets not executed in set
+#   Internal: Change send on commands to message command
+#   Final edits for SVN
+# 1.0 2015-10-17 Initial SVN-Version 

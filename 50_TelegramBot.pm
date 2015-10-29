@@ -49,15 +49,21 @@
 #   removed old version changes to history.txt
 #   add digest readings for error
 #   attribute to reduce logging on updatepoll errors - pollingVerbose:0_None,1_Digest,2_Log - (no log, default digest log daily, log every issue)
-
 #   documentation for pollingverbose
 #   reset / log polling status also in case of no error
 #   removed remark on timeout of 20sec
+
+#   LastCommands returns keyboard with commands 
+#   
+#   
+#   
 #   
 #   
 ##############################################################################
 # TASKS 
 #
+#   allow keyboards in the api
+#   
 #   dialog function
 #   
 #   allowed commands
@@ -691,11 +697,31 @@ sub TelegramBot_SentLastCommand($$$) {
 
   my $defpeer = AttrVal($name,'defaultPeer',undef);
   $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
+ 
+  my @cmds = split( "\n", $slc );
+
+  # create keyboard
+  my @keys = ();
+
+  foreach my $cs (  @cmds ) {
+    my @tmparr = ( $cs );
+    push( @keys, \@tmparr );
+  }
+#  my @tmparr = ( $fcmd."0 = Abbruch" );
+#  push( @keys, \@tmparr );
+
+  my $jsonkb = TelegramBot_MakeKeyboard( $hash, 1, @keys );
+
+  $ret = "TelegramBot fhem  : $mpeernorm \n Last Commands \n";
   
-  $ret = "TelegramBot fhem  : $mpeernorm \nLast Commands \n\n".$slc;
+  # overwrite ret with result from SendIt --> send response
+  $ret = TelegramBot_SendIt( $hash, $mpeernorm, $ret, $jsonkb, 1 );
+
+############ OLD SentLastCommands sent as message   
+#  $ret = "TelegramBot fhem  : $mpeernorm \nLast Commands \n\n".$slc;
   
-  # overwrite ret with result from Analyzecommand --> send response
-  $ret = AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
+#  # overwrite ret with result from Analyzecommand --> send response
+#  $ret = AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
 
   return $ret;
 }

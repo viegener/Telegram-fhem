@@ -53,9 +53,9 @@
 #   reset / log polling status also in case of no error
 #   removed remark on timeout of 20sec
 #   LastCommands returns keyboard with commands 
-
 #   added send / image command for compatibility with yowsup
-#   
+#   image not in cmd list to avoid this being first option
+
 #   
 #   
 #   
@@ -71,8 +71,6 @@
 #
 ##############################################################################
 # Ideas / Future
-#   add keyboards
-#   Merge TelegramBot into Telegram
 #   add replyTo
 #
 ##############################################################################
@@ -109,17 +107,13 @@ my %sets = (
 	"send" => "textField",
 
 	"sendImage" => "textField",
-	"image" => "textField",
-	"zDebug" => "textField",
+#	"image" => "textField",
 
-#	"messageTo" => "textField",   deprecated
-#	"sendImageTo" => "textField", deprecated
-#	"sendPhoto" => "textField",   removed
-#	"sendPhotoTo" => "textField", removed
-
-  # BOTONLY
 	"replaceContacts" => "textField",
-	"reset" => undef
+	"reset" => undef,
+
+	"zDebug" => "textField"
+
 );
 
 my %deprecatedsets = (
@@ -297,7 +291,7 @@ sub TelegramBot_Set($@)
 
 	if( (!exists($sets{$cmd})) && (!exists($deprecatedsets{$cmd})) ) {
 		my @cList;
-		foreach my $k (sort keys %sets) {
+		foreach my $k (keys %sets) {
 			my $opts = undef;
 			$opts = $sets{$k};
 

@@ -52,9 +52,9 @@
 #   documentation for pollingverbose
 #   reset / log polling status also in case of no error
 #   removed remark on timeout of 20sec
-
 #   LastCommands returns keyboard with commands 
-#   
+
+#   added send / image command for compatibility with yowsup
 #   
 #   
 #   
@@ -67,7 +67,6 @@
 #   dialog function
 #   
 #   allowed commands
-#   addtl commands from yowsup module
 #   
 #
 ##############################################################################
@@ -107,7 +106,10 @@ sub TelegramBot_Callback($$$);
 my %sets = (
 	"message" => "textField",
 	"msg" => "textField",
+	"send" => "textField",
+
 	"sendImage" => "textField",
+	"image" => "textField",
 	"zDebug" => "textField",
 
 #	"messageTo" => "textField",   deprecated
@@ -311,7 +313,7 @@ sub TelegramBot_Set($@)
 
   my $ret = undef;
   
-	if( ($cmd eq 'message') || ($cmd eq 'msg') ) {
+	if( ($cmd eq 'message') || ($cmd eq 'msg') || ($cmd eq 'send') ) {
     if ( $numberOfArgs < 2 ) {
       return "TelegramBot_Set: Command $cmd, no text (and no optional peer) specified";
     }
@@ -330,7 +332,7 @@ sub TelegramBot_Set($@)
     my $arg = join(" ", @args );
     $ret = TelegramBot_SendIt( $hash, $peer, $arg, undef, 1 );
 
-  } elsif ( ($cmd eq 'sendPhoto') || ($cmd eq 'sendImage')  ) {
+  } elsif ( ($cmd eq 'sendPhoto') || ($cmd eq 'sendImage') || ($cmd eq 'image') ) {
     if ( $numberOfArgs < 2 ) {
       return "TelegramBot_Set: Command $cmd, need to specify filename ";
     }
@@ -1970,7 +1972,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     where &lt;what&gt; is one of
 
   <br><br>
-    <li><code>message|msg [@&lt;peer&gt;] &lt;text&gt;</code><br>Sends the given message to the given peer or if peer is ommitted currently defined default peer user. If a peer is given it needs to be always prefixed with a '@'. Peers can be specified as contact ids, full names (with underscore instead of space), usernames (prefixed with another @) or chat names (also known as groups in telegram groups must be prefixed with #).<br>
+    <li><code>message|msg|send [@&lt;peer&gt;] &lt;text&gt;</code><br>Sends the given message to the given peer or if peer is ommitted currently defined default peer user. If a peer is given it needs to be always prefixed with a '@'. Peers can be specified as contact ids, full names (with underscore instead of space), usernames (prefixed with another @) or chat names (also known as groups in telegram groups must be prefixed with #).<br>
     Messages do not need to be quoted if containing spaces.<br>
     Examples:<br>
       <dl>
@@ -1984,7 +1986,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
           <dd> to send the message "Bye" to a contact or chat with the id "1234567". Chat ids might be negative and need to be specified with a leading hyphen (-). <br></dd>
       <dl>
     </li>
-    <li><code>sendImage [@&lt;peer&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given or if ommitted to the default peer. 
+    <li><code>sendImage|image [@&lt;peer&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given or if ommitted to the default peer. 
     File is specifying a filename and path to the image file to be send. 
     Local paths should be given local to the root directory of fhem (the directory of fhem.pl e.g. /opt/fhem).
     filenames containing spaces need to be given in parentheses.<br>

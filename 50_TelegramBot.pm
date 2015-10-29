@@ -45,9 +45,11 @@
 #   limit sentMsgTxt internal to 1000 chars (even if longer texts are sent)
 #   contact reading now written in contactsupdate before statefile written
 #   documentation corrected - forum#msg350873
+#   cleanup on comments 
+#   removed old version changes to history.txt
+#   add digest readings for error
+#   attribute to reduce logging on updatepoll errors - pollingVerbose:0_None,1_Digest,2_Log - (no log, default digest log daily, log every issue)
 
-#   
-#   
 #   
 #   
 ##############################################################################
@@ -176,7 +178,7 @@ sub TelegramBot_Initialize($) {
 	$hash->{GetFn}      = "TelegramBot_Get";
 	$hash->{SetFn}      = "TelegramBot_Set";
 	$hash->{AttrFn}     = "TelegramBot_Attr";
-	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize ".
+	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize pollingVerbose:1_Digest,2_Log,0_None, ".
 						$readingFnAttributes;           
 }
 
@@ -1110,6 +1112,7 @@ sub TelegramBot_Callback($$$)
 
   my $ret;
   my $result;
+  my $ll = 5;
 
   if ( defined( $param->{isPolling} ) ) {
     $hash->{OLD_POLLING} = ( ( defined( $hash->{POLLING} ) )?$hash->{POLLING}:0 ) + 1;
@@ -1169,13 +1172,6 @@ sub TelegramBot_Callback($$$)
       foreach my $update ( @$result ) {
         Log3 $name, 5, "UpdatePoll $name: parse result ";
         if ( defined( $update->{message} ) ) {
-  # print "MSG:";
-  # if ( defined( $update->{message}{text} ) ) {
-  ##  print $update->{message}{text};
-  #} else {
-  #  print "NOT DEFINED";
-  #}
-  # print ";\n";
           
           $ret = TelegramBot_ParseMsg( $hash, $update->{update_id}, $update->{message} );
         }
@@ -1185,11 +1181,41 @@ sub TelegramBot_Callback($$$)
           $hash->{offset_id} = $update->{update_id}+1;
         }
       }
-    } else {
-      # something went wrong increase fails
-      $hash->{FAILS} += 1;
     }
     
+    # Error to be converted to Reading for Poll
+    if ( defined( $ret ) ) {
+      # something went wrong increase fails
+      $hash->{FAILS} += 1;
+
+      my $pv = AttrVal( $name, "pollingVerbose", "1_Digest" );
+      
+      # Put last error into reading
+      readingsSingleUpdate($hash, "PollingLastError", $ret , 1); 
+
+      # calculate digest value
+      my $now = ReadingsTimestamp( $name, "PollingLastError", "1970-01-01 01:00:00" );
+      my $tst = ReadingsTimestamp( $name, "PollingErrCount", "1970-01-01 01:00:00" );
+      my $cnt = ReadingsVal( $name, "PollingErrCount", "0" );
+        Log3 $name, 3, "TelegramBot_Callback $name: Timestamp1 :".substr($now,0,10).":      Timestamp2 :".substr($tst,0,10).": ";
+      
+      if ( substr($now,0,10) eq substr($tst,0,10) ) {
+        # Still same date just increment
+        $cnt += 1;
+      } elsif ( $pv ne "3_None" ) {
+        # Write digest in log on next date
+        Log3 $name, 3, "TelegramBot_Callback $name: # Errors on ".substr($tst,0,10)." is :$cnt:";
+        $cnt = 1;
+      }
+      readingsSingleUpdate($hash, "PollingErrCount", $cnt, 1); 
+       
+      # log level is 2 on error if not digest is selected
+      $ll =( ( $pv eq "2_Log" )?2:4 );
+      
+      readingsSingleUpdate($hash, "PollingLastError", $ret , 1); 
+
+    }
+
     # start next poll or wait
     TelegramBot_UpdatePoll($hash); 
 
@@ -1197,10 +1223,10 @@ sub TelegramBot_Callback($$$)
   } else {
     # Non Polling means reset only the 
     $TelegramBot_hu_do_params{data} = "";
+    $ll = 3 if ( defined( $ret ) );
   }
   
-  my $ll = ( ( defined( $ret ) )?3:5);
-
+  
   $ret = "SUCCESS" if ( ! defined( $ret ) );
   Log3 $name, $ll, "TelegramBot_Callback $name: resulted in :$ret: from ".(( defined( $param->{isPolling} ) )?"Polling":"SendIt");
 

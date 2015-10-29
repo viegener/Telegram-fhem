@@ -50,21 +50,18 @@
 #   add digest readings for error
 #   attribute to reduce logging on updatepoll errors - pollingVerbose:0_None,1_Digest,2_Log - (no log, default digest log daily, log every issue)
 
+#   documentation for pollingverbose
+#   reset / log polling status also in case of no error
+#   removed remark on timeout of 20sec
 #   
 #   
 ##############################################################################
 # TASKS 
 #
-#
-#
-#   reduce log (err-level4, #fails, last fail, attr to reduce log)
-#   
 #   dialog function
 #   
 #   allowed commands
 #   addtl commands from yowsup module
-#   
-#   
 #   
 #
 ##############################################################################
@@ -73,9 +70,6 @@
 #   Merge TelegramBot into Telegram
 #   add replyTo
 #
-##############################################################################
-# Info: Max time out for getUpdates seem to be 20 s (TelegramBot)
-#	
 ##############################################################################
 
 package main;
@@ -178,7 +172,7 @@ sub TelegramBot_Initialize($) {
 	$hash->{GetFn}      = "TelegramBot_Get";
 	$hash->{SetFn}      = "TelegramBot_Set";
 	$hash->{AttrFn}     = "TelegramBot_Attr";
-	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize pollingVerbose:1_Digest,2_Log,0_None, ".
+	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize pollingVerbose:1_Digest,2_Log,0_None ".
 						$readingFnAttributes;           
 }
 
@@ -1093,6 +1087,7 @@ sub TelegramBot_UpdatePoll($)
   $hash->{STATE} = "Polling";
 
   $hash->{POLLING} = ( ( defined( $hash->{OLD_POLLING} ) )?$hash->{OLD_POLLING}:1 );
+  Log3 $name, 4, "TelegramBot_UpdatePoll $name: initiate polling with nonblockingGet with ".$timeout."s";
   HttpUtils_NonblockingGet( \%TelegramBot_hu_upd_params); 
 }
 
@@ -1183,38 +1178,46 @@ sub TelegramBot_Callback($$$)
       }
     }
     
+    # get timestamps and verbose
+    my $now = FmtDateTime( gettimeofday() ); 
+    my $tst = ReadingsTimestamp( $name, "PollingErrCount", "1970-01-01 01:00:00" );
+    my $pv = AttrVal( $name, "pollingVerbose", "1_Digest" );
+
+    # get current error cnt
+    my $cnt = ReadingsVal( $name, "PollingErrCount", "0" );
+
+    # flag if log needs to be written
+    my $doLog = 0;
+    
     # Error to be converted to Reading for Poll
     if ( defined( $ret ) ) {
       # something went wrong increase fails
       $hash->{FAILS} += 1;
 
-      my $pv = AttrVal( $name, "pollingVerbose", "1_Digest" );
-      
       # Put last error into reading
       readingsSingleUpdate($hash, "PollingLastError", $ret , 1); 
-
-      # calculate digest value
-      my $now = ReadingsTimestamp( $name, "PollingLastError", "1970-01-01 01:00:00" );
-      my $tst = ReadingsTimestamp( $name, "PollingErrCount", "1970-01-01 01:00:00" );
-      my $cnt = ReadingsVal( $name, "PollingErrCount", "0" );
-        Log3 $name, 3, "TelegramBot_Callback $name: Timestamp1 :".substr($now,0,10).":      Timestamp2 :".substr($tst,0,10).": ";
       
       if ( substr($now,0,10) eq substr($tst,0,10) ) {
         # Still same date just increment
         $cnt += 1;
-      } elsif ( $pv ne "3_None" ) {
+        readingsSingleUpdate($hash, "PollingErrCount", $cnt, 1); 
+      } else {
         # Write digest in log on next date
-        Log3 $name, 3, "TelegramBot_Callback $name: # Errors on ".substr($tst,0,10)." is :$cnt:";
-        $cnt = 1;
+        $doLog = ( $pv ne "3_None" );
+        readingsSingleUpdate($hash, "PollingErrCount", 1, 1); 
       }
-      readingsSingleUpdate($hash, "PollingErrCount", $cnt, 1); 
-       
-      # log level is 2 on error if not digest is selected
-      $ll =( ( $pv eq "2_Log" )?2:4 );
       
-      readingsSingleUpdate($hash, "PollingLastError", $ret , 1); 
-
+    } elsif ( substr($now,0,10) ne substr($tst,0,10) ) {
+      readingsSingleUpdate($hash, "PollingErrCount", 0, 1);
+      $doLog = ( $pv ne "3_None" );
     }
+
+    # log level is 2 on error if not digest is selected
+    $ll =( ( $pv eq "2_Log" )?2:4 );
+
+    # log digest if flag set
+    Log3 $name, 3, "TelegramBot_Callback $name: # Errors on ".substr($tst,0,10)." is :$cnt:" if ( $doLog );
+
 
     # start next poll or wait
     TelegramBot_UpdatePoll($hash); 
@@ -1435,7 +1438,7 @@ sub TelegramBot_ResetPolling($) {
   $hash->{POLLING} = -1;
   
   # wait some time before next polling is starting
-  InternalTimer(gettimeofday()+45, "TelegramBot_RestartPolling", $hash,0); 
+  InternalTimer(gettimeofday()+30, "TelegramBot_RestartPolling", $hash,0); 
 
   Log3 $name, 4, "TelegramBot_ResetPolling $name: finished ";
 
@@ -2025,10 +2028,13 @@ sub TelegramBot_BinaryFileWrite($$$) {
 
   <br><br>
     <li><code>pollingTimeout &lt;number&gt;</code><br>Used to specify the timeout for long polling of updates. A value of 0 is switching off any long poll. 
-      In this case no updates are automatically received and therefore also no messages can be received. 
-      As of now the long poll timeout is limited to a maximium of 20 sec, longer values will be ignored from the telegram service.
+      In this case no updates are automatically received and therefore also no messages can be received. It is recommended to set the pollingtimeout to a reasonable time between 15 (not too short) and 60 (to avoid broken connections). 
     </li> 
+    <li><code>pollingVerbose &lt;0_None 1_Digest 2_Log&gt;</code><br>Used to limit the amount of logging for errors of the polling connection. These errors are happening regularly and usually are not consider critical, since the polling restarts automatically and pauses in case of excess errors. With the default setting "1_Digest" once a day the number of errors on the last day is logged (log level 3). With "2_Log" every error is logged with log level 2. With the setting "0_None" no errors are logged. In any case the count of errors during the last day and the last error is stored in the readings <code>PollingErrCount</code> and <code>PollingLastError</code> </li> 
 
+    
+pollingVerbose:1_Digest,2_Log,0_None
+    
   <br><br>
     <li><code>maxFileSize &lt;number of bytes&gt;</code><br>Maximum file size in bytes for transfer of files (images). If not set the internal limit is specified as 10MB (10485760B).
     </li> 
@@ -2069,6 +2075,10 @@ sub TelegramBot_BinaryFileWrite($$$) {
   <br><br>
     <li>StoredCommands &lt;text&gt;<br>A list of the last commands executed through TelegramBot. Maximum 10 commands are stored.</li> 
 
+  <br><br>
+    <li>PollingErrCount &lt;number&gt;<br>Show the number of polling errors during the last day. The number is reset at the beginning of the next day.</li> 
+    <li>PollingLastError &lt;number&gt;<br>Last error message that occured during a polling update call</li> 
+    
   </ul>
   <br><br>
   

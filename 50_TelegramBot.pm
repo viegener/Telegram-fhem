@@ -55,7 +55,9 @@
 #   LastCommands returns keyboard with commands 
 #   added send / image command for compatibility with yowsup
 #   image not in cmd list to avoid this being first option
+#   FIX: Keyboard removed after fac execution
 
+#   Do not use contacts from msg since this might be NON-Telegram contact
 #   
 #   
 #   
@@ -1303,12 +1305,12 @@ sub TelegramBot_ParseMsg($$$)
     $chatId = $chat->{id};
   }
 
-  my $user = $message->{contact};
-  if ( defined( $user ) ) {
-    push( @contacts, $user );
-  }
+#  my $user = $message->{contact};
+#  if ( defined( $user ) ) {
+#    push( @contacts, $user );
+#  }
 
-  $user = $message->{new_chat_participant};
+  my $user = $message->{new_chat_participant};
   if ( defined( $user ) ) {
     push( @contacts, $user );
   }

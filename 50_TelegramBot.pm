@@ -623,7 +623,7 @@ sub TelegramBot_SentFavorites($$$$) {
 #    Log3 $name, 3, "TelegramBot_SentFavorites exec cmd :$cmdId: ";
     if ( ( $cmdId >= 0 ) && ( $cmdId < scalar( @clist ) ) ) { 
       $cmd = $clist[$cmdId];
-      $ret = TelegramBot_ExecuteCommand( $hash, $mpeernorm, $cmd );
+      return TelegramBot_ExecuteCommand( $hash, $mpeernorm, $cmd );
     } else {
       Log3 $name, 3, "TelegramBot_SentFavorites cmd id not defined :($cmdId+1): ";
     }
@@ -1238,7 +1238,7 @@ sub TelegramBot_Callback($$$)
     $ll =( ( $pv eq "2_Log" )?2:4 );
 
     # log digest if flag set
-    Log3 $name, 3, "TelegramBot_Callback $name: # Errors on ".substr($tst,0,10)." is :$cnt:" if ( $doLog );
+    Log3 $name, 3, "TelegramBot_Callback $name: Digest: Number of poll failures on ".substr($tst,0,10)." is :$cnt:" if ( $doLog );
 
 
     # start next poll or wait

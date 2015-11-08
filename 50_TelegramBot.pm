@@ -56,15 +56,15 @@
 #   added send / image command for compatibility with yowsup
 #   image not in cmd list to avoid this being first option
 #   FIX: Keyboard removed after fac execution
-
 #   Do not use contacts from msg since this might be NON-Telegram contact
+#   
 #   
 #   
 #   
 ##############################################################################
 # TASKS 
 #
-#   allow keyboards in the api
+#   allow keyboards in the device
 #   
 #   dialog function
 #   
@@ -807,7 +807,7 @@ sub TelegramBot_ExecuteCommand($$$) {
     $ret = substr( $ret, 0, $limit )."\n\n...";
   }
 
-  $ret = AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
+  AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
 
   my $dpc = AttrVal($name,'defaultPeerCopy',1);
   if ( ( $dpc ) && ( defined( $defpeer ) ) ) {

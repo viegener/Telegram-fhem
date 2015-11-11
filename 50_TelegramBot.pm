@@ -57,7 +57,8 @@
 #   image not in cmd list to avoid this being first option
 #   FIX: Keyboard removed after fac execution
 #   Do not use contacts from msg since this might be NON-Telegram contact
-#   
+
+#   cmdReturnEmptyResult - to suppress empty results from command execution
 #   
 #   
 #   
@@ -176,7 +177,7 @@ sub TelegramBot_Initialize($) {
 	$hash->{GetFn}      = "TelegramBot_Get";
 	$hash->{SetFn}      = "TelegramBot_Set";
 	$hash->{AttrFn}     = "TelegramBot_Attr";
-	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize pollingVerbose:1_Digest,2_Log,0_None ".
+	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None ".
 						$readingFnAttributes;           
 }
 
@@ -517,10 +518,13 @@ sub TelegramBot_Attr(@) {
 		} elsif ($aName eq 'saveStateOnContactChange') {
 			$attr{$name}{'saveStateOnContactChange'} = ($aVal eq "1")? "1": "0";
 
+		} elsif ($aName eq 'cmdReturnEmptyResult') {
+			$attr{$name}{'cmdReturnEmptyResult'} = ($aVal eq "1")? "1": "0";
+
 		} elsif ($aName eq 'cmdTriggerOnly') {
 			$attr{$name}{'cmdTriggerOnly'} = ($aVal eq "1")? "1": "0";
 
-		} elsif ($aName eq 'maxFileSize') {
+      } elsif ($aName eq 'maxFileSize') {
       if ( $aVal =~ /^[[:digit:]]+$/ ) {
         $attr{$name}{'maxFileSize'} = $aVal;
       }
@@ -788,34 +792,37 @@ sub TelegramBot_ExecuteCommand($$$) {
   my $retstart = "TelegramBot fhem";
   $retstart .= " from $pname ($mpeernorm)" if ( $defpeer ne $mpeernorm );
   
+  my $retempty = AttrVal($name,'cmdReturnEmptyResult',1);
+
   # undef is considered ok
   if ( ( ! defined( $ret ) ) || ( length( $ret) == 0 ) ) {
-    $ret = "$retstart cmd :$cmd: result OK";
+    $ret = "$retstart cmd :$cmd: result OK" if ( $retempty );
   } else {
     $ret = "$retstart cmd :$cmd: result :$ret:";
   }
-  Log3 $name, 5, "TelegramBot_ExecuteCommand $name: ".$ret.": ";
+  Log3 $name, 5, "TelegramBot_ExecuteCommand $name: ".(defined($ret)?$ret:"<undef>").": ";
   
-  # replace line ends with spaces
-#  $ret =~ s/(\r|\n)/ /gm;
-  $ret =~ s/\r//gm;
-  
-  # shorten to maxReturnSize if set
-  my $limit = AttrVal($name,'maxReturnSize',0);
+  if ( ( defined( $ret ) ) && ( length( $ret) != 0 ) ) {
+    # replace line ends with spaces
+    $ret =~ s/\r//gm;
+    
+    # shorten to maxReturnSize if set
+    my $limit = AttrVal($name,'maxReturnSize',0);
 
-  if ( ( length($ret) > $limit ) && ( $limit != 0 ) ) {
-    $ret = substr( $ret, 0, $limit )."\n\n...";
-  }
+    if ( ( length($ret) > $limit ) && ( $limit != 0 ) ) {
+      $ret = substr( $ret, 0, $limit )."\n\n...";
+    }
 
-  AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
+    AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
 
-  my $dpc = AttrVal($name,'defaultPeerCopy',1);
-  if ( ( $dpc ) && ( defined( $defpeer ) ) ) {
-    if ( $defpeer ne $mpeernorm ) {
-      AnalyzeCommand( undef, "set $name message $ret", "" );
+    my $dpc = AttrVal($name,'defaultPeerCopy',1);
+    if ( ( $dpc ) && ( defined( $defpeer ) ) ) {
+      if ( $defpeer ne $mpeernorm ) {
+        AnalyzeCommand( undef, "set $name message $ret", "" );
+      }
     }
   }
-
+  
   return $ret;
 }
 
@@ -2049,6 +2056,9 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>cmdTriggerOnly &lt;0 or 1&gt;</code><br>Restrict the execution of commands only to trigger command. If this attr is set (value 1), then only the name of the trigger even has to be given (i.e. without the preceding statement trigger). 
           So if for example cmdKeyword is set to <code>ok fhem</code> and cmdTriggerOnly is set, then a message of <code>ok fhem someMacro</code> would execute the fhem command  <code>trigger someMacro</code>.
     </li> 
+    <li><code>cmdReturnEmptyResult &lt;1 or 0&gt;</code><br>Return empty (success) message for commands (default). Otherwise return messages are only sent if a result text or error message is the result of the command execution.
+    </li> 
+
 
   <br><br>
     <li><code>pollingTimeout &lt;number&gt;</code><br>Used to specify the timeout for long polling of updates. A value of 0 is switching off any long poll. 

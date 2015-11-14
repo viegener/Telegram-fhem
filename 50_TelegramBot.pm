@@ -57,15 +57,16 @@
 #   image not in cmd list to avoid this being first option
 #   FIX: Keyboard removed after fac execution
 #   Do not use contacts from msg since this might be NON-Telegram contact
-
 #   cmdReturnEmptyResult - to suppress empty results from command execution
+#   prev... Readings do not trigger events (to reduce log content)
+#   Contacts reading only changed if string is not equal
 #   
 #   
 #   
 ##############################################################################
 # TASKS 
 #
-#   allow keyboards in the device
+#   allow keyboards in the device api
 #   
 #   dialog function
 #   
@@ -1347,6 +1348,10 @@ sub TelegramBot_ParseMsg($$$)
     readingsBulkUpdate($hash, "prevMsgChat", $hash->{READINGS}{msgChat}{VAL});				
     readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
 
+    readingsEndUpdate($hash, 0);
+    
+    readingsBeginUpdate($hash);
+
     readingsBulkUpdate($hash, "msgId", $mid);				
     readingsBulkUpdate($hash, "msgPeer", TelegramBot_GetFullnameForContact( $hash, $mpeernorm ));				
     readingsBulkUpdate($hash, "msgChat", TelegramBot_GetFullnameForChat( $hash, $chatId ) );				
@@ -1743,6 +1748,8 @@ sub TelegramBot_ContactUpdate($@) {
 
   my $newfound = ( int(@contacts) == 0 );
 
+  my $oldContactString = ReadingsVal($hash->{NAME},"Contacts","");
+
   TelegramBot_InternalContactsFromReading( $hash ) if ( ! defined( $hash->{Contacts} ) );
   
   Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hash before :".scalar(keys $hash->{Contacts}).":";
@@ -1771,7 +1778,7 @@ sub TelegramBot_ContactUpdate($@) {
     }
 
   # Do a readings change directly for contacts
-  readingsSingleUpdate($hash, "Contacts", $rc , 1); 
+  readingsSingleUpdate($hash, "Contacts", $rc , 1) if ( $rc ne $oldContactString );
     
   # save state file on new contact 
   if ( $newfound ) {
@@ -2105,6 +2112,8 @@ pollingVerbose:1_Digest,2_Log,0_None
     <li>prevMsgPeer &lt;text&gt;<br>The sender name of the SECOND last received message (either full name or if not available @username)</li> 
     <li>prevMsgPeerId &lt;text&gt;<br>The sender id of the SECOND last received message</li> 
     <li>prevMsgText &lt;text&gt;<br>The SECOND last received message text is stored in this reading</li> 
+
+  <br>All prev... Readings are not triggering events<br>
 
   <br><br>
     <li>StoredCommands &lt;text&gt;<br>A list of the last commands executed through TelegramBot. Maximum 10 commands are stored.</li> 

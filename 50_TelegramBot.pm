@@ -60,6 +60,7 @@
 #   cmdReturnEmptyResult - to suppress empty results from command execution
 #   prev... Readings do not trigger events (to reduce log content)
 #   Contacts reading only changed if string is not equal
+# 1.1 2015-11-14 keyboards added, log changes and multiple smaller enhancements
 #   
 #   
 #   

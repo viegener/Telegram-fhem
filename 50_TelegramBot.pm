@@ -60,7 +60,9 @@
 #   cmdReturnEmptyResult - to suppress empty results from command execution
 #   prev... Readings do not trigger events (to reduce log content)
 #   Contacts reading only changed if string is not equal
-# 1.1 2015-11-14 keyboards added, log changes and multiple smaller enhancements
+
+#   Need to replace \n again with Chr10 - linefeed due to a telegram change - FORUM #msg363825
+#   
 #   
 #   
 #   
@@ -72,6 +74,8 @@
 #   dialog function
 #   
 #   allowed commands
+#   
+#   comment on a single telegram bot api
 #   
 #
 ##############################################################################
@@ -889,7 +893,9 @@ sub TelegramBot_SendIt($$$$$)
   my $ret;
   $hash->{sentMsgResult} = "WAITING";
 
-  # trim and convert spaces in peer to underline 
+  Log3 $name, 5, "TelegramBot_SendIt $name: try to send message to :$peer: -:$msg: - :".(defined($addPar)?$addPar:"<undef>").":";
+
+    # trim and convert spaces in peer to underline 
   my $peer2 = TelegramBot_GetIdForPeer( $hash, $peer );
 
   if ( ! defined( $peer2 ) ) {
@@ -921,8 +927,8 @@ sub TelegramBot_SendIt($$$$$)
        } else {
         $hash->{sentMsgText} = $msg;
        }
-  #    my $c = chr(10);
-  #    $msg =~ s/([^\\])\\n/$1$c/g;
+      my $c = chr(10);
+      $msg =~ s/([^\\])\\n/$1$c/g;
 
       # add msg (no file)
       $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "text", undef, $msg, 0 ) if ( ! defined( $ret ) );

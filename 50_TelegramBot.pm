@@ -66,13 +66,11 @@
 #   Prepared for allowing multiple contacts being given for msg/image commands
 #   Prepare for defaultpeer specifying multiple peers as a list
 #   Allow multiple peers specified for send/msg/image etc
-#   
+#   Remove deprecated commands messageTo sendImageTo sendPhotoTo
 #   
 ##############################################################################
 # TASKS 
 #
-#   allow multiple accounts to be specified
-#   
 #   allow alias cmds in the form alias1:cmdx; alias2:cmdy; ...
 #   
 #   allow keyboards in the device api
@@ -376,37 +374,6 @@ sub TelegramBot_Set($@)
 
     Log3 $name, 5, "TelegramBot_Set $name: start photo send ";
     $ret = TelegramBot_SendIt( $hash, $peers, $file, $caption, 0 );
-
-  # DEPRECATED
-	} elsif($cmd eq 'messageTo') {
-    if ( $numberOfArgs < 3 ) {
-      return "TelegramBot_Set: Command $cmd, need to specify peer and text ";
-    }
-
-    # should return undef if succesful
-    my $peer = shift @args;
-    my $arg = join(" ", @args );
-
-    Log3 $name, 4, "TelegramBot_Set $name: start message send ";
-    $ret = TelegramBot_SendIt( $hash, $peer, $arg, undef, 1 );
- 
-  # DEPRECATED
-  } elsif ( ($cmd eq 'sendPhotoTo') || ($cmd eq 'sendImageTo') ) {
-    if ( $numberOfArgs < 3 ) {
-      return "TelegramBot_Set: Command $cmd, need to specify peer and text ";
-    }
-
-    # should return undef if succesful
-    my $peer = shift @args;
-
-    my $file = shift @args;
-    $file = $1 if ( $file =~ /^\"(.*)\"$/ );
-    
-    my $caption;
-    $caption = join(" ", @args ) if ( $numberOfArgs > 3 );
-
-    Log3 $name, 5, "TelegramBot_Set $name: start photo send to $peer";
-    $ret = TelegramBot_SendIt( $hash, $peer, $file, $caption, 0 );
 
   } elsif($cmd eq 'zDebug') {
     # for internal testing only
@@ -2039,12 +2006,6 @@ sub TelegramBot_BinaryFileWrite($$$) {
     internal contact handling, queue of send items and polling <br>
     ATTENTION: Messages that might be queued on the telegram server side (especially commands) might be then worked off afterwards immedately. 
     If in doubt it is recommened to temporarily deactivate (delete) the cmdKeyword attribute before resetting.</li>
-
-  <br><br>
-    <li>DEPRECATED: <code>sendImageTo &lt;peer&gt; &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer, 
-    other arguments are handled as with <code>sendPhoto</code></li>
-    <li>DEPRECATED: <code>messageTo &lt;peer&gt; &lt;text&gt;</code><br>Sends the given message to the given peer. 
-    Peer needs to be given without space or other separator, i.e. spaces should be replaced by underscore (e.g. first_last)</li>
 
   </ul>
   <br><br>

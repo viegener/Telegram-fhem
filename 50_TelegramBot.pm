@@ -65,7 +65,7 @@
 #   
 #   Prepared for allowing multiple contacts being given for msg/image commands
 #   Prepare for defaultpeer specifying multiple peers as a list
-#   
+#   Allow multiple peers specified for send/msg/image etc
 #   
 #   
 ##############################################################################
@@ -888,7 +888,7 @@ sub TelegramBot_SendIt($$$$$)
 {
 	my ( $hash, @args) = @_;
 
-	my ( $peer, $msg, $addPar, $isText) = @args;
+	my ( $peers, $msg, $addPar, $isText) = @args;
   my $name = $hash->{NAME};
 	
   Log3 $name, 5, "TelegramBot_SendIt $name: called ";
@@ -898,7 +898,7 @@ sub TelegramBot_SendIt($$$$$)
     if ( ! defined( $hash->{sentQueue} ) ) {
       $hash->{sentQueue} = [];
     }
-    Log3 $name, 3, "TelegramBot_SendIt $name: add send to queue :$peer: -:$msg: - :".(defined($addPar)?$addPar:"<undef>").":";
+    Log3 $name, 3, "TelegramBot_SendIt $name: add send to queue :$peers: -:$msg: - :".(defined($addPar)?$addPar:"<undef>").":";
     push( @{ $hash->{sentQueue} }, \@args );
     return;
   }  
@@ -906,6 +906,14 @@ sub TelegramBot_SendIt($$$$$)
   my $ret;
   $hash->{sentMsgResult} = "WAITING";
 
+  my ( $peer, $peers ) = split( " ", $peers, 2 ); 
+  
+  # handle addtl peers specified (will be queued since WAITING is set already) 
+  if ( defined( $peers ) ) {
+    # ignore return, since it is only queued
+    TelegramBot_SendIt( $hash, $peers, $msg, $addPar, $isText );
+  }
+  
   Log3 $name, 5, "TelegramBot_SendIt $name: try to send message to :$peer: -:$msg: - :".(defined($addPar)?$addPar:"<undef>").":";
 
     # trim and convert spaces in peer to underline 
@@ -2002,11 +2010,13 @@ sub TelegramBot_BinaryFileWrite($$$) {
     where &lt;what&gt; is one of
 
   <br><br>
-    <li><code>message|msg|send [@&lt;peer&gt;] &lt;text&gt;</code><br>Sends the given message to the given peer or if peer is ommitted currently defined default peer user. If a peer is given it needs to be always prefixed with a '@'. Peers can be specified as contact ids, full names (with underscore instead of space), usernames (prefixed with another @) or chat names (also known as groups in telegram groups must be prefixed with #).<br>
+    <li><code>message|msg|send [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;text&gt;</code><br>Sends the given message to the given peer or if peer(s) is ommitted currently defined default peer user. Each peer given needs to be always prefixed with a '@'. Peers can be specified as contact ids, full names (with underscore instead of space), usernames (prefixed with another @) or chat names (also known as groups in telegram groups must be prefixed with #). Multiple peers are to be separated by space<br>
     Messages do not need to be quoted if containing spaces.<br>
     Examples:<br>
       <dl>
         <dt><code>set aTelegramBotDevice message @@someusername a message to be sent</code></dt>
+          <dd> to send to a user having someusername as username (not first and last name) in telegram <br> </dd>
+        <dt><code>set aTelegramBotDevice message @@someusername @1234567 a message to be sent to multiple receipients</code></dt>
           <dd> to send to a user having someusername as username (not first and last name) in telegram <br> </dd>
         <dt><code>set aTelegramBotDevice message @Ralf_Mustermann another message</code></dt>
           <dd> to send to a user Ralf as firstname and Mustermann as last name in telegram   <br></dd>
@@ -2016,11 +2026,11 @@ sub TelegramBot_BinaryFileWrite($$$) {
           <dd> to send the message "Bye" to a contact or chat with the id "1234567". Chat ids might be negative and need to be specified with a leading hyphen (-). <br></dd>
       <dl>
     </li>
-    <li><code>sendImage|image [@&lt;peer&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given or if ommitted to the default peer. 
+    <li><code>sendImage|image [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer(s) or if ommitted to the default peer. 
     File is specifying a filename and path to the image file to be send. 
     Local paths should be given local to the root directory of fhem (the directory of fhem.pl e.g. /opt/fhem).
     filenames containing spaces need to be given in parentheses.<br>
-    Rule for specifying peers are the same as for messages. Captions can also contain multiple words and do not need to be quoted.
+    Rule for specifying peers are the same as for messages. Multiple peers are to be separated by space. Captions can also contain multiple words and do not need to be quoted.
     </li>
   <br><br>
     <li><code>replaceContacts &lt;text&gt;</code><br>Set the contacts newly from a string. Multiple contacts can be separated by a space. 

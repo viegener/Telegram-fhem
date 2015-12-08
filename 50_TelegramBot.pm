@@ -70,6 +70,8 @@
 #
 #   allow multiple accounts to be specified
 #   
+#   allow alias cmds in the form alias1:cmdx; alias2:cmdy; ...
+#   
 #   allow keyboards in the device api
 #   
 #   dialog function
@@ -318,37 +320,48 @@ sub TelegramBot_Set($@)
   my $ret = undef;
   
 	if( ($cmd eq 'message') || ($cmd eq 'msg') || ($cmd eq 'send') ) {
-    if ( $numberOfArgs < 2 ) {
-      return "TelegramBot_Set: Command $cmd, no text (and no optional peer) specified";
-    }
-    my $peer;
-    if ( $args[0] =~ /^@(..+)$/ ) {
-      $peer = $1;
+
+    my $peers;
+    while ( $args[0] =~ /^@(..+)$/ ) {
+      my $ppart = $1;
+      $peers .= " " if ( defined( $peers ) );
+      $peers .= $ppart;
+      
       shift @args;
-      return "TelegramBot_Set: Command $cmd, no text specified" if ( $numberOfArgs < 3 );
-    } else {
-      $peer = AttrVal($name,'defaultPeer',undef);
-      return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peer) );
+      $numberOfArgs--;
+      last if ( $numberOfArgs == 0 );
+    }
+    
+    return "TelegramBot_Set: Command $cmd, no text (and no optional peer) specified" if ( $numberOfArgs < 1 );
+
+    if ( ! defined( $peers ) ) {
+      $peers = AttrVal($name,'defaultPeer',undef);
+      return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peers) );
     }
 
     # should return undef if succesful
     Log3 $name, 4, "TelegramBot_Set $name: start message send ";
     my $arg = join(" ", @args );
-    $ret = TelegramBot_SendIt( $hash, $peer, $arg, undef, 1 );
+    $ret = TelegramBot_SendIt( $hash, $peers, $arg, undef, 1 );
 
   } elsif ( ($cmd eq 'sendPhoto') || ($cmd eq 'sendImage') || ($cmd eq 'image') ) {
-    if ( $numberOfArgs < 2 ) {
-      return "TelegramBot_Set: Command $cmd, need to specify filename ";
-    }
 
-    my $peer;
-    if ( $args[0] =~ /^@(..+)$/ ) {
-      $peer = $1;
+    my $peers;
+    while ( $args[0] =~ /^@(..+)$/ ) {
+      my $ppart = $1;
+      $peers .= " " if ( defined( $peers ) );
+      $peers .= $ppart;
+      
       shift @args;
-      return "TelegramBot_Set: Command $cmd, need to specify filename" if ( $numberOfArgs < 3 );
-    } else {
-      $peer = AttrVal($name,'defaultPeer',undef);
-      return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peer) );
+      $numberOfArgs--;
+      last if ( $numberOfArgs == 0 );
+    }
+    
+    return "TelegramBot_Set: Command $cmd, need to specify filename " if ( $numberOfArgs < 1 );
+
+    if ( ! defined( $peers ) ) {
+      $peers = AttrVal($name,'defaultPeer',undef);
+      return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peers) );
     }
 
     # should return undef if succesful
@@ -359,8 +372,7 @@ sub TelegramBot_Set($@)
     $caption = join(" ", @args ) if ( int(@args) > 0 );
 
     Log3 $name, 5, "TelegramBot_Set $name: start photo send ";
-#    $ret = "TelegramBot_Set: Command $cmd, not yet supported ";
-    $ret = TelegramBot_SendIt( $hash, $peer, $file, $caption, 0 );
+    $ret = TelegramBot_SendIt( $hash, $peers, $file, $caption, 0 );
 
   # DEPRECATED
 	} elsif($cmd eq 'messageTo') {

@@ -63,6 +63,9 @@
 #   Need to replace \n again with Chr10 - linefeed due to a telegram change - FORUM #msg363825
 # 1.1 2015-11-24 keyboards added, log changes and multiple smaller enhancements
 #   
+#   Prepared for allowing multiple contacts being given for msg/image commands
+#   Prepare for defaultpeer specifying multiple peers as a list
+#   
 #   
 #   
 ##############################################################################
@@ -612,7 +615,6 @@ sub TelegramBot_checkCmdKeyword($$$$) {
   
   # send unauthorized to defaultpeer
   my $defpeer = AttrVal($name,'defaultPeer',undef);
-  $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
   if ( defined( $defpeer ) ) {
     AnalyzeCommand( undef, "set $name message $ret", "" );
   }
@@ -716,9 +718,6 @@ sub TelegramBot_SentLastCommand($$$) {
 
   my $slc =  ReadingsVal($name ,"StoredCommands","");
 
-  my $defpeer = AttrVal($name,'defaultPeer',undef);
-  $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
- 
   my @cmds = split( "\n", $slc );
 
   # create keyboard
@@ -807,6 +806,7 @@ sub TelegramBot_ExecuteCommand($$$) {
 
   my $defpeer = AttrVal($name,'defaultPeer',undef);
   $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
+  $defpeer = AttrVal($name,'defaultPeer',undef) if ( ! defined( $defpeer ) );
   
   my $retstart = "TelegramBot fhem";
   $retstart .= " from $pname ($mpeernorm)" if ( $defpeer ne $mpeernorm );

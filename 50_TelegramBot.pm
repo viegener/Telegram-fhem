@@ -110,6 +110,7 @@ sub TelegramBot_Set($@);
 sub TelegramBot_Get($@);
 
 sub TelegramBot_Callback($$$);
+sub TelegramBot_SendIt($$$$$);
 
 
 #########################
@@ -865,7 +866,7 @@ sub TelegramBot_SendIt($$$$$)
     if ( ! defined( $hash->{sentQueue} ) ) {
       $hash->{sentQueue} = [];
     }
-    Log3 $name, 3, "TelegramBot_SendIt $name: add send to queue :$peers: -:$msg: - :".(defined($addPar)?$addPar:"<undef>").":";
+    Log3 $name, 4, "TelegramBot_SendIt $name: add send to queue :$peers: -:$msg: - :".(defined($addPar)?$addPar:"<undef>").":";
     push( @{ $hash->{sentQueue} }, \@args );
     return;
   }  
@@ -873,7 +874,8 @@ sub TelegramBot_SendIt($$$$$)
   my $ret;
   $hash->{sentMsgResult} = "WAITING";
 
-  my ( $peer, $peers ) = split( " ", $peers, 2 ); 
+  my $peer;
+  ( $peer, $peers ) = split( " ", $peers, 2 ); 
   
   # handle addtl peers specified (will be queued since WAITING is set already) 
   if ( defined( $peers ) ) {

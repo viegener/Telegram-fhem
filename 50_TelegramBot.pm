@@ -67,6 +67,7 @@
 #   Prepare for defaultpeer specifying multiple peers as a list
 #   Allow multiple peers specified for send/msg/image etc
 #   Remove deprecated commands messageTo sendImageTo sendPhotoTo
+#   Minor fixes on lineendings for cmd results and log messages
 #   
 ##############################################################################
 # TASKS 
@@ -794,11 +795,13 @@ sub TelegramBot_ExecuteCommand($$$) {
     $ret =~ s/\r//gm;
     
     # shorten to maxReturnSize if set
-    my $limit = AttrVal($name,'maxReturnSize',0);
+    my $limit = AttrVal($name,'maxReturnSize',4000);
 
     if ( ( length($ret) > $limit ) && ( $limit != 0 ) ) {
-      $ret = substr( $ret, 0, $limit )."\n\n...";
+      $ret = substr( $ret, 0, $limit )."\n \n ...";
     }
+
+    $ret =~ s/\n/\\n/gm;
 
     AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
 
@@ -1365,15 +1368,15 @@ sub TelegramBot_ParseMsg($$$)
     my $cmdRet;
     
     $cmdRet = TelegramBot_ReadHandleCommand( $hash, $mpeernorm, $mtext );
-    Log3 $name, 3, "TelegramBot_ParseMsg $name: ReadHandleCommand returned :$cmdRet:" if ( defined($cmdRet) );
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: ReadHandleCommand returned :$cmdRet:" if ( defined($cmdRet) );
     
     #  ignore result of readhandlecommand since it leads to endless loop
 
     $cmdRet = TelegramBot_SentLastCommand( $hash, $mpeernorm, $mtext );
-    Log3 $name, 3, "TelegramBot_ParseMsg $name: SentLastCommand returned :$cmdRet:" if ( defined($cmdRet) );
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: SentLastCommand returned :$cmdRet:" if ( defined($cmdRet) );
     
     $cmdRet = TelegramBot_SentFavorites( $hash, $mpeernorm, $mtext, $mid );
-    Log3 $name, 3, "TelegramBot_ParseMsg $name: SentFavorites returned :$cmdRet:" if ( defined($cmdRet) );
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: SentFavorites returned :$cmdRet:" if ( defined($cmdRet) );
     
     
   } elsif ( scalar(@contacts) > 0 )  {

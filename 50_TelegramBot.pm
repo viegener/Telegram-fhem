@@ -68,9 +68,17 @@
 #   Allow multiple peers specified for send/msg/image etc
 #   Remove deprecated commands messageTo sendImageTo sendPhotoTo
 #   Minor fixes on lineendings for cmd results and log messages
+
+#   pollingVerbose attribute checked on set
+#   allowUnknownContacts attribute added default 1
+#   
 #   
 ##############################################################################
 # TASKS 
+#
+#   send audio files
+#
+#   receive any media files and store locally
 #
 #   allow alias cmds in the form alias1:cmdx; alias2:cmdy; ...
 #   
@@ -189,7 +197,7 @@ sub TelegramBot_Initialize($) {
 	$hash->{GetFn}      = "TelegramBot_Get";
 	$hash->{SetFn}      = "TelegramBot_Set";
 	$hash->{AttrFn}     = "TelegramBot_Attr";
-	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None ".
+	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None allowUnknownContacts:1,0 ".
 						$readingFnAttributes;           
 }
 
@@ -536,6 +544,11 @@ sub TelegramBot_Attr(@) {
       # wait some time before next polling is starting
       TelegramBot_ResetPolling( $hash );
 
+		} elsif ($aName eq 'pollingVerbose') {
+      return "\"TelegramBot_Attr: \" Incorrect value given for pollingVerbose" if ( $aVal !~ /^((1_Digest)|(2_Log)|(0_None))$/ );
+      $attr{$name}{'pollingVerbose'} = $aVal;
+		} elsif ($aName eq 'allowUnknownContacts') {
+			$attr{$name}{'allowUnknownContacts'} = ($aVal eq "1")? "1": "0";
     }
 	}
 
@@ -1061,8 +1074,6 @@ sub TelegramBot_MakeKeyboard($$@)
 
   return $ret;
 }
-
-  
   
 
 #####################################
@@ -1302,6 +1313,11 @@ sub TelegramBot_ParseMsg($$$)
   
   my $from = $message->{from};
   my $mpeer = $from->{id};
+
+  # ignore if unknown contacts shall be accepter
+  if ( AttrVal($name,'allowUnknownContacts',1) == 0 ) {
+    return $ret if ( ! TelegramBot_IsKnownContact( $hash, $mpeer ) ) ;
+  }
 
   # check peers beside from only contact (shared contact) and new_chat_participant are checked
   push( @contacts, $from );
@@ -1557,6 +1573,8 @@ sub TelegramBot_Setup($) {
 ##############################################################################
 ##############################################################################
 
+
+
 #####################################
 # INTERNAL: get id for a peer
 #   if only digits --> assume id
@@ -1758,6 +1776,7 @@ sub TelegramBot_ContactUpdate($@) {
     my $contactString = TelegramBot_userObjectToString( $user );
     if ( ! defined( $hash->{Contacts}{$user->{id}} ) ) {
       Log3 $hash->{NAME}, 3, "TelegramBot_ContactUpdate new contact :".$contactString.":";
+      next if ( AttrVal($hash->{NAME},'allowUnknownContacts',1) == 0 );
       $newfound = 1;
     } elsif ( $contactString ne $hash->{Contacts}{$user->{id}} ) {
       Log3 $hash->{NAME}, 3, "TelegramBot_ContactUpdate updated contact :".$contactString.":";

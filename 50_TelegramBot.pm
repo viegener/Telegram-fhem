@@ -68,9 +68,10 @@
 #   Allow multiple peers specified for send/msg/image etc
 #   Remove deprecated commands messageTo sendImageTo sendPhotoTo
 #   Minor fixes on lineendings for cmd results and log messages
-
 #   pollingVerbose attribute checked on set
 #   allowUnknownContacts attribute added default 1
+
+#   
 #   
 #   
 ##############################################################################
@@ -2089,8 +2090,6 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>pollingVerbose &lt;0_None 1_Digest 2_Log&gt;</code><br>Used to limit the amount of logging for errors of the polling connection. These errors are happening regularly and usually are not consider critical, since the polling restarts automatically and pauses in case of excess errors. With the default setting "1_Digest" once a day the number of errors on the last day is logged (log level 3). With "2_Log" every error is logged with log level 2. With the setting "0_None" no errors are logged. In any case the count of errors during the last day and the last error is stored in the readings <code>PollingErrCount</code> and <code>PollingLastError</code> </li> 
 
     
-pollingVerbose:1_Digest,2_Log,0_None
-    
   <br><br>
     <li><code>maxFileSize &lt;number of bytes&gt;</code><br>Maximum file size in bytes for transfer of files (images). If not set the internal limit is specified as 10MB (10485760B).
     </li> 
@@ -2101,7 +2100,8 @@ pollingVerbose:1_Digest,2_Log,0_None
     <li><code>saveStateOnContactChange &lt;1 or 0&gt;</code><br>Allow statefile being written on every new contact found, ensures new contacts not being lost on any loss of statefile. Default is on (1).
     </li> 
 
-
+    <li><code>allowUnknownContacts &lt;1 or 0&gt;</code><br>Allow new contacts to be added automatically (1 - Default) or restrict message reception only to known contacts and unknwown contacts will be ignored (0).
+    </li> 
 
     <li><a href="#verbose">verbose</a></li>
   </ul>

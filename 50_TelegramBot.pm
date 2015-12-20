@@ -70,6 +70,7 @@
 #   Minor fixes on lineendings for cmd results and log messages
 #   pollingVerbose attribute checked on set
 #   allowUnknownContacts attribute added default 1
+# 1.2 2015-12-20 multiple contacts for send etc/removed depreacted messageTo,sendImageTo,sendPhotoTo/allowunknowncontacts
 
 #   
 #   

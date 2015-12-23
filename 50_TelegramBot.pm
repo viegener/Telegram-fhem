@@ -76,8 +76,8 @@
 #   docu for alias
 #   correction for keyboard (no abbruch)
 
-#   
-#   
+#   added sentMsgId on sentMsgs
+#   Also set sentMsg Id and result in Readings (when finished)
 #   
 #   
 #   
@@ -97,11 +97,6 @@
 #   
 #   dialog function
 #   
-#   allowed commands
-#   
-#   comment on a single telegram bot api
-#   
-#
 ##############################################################################
 # Ideas / Future
 #   add replyTo
@@ -1017,6 +1012,7 @@ sub TelegramBot_SendIt($$$$$)
     
   my $ret;
   $hash->{sentMsgResult} = "WAITING";
+  $hash->{sentMsgId} = "";
 
   my $peer;
   ( $peer, $peers ) = split( " ", $peers, 2 ); 
@@ -1278,6 +1274,7 @@ sub TelegramBot_Callback($$$)
 
   my $ret;
   my $result;
+  my $msgId;
   my $ll = 5;
 
   if ( defined( $param->{isPolling} ) ) {
@@ -1395,9 +1392,11 @@ sub TelegramBot_Callback($$$)
 
 
   } else {
-    # Non Polling means reset only the 
+    # Non Polling means: get msgid, reset the params and set loglevel
     $TelegramBot_hu_do_params{data} = "";
     $ll = 3 if ( defined( $ret ) );
+    $msgId = $result->{message_id} if ( defined($result) );
+       
   }
   
   
@@ -1406,6 +1405,14 @@ sub TelegramBot_Callback($$$)
 
   if ( ! defined( $param->{isPolling} ) ) {
     $hash->{sentMsgResult} = $ret;
+    $hash->{sentMsgId} = ((defined($msgId))?$msgId:"");
+
+    # Also set sentMsg Id and result in Readings
+    readingsBeginUpdate($hash);
+    readingsBulkUpdate($hash, "sentMsgResult", $ret);				
+    readingsBulkUpdate($hash, "sentMsgId", ((defined($msgId))?$msgId:"") );				
+    readingsEndUpdate($hash, 1);
+
     if ( ( defined( $hash->{sentQueue} ) ) && (  scalar( @{ $hash->{sentQueue} } ) ) ) {
       my $ref = shift @{ $hash->{sentQueue} };
       Log3 $name, 5, "TelegramBot_Callback $name: handle queued send with :@$ref[0]: -:@$ref[1]: ";
@@ -1506,6 +1513,7 @@ sub TelegramBot_ParseMsg($$$)
 
     readingsEndUpdate($hash, 1);
     
+    # COMMAND Handling
     Telegram_HandleCommandInMessages( $hash, $mpeernorm, $mtext, $mid );
    
   } elsif ( scalar(@contacts) > 0 )  {

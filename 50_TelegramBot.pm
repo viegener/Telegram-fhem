@@ -73,7 +73,7 @@
 # 1.2 2015-12-20 multiple contacts for send etc/removed depreacted messageTo,sendImageTo,sendPhotoTo/allowunknowncontacts
 
 #   modified cmd handling in preparation for alias (and more efficient)
-#   
+#   allow alias to be defined for favorites: /aliasx=cmdx;
 #   
 #   
 #   
@@ -86,10 +86,6 @@
 #   send audio files
 #   receive any media files and store locally
 #
-#   allow alias cmds in the form alias1:cmdx; alias2:cmdy; ...
-#   Concept add favorites with addtl prefix #name: für alias favorites
-#   complex commands only as notify 
-#   
 #   allow keyboards in the device api
 #   
 #   dialog function
@@ -515,7 +511,29 @@ sub TelegramBot_Attr(@) {
 		} elsif ($aName eq 'favorites') {
 			$attr{$name}{'favorites'} = $aVal;
 
-		} elsif ($aName eq 'cmdRestrictedPeer') {
+      # Empty current alias list in hash
+      if ( defined( $hash->{AliasCmds} ) ) {
+        foreach my $key (keys $hash->{AliasCmds} )
+            {
+                delete $hash->{AliasCmds}{$key};
+            }
+      } else {
+        $hash->{AliasCmds} = {};
+      }
+
+      my @clist = split( /;/, $aVal);
+
+      foreach my $cs (  @clist ) {
+        if ( $cs =~ /^\s*((\/[^=]+)=)(.*)$/ ) {
+          my $alx = $2;
+          my $alcmd = $3;
+          
+          Log3 $name, 2, "TelegramBot_Attr $name: Alias $alcmd defined multiple times" if ( defined( $hash->{AliasCmds}{$alx} ) );
+          $hash->{AliasCmds}{$alx} = $alcmd;
+        }
+      }
+
+    } elsif ($aName eq 'cmdRestrictedPeer') {
       $aVal =~ s/^\s+|\s+$//g;
       $attr{$name}{'cmdRestrictedPeer'} = $aVal;
       
@@ -574,21 +592,26 @@ sub TelegramBot_Attr(@) {
 
 #####################################
 #####################################
-# INTERNAL: Check for cmdkeyword given (no auth check !!!!)
+# INTERNAL: Check against cmdkeyword given (no auth check !!!!)
 sub TelegramBot_checkCmdKeyword($$$$) {
-  my ($hash, $mpeernorm, $mtext, $attrName ) = @_;
+  my ($hash, $mtext, $cmdKey, $needsSep ) = @_;
   my $name = $hash->{NAME};
 
   my $cmd;
   
-  # command key word aus Attribut holen
-  my $ck = AttrVal($name,$attrName,undef);
-  
 #  Log3 $name, 3, "TelegramBot_checkCmdKeyword $name: check :".$mtext.":   against defined :".$ck.":   results in ".index($mtext,$ck);
 
-  return undef if ( ! defined( $ck ) );
+  return undef if ( ! defined( $cmdKey ) );
 
-  return undef if ( index($mtext,$ck) != 0 );
+  # Trim and then if requested add a space to the cmdKeyword
+  $cmdKey =~ s/^\s+|\s+$//g;
+  
+  my $ck = $cmdKey;
+  # Check special case end of messages considered separator
+  if ( $mtext ne $ck ) { 
+    $ck .= " " if ( $needsSep );
+    return undef if ( index($mtext,$ck) != 0 );
+  }
 
   $cmd = substr( $mtext, length($ck) );
   $cmd =~ s/^\s+|\s+$//g;
@@ -621,8 +644,11 @@ sub TelegramBot_SentFavorites($$$$) {
     my $cmdId = ($cmd-1);
 #    Log3 $name, 3, "TelegramBot_SentFavorites exec cmd :$cmdId: ";
     if ( ( $cmdId >= 0 ) && ( $cmdId < scalar( @clist ) ) ) { 
-      $cmd = $clist[$cmdId];
-      return TelegramBot_ExecuteCommand( $hash, $mpeernorm, $cmd );
+      my $ecmd = $clist[$cmdId];
+      if ( $ecmd =~ /^\s*((\/[^=]+)=)(.*)$/ ) {
+        $ecmd = $3;
+      }
+      return TelegramBot_ExecuteCommand( $hash, $mpeernorm, $ecmd );
     } else {
       Log3 $name, 3, "TelegramBot_SentFavorites cmd id not defined :($cmdId+1): ";
     }
@@ -640,8 +666,8 @@ sub TelegramBot_SentFavorites($$$$) {
         my @tmparr = ( $fcmd.$cnt." = ".$cs );
         push( @keys, \@tmparr );
       }
-      my @tmparr = ( $fcmd."0 = Abbruch" );
-      push( @keys, \@tmparr );
+//      my @tmparr = ( $fcmd."0 = Abbruch" );
+//     push( @keys, \@tmparr );
 
       my $jsonkb = TelegramBot_MakeKeyboard( $hash, 1, @keys );
 
@@ -841,6 +867,7 @@ sub TelegramBot_AddStoredCommands($$) {
     
 #####################################
 # INTERNAL: Function to check for commands in messages 
+# Always executes and returns on first match also in case of error 
 sub Telegram_HandleCommandInMessages($$$$)
 {
 	my ( $hash, $mpeernorm, $mtext, $mid ) = @_;
@@ -857,7 +884,7 @@ sub Telegram_HandleCommandInMessages($$$$)
   return if ( ! TelegramBot_checkAllowedPeer( $hash, $mpeernorm, $mtext ) );
   
   # Check for cmdKeyword in msg
-  $cmd = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, 'cmdKeyword' );
+  $cmd = TelegramBot_checkCmdKeyword( $hash, $mtext, AttrVal($name,'cmdKeyword',undef), 1 );
   if ( defined( $cmd ) ) {
     $cmdRet = TelegramBot_ReadHandleCommand( $hash, $mpeernorm, $cmd, $mtext );
     Log3 $name, 4, "TelegramBot_ParseMsg $name: ReadHandleCommand returned :$cmdRet:" if ( defined($cmdRet) );
@@ -865,7 +892,7 @@ sub Telegram_HandleCommandInMessages($$$$)
   }
   
   # Check for sentCommands Keyword in msg
-  $cmd = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, 'cmdSentCommands' );
+  $cmd = TelegramBot_checkCmdKeyword( $hash, $mtext, AttrVal($name,'cmdSentCommands',undef), 1 );
   if ( defined( $cmd ) ) {
     $cmdRet = TelegramBot_SentLastCommand( $hash, $mpeernorm, $cmd );
     Log3 $name, 4, "TelegramBot_ParseMsg $name: SentLastCommand returned :$cmdRet:" if ( defined($cmdRet) );
@@ -873,13 +900,28 @@ sub Telegram_HandleCommandInMessages($$$$)
   }
     
   # Check for favorites Keyword in msg
-  $cmd = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, 'cmdFavorites' );
+  $cmd = TelegramBot_checkCmdKeyword( $hash, $mtext, AttrVal($name,'cmdFavorites',undef), 0 );
   if ( defined( $cmd ) ) {
     $cmdRet = TelegramBot_SentFavorites( $hash, $mpeernorm, $cmd, $mid );
     Log3 $name, 4, "TelegramBot_ParseMsg $name: SentFavorites returned :$cmdRet:" if ( defined($cmdRet) );
     return;
   }
-    
+
+  # Check for favorite aliase in msg - execute command then
+  if ( defined( $hash->{AliasCmds} ) ) {
+    foreach my $aliasKey (keys $hash->{AliasCmds} ) {
+      $cmd = TelegramBot_checkCmdKeyword( $hash, $mtext, $aliasKey, 1 );
+      if ( defined( $cmd ) ) {
+        # Build the final command from the the alias and the remainder of the message
+        Log3 $name, 5, "TelegramBot_ParseMsg $name: Alias Match :$aliasKey:";
+        $cmd = $hash->{AliasCmds}{$aliasKey}." ".$cmd;
+        $cmdRet = TelegramBot_ExecuteCommand( $hash, $mpeernorm, $cmd );
+        Log3 $name, 4, "TelegramBot_ParseMsg $name: ExecuteFavoriteCmd returned :$cmdRet:" if ( defined($cmdRet) );
+        return;
+      }
+    }
+  }
+
   #  ignore result of readhandlecommand since it leads to endless loop
 }
   

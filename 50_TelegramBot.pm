@@ -74,7 +74,7 @@
 
 #   modified cmd handling in preparation for alias (and more efficient)
 #   allow alias to be defined for favorites: /aliasx=cmdx;
-#   
+#   docu for alias
 #   
 #   
 ##############################################################################
@@ -2134,6 +2134,18 @@ sub TelegramBot_BinaryFileWrite($$$) {
         Please also consider cmdRestrictedPeer for restricting access to this feature!<br>
     </li> 
     <li><code>favorites &lt;list of commands&gt;</code><br>Specify a list of favorite commands for Fhem (without cmdKeyword). Multiple commands are separated by semicolon (;). This also means that only simple commands (without embedded semicolon) can be defined. <br>
+    <br>
+    Favorite commands are fhem commands with an optional alias for the command given. The alias can be sent as message (instead of the favoriteCmd) to execute the command. Favorites are specified as prefix to the command starting with a '/' and separated from the command with a '='.
+    <br>
+        Example: Assuming cmdFavorites is set to a value of <code>favorite</code> and this attribute is set to a value of
+        <br><code>get lights status; /light=set lights on; /dark=set lights off; /heating=set heater;</code> <br>
+        <ul>
+          <li>Then a message "favorite0" to the bot would execute the command <code>get lights status</code></li>
+          <li>A message "favorite 1" or "/light" to the bot would execute the command <code>set lights on</code></li>
+          <li>A message "/heating on" to the bot would execute the command <code>set heater on</code><br> (Attention the remainder after the alias will be added to the command in fhem!)</li>
+        </ul>
+    <br>
+   
     </li> 
 
 

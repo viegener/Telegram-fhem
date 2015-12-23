@@ -75,9 +75,9 @@
 #   allow alias to be defined for favorites: /aliasx=cmdx;
 #   docu for alias
 #   correction for keyboard (no abbruch)
-
 #   added sentMsgId on sentMsgs
 #   Also set sentMsg Id and result in Readings (when finished)
+
 #   
 #   
 #   
@@ -87,9 +87,6 @@
 ##############################################################################
 # TASKS 
 #
-#   Correct Readings times for prev Msg?
-#   Move/copy sentMsg* to Readings
-#
 #   send audio files
 #   receive any media files and store locally
 #
@@ -97,6 +94,8 @@
 #   
 #   dialog function
 #   
+#   Correct Readings times for prev Msg?
+#
 ##############################################################################
 # Ideas / Future
 #   add replyTo
@@ -2220,6 +2219,11 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li>prevMsgPeer &lt;text&gt;<br>The sender name of the SECOND last received message (either full name or if not available @username)</li> 
     <li>prevMsgPeerId &lt;text&gt;<br>The sender id of the SECOND last received message</li> 
     <li>prevMsgText &lt;text&gt;<br>The SECOND last received message text is stored in this reading</li> 
+
+  <br><br>
+
+    <li>sentMsgId &lt;text&gt;<br>The id of the last sent message is stored in this reading, if not succesful the id is empty</li> 
+    <li>sentMsgResult &lt;text&gt;<br>The result of the send process for the last message is contained in this reading - SUCCESS if succesful</li> 
 
   <br>All prev... Readings are not triggering events<br>
 

@@ -71,10 +71,17 @@
 #   pollingVerbose attribute checked on set
 #   allowUnknownContacts attribute added default 1
 # 1.2 2015-12-20 multiple contacts for send etc/removed depreacted messageTo,sendImageTo,sendPhotoTo/allowunknowncontacts
-
 #   modified cmd handling in preparation for alias (and more efficient)
 #   allow alias to be defined for favorites: /aliasx=cmdx;
 #   docu for alias
+#   correction for keyboard (no abbruch)
+
+#   
+#   
+#   
+#   
+#   
+#   
 #   
 #   
 ##############################################################################
@@ -666,8 +673,8 @@ sub TelegramBot_SentFavorites($$$$) {
         my @tmparr = ( $fcmd.$cnt." = ".$cs );
         push( @keys, \@tmparr );
       }
-//      my @tmparr = ( $fcmd."0 = Abbruch" );
-//     push( @keys, \@tmparr );
+#      my @tmparr = ( $fcmd."0 = Abbruch" );
+#     push( @keys, \@tmparr );
 
       my $jsonkb = TelegramBot_MakeKeyboard( $hash, 1, @keys );
 

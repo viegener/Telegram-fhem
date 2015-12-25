@@ -83,7 +83,7 @@
 
 #   added sendVoice for Voice messages
 #   added sendMedia / sendDocument for arbitrary media files
-#   
+#   specified a longer description in the doc for gaining telegramBot tokens
 #   
 ##############################################################################
 # TASKS 
@@ -2051,8 +2051,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
   TelegramBot makes use of the <a href=https://core.telegram.org/bots/api>telegram bot api</a> and does NOT rely on any addition local client installed. 
   <br>
   Telegram Bots are different from normal telegram accounts, without being connected to a phone number. Instead bots need to be registered through the 
-  <a href=https://core.telegram.org/bots#botfather>botfather</a> to gain the needed token for authorizing as bot with telegram.org. 
-  The token (e.g. something like <code>110201543:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw</code> is required for defining a working telegram bot in fhem.
+  <a href=https://core.telegram.org/bots#botfather>BotFather</a> to gain the needed token for authorizing as bot with telegram.org. This is done by connecting (in a telegram client) to the BotFather and sending the command <code>/newbot</code> and follow the steps specified by the BotFather. This results in a token, this token (e.g. something like <code>110201543:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw</code> is required for defining a working telegram bot in fhem.
   <br><br>
   Bots also differ in other aspects from normal telegram accounts. Here some examples:
   <ul>

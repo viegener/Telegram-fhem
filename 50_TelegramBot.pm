@@ -77,9 +77,9 @@
 #   correction for keyboard (no abbruch)
 #   added sentMsgId on sentMsgs
 #   Also set sentMsg Id and result in Readings (when finished)
+#   add docu for new readings on sentMsg
 
-#   
-#   
+#   fix for checkCmdKeyword to not sent unauthorized on every message
 #   
 #   
 #   
@@ -358,7 +358,7 @@ sub TelegramBot_Set($@)
     # should return undef if succesful
     Log3 $name, 4, "TelegramBot_Set $name: start message send ";
     my $arg = join(" ", @args );
-    $ret = TelegramBot_SendIt( $hash, $peers, $arg, undef, 1 );
+    $ret = TelegramBot_SendIt( $hash, $peers, $arg, undef, 0 );
 
   } elsif ( ($cmd eq 'sendPhoto') || ($cmd eq 'sendImage') || ($cmd eq 'image') ) {
 
@@ -388,7 +388,7 @@ sub TelegramBot_Set($@)
     $caption = join(" ", @args ) if ( int(@args) > 0 );
 
     Log3 $name, 5, "TelegramBot_Set $name: start photo send ";
-    $ret = TelegramBot_SendIt( $hash, $peers, $file, $caption, 0 );
+    $ret = TelegramBot_SendIt( $hash, $peers, $file, $caption, 1 );
 
   } elsif($cmd eq 'zDebug') {
     # for internal testing only
@@ -594,8 +594,8 @@ sub TelegramBot_Attr(@) {
 #####################################
 #####################################
 # INTERNAL: Check against cmdkeyword given (no auth check !!!!)
-sub TelegramBot_checkCmdKeyword($$$$) {
-  my ($hash, $mtext, $cmdKey, $needsSep ) = @_;
+sub TelegramBot_checkCmdKeyword($$$$$) {
+  my ($hash, $mpeernorm, $mtext, $cmdKey, $needsSep ) = @_;
   my $name = $hash->{NAME};
 
   my $cmd;
@@ -616,6 +616,9 @@ sub TelegramBot_checkCmdKeyword($$$$) {
 
   $cmd = substr( $mtext, length($ck) );
   $cmd =~ s/^\s+|\s+$//g;
+
+  # validate security criteria for commands and return cmd only if succesful
+  return undef if ( ! TelegramBot_checkAllowedPeer( $hash, $mpeernorm, $mtext ) );
 
   return $cmd;
 }
@@ -676,7 +679,7 @@ sub TelegramBot_SentFavorites($$$$) {
       
       $ret = "TelegramBot fhem  : ($mpeernorm)\n Favorites \n";
       
-      $ret = TelegramBot_SendIt( $hash, $mpeernorm, $ret, $jsonkb, 1 );
+      $ret = TelegramBot_SendIt( $hash, $mpeernorm, $ret, $jsonkb, 0 );
   
   
 ############ OLD Favorites sent as message   
@@ -693,7 +696,7 @@ sub TelegramBot_SentFavorites($$$$) {
       # my $defpeer = AttrVal($name,'defaultPeer',undef);
       # $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
       # $ret = "TelegramBot fhem  : ($mpeernorm)\n Favorites \n\n".$slc;
-      # $ret = TelegramBot_SendIt( $hash, $defpeer, $ret, $mid, 1 );
+      # $ret = TelegramBot_SendIt( $hash, $defpeer, $ret, $mid, 0 );
   }
   return $ret;
   
@@ -730,7 +733,7 @@ sub TelegramBot_SentLastCommand($$$) {
   $ret = "TelegramBot fhem  : $mpeernorm \n Last Commands \n";
   
   # overwrite ret with result from SendIt --> send response
-  $ret = TelegramBot_SendIt( $hash, $mpeernorm, $ret, $jsonkb, 1 );
+  $ret = TelegramBot_SendIt( $hash, $mpeernorm, $ret, $jsonkb, 0 );
 
 ############ OLD SentLastCommands sent as message   
 #  $ret = "TelegramBot fhem  : $mpeernorm \nLast Commands \n\n".$slc;
@@ -880,12 +883,10 @@ sub Telegram_HandleCommandInMessages($$$$)
   # trim whitespace from message text
   $mtext =~ s/^\s+|\s+$//g;
 
-  #### Check authorization for cmd execution
-  # validate security criteria for commands and return cmd if succesful
-  return if ( ! TelegramBot_checkAllowedPeer( $hash, $mpeernorm, $mtext ) );
+  #### Check authorization for cmd execution is done inside checkCmdKeyword
   
   # Check for cmdKeyword in msg
-  $cmd = TelegramBot_checkCmdKeyword( $hash, $mtext, AttrVal($name,'cmdKeyword',undef), 1 );
+  $cmd = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, AttrVal($name,'cmdKeyword',undef), 1 );
   if ( defined( $cmd ) ) {
     $cmdRet = TelegramBot_ReadHandleCommand( $hash, $mpeernorm, $cmd, $mtext );
     Log3 $name, 4, "TelegramBot_ParseMsg $name: ReadHandleCommand returned :$cmdRet:" if ( defined($cmdRet) );
@@ -893,7 +894,7 @@ sub Telegram_HandleCommandInMessages($$$$)
   }
   
   # Check for sentCommands Keyword in msg
-  $cmd = TelegramBot_checkCmdKeyword( $hash, $mtext, AttrVal($name,'cmdSentCommands',undef), 1 );
+  $cmd = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, AttrVal($name,'cmdSentCommands',undef), 1 );
   if ( defined( $cmd ) ) {
     $cmdRet = TelegramBot_SentLastCommand( $hash, $mpeernorm, $cmd );
     Log3 $name, 4, "TelegramBot_ParseMsg $name: SentLastCommand returned :$cmdRet:" if ( defined($cmdRet) );
@@ -901,7 +902,7 @@ sub Telegram_HandleCommandInMessages($$$$)
   }
     
   # Check for favorites Keyword in msg
-  $cmd = TelegramBot_checkCmdKeyword( $hash, $mtext, AttrVal($name,'cmdFavorites',undef), 0 );
+  $cmd = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, AttrVal($name,'cmdFavorites',undef), 0 );
   if ( defined( $cmd ) ) {
     $cmdRet = TelegramBot_SentFavorites( $hash, $mpeernorm, $cmd, $mid );
     Log3 $name, 4, "TelegramBot_ParseMsg $name: SentFavorites returned :$cmdRet:" if ( defined($cmdRet) );
@@ -911,7 +912,7 @@ sub Telegram_HandleCommandInMessages($$$$)
   # Check for favorite aliase in msg - execute command then
   if ( defined( $hash->{AliasCmds} ) ) {
     foreach my $aliasKey (keys $hash->{AliasCmds} ) {
-      $cmd = TelegramBot_checkCmdKeyword( $hash, $mtext, $aliasKey, 1 );
+      $cmd = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, $aliasKey, 1 );
       if ( defined( $cmd ) ) {
         # Build the final command from the the alias and the remainder of the message
         Log3 $name, 5, "TelegramBot_ParseMsg $name: Alias Match :$aliasKey:";
@@ -994,7 +995,7 @@ sub TelegramBot_SendIt($$$$$)
 {
 	my ( $hash, @args) = @_;
 
-	my ( $peers, $msg, $addPar, $isText) = @args;
+	my ( $peers, $msg, $addPar, $isMedia) = @args;
   my $name = $hash->{NAME};
 	
   Log3 $name, 5, "TelegramBot_SendIt $name: called ";
@@ -1019,7 +1020,7 @@ sub TelegramBot_SendIt($$$$$)
   # handle addtl peers specified (will be queued since WAITING is set already) 
   if ( defined( $peers ) ) {
     # ignore return, since it is only queued
-    TelegramBot_SendIt( $hash, $peers, $msg, $addPar, $isText );
+    TelegramBot_SendIt( $hash, $peers, $msg, $addPar, $isMedia );
   }
   
   Log3 $name, 5, "TelegramBot_SendIt $name: try to send message to :$peer: -:$msg: - :".(defined($addPar)?$addPar:"<undef>").":";
@@ -1047,7 +1048,7 @@ sub TelegramBot_SendIt($$$$$)
     # add chat / user id (no file) --> this will also do init
     $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "chat_id", undef, $peer2, 0 );
 
-    if ( $isText ) {
+    if ( ! $isMedia ) {
       $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage";
 #      $TelegramBot_hu_do_params{url} = "http://requestb.in/1dvvb8u1";
 
@@ -1941,7 +1942,7 @@ sub TelegramBot_checkAllowedPeer($$$) {
   my $pname = TelegramBot_GetFullnameForContact( $hash, $mpeer );
 
   # unauthorized fhem cmd
-  Log3 $name, 1, "TelegramBot_checkCmdKeyword() unauthorized cmd from user :$pname: ($mpeer) \n  Msg: $msg";
+  Log3 $name, 1, "TelegramBot unauthorized cmd from user :$pname: ($mpeer) \n  Msg: $msg";
   my $ret =  "UNAUTHORIZED: TelegramBot fhem request from user :$pname: ($mpeer) \n  Msg: $msg";
   
   # send unauthorized to defaultpeer

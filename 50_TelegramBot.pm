@@ -88,7 +88,6 @@
 ##############################################################################
 # TASKS 
 #
-#   send audio files
 #   receive any media files and store locally
 #
 #   allow keyboards in the device api

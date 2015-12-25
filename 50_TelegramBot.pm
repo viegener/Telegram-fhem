@@ -78,8 +78,8 @@
 #   added sentMsgId on sentMsgs
 #   Also set sentMsg Id and result in Readings (when finished)
 #   add docu for new readings on sentMsg
-
 #   fix for checkCmdKeyword to not sent unauthorized on every message
+
 #   
 #   
 #   
@@ -599,10 +599,11 @@ sub TelegramBot_checkCmdKeyword($$$$$) {
   my $name = $hash->{NAME};
 
   my $cmd;
+  my $doRet = 0;
   
 #  Log3 $name, 3, "TelegramBot_checkCmdKeyword $name: check :".$mtext.":   against defined :".$ck.":   results in ".index($mtext,$ck);
 
-  return undef if ( ! defined( $cmdKey ) );
+  return ( undef, 0 ) if ( ! defined( $cmdKey ) );
 
   # Trim and then if requested add a space to the cmdKeyword
   $cmdKey =~ s/^\s+|\s+$//g;
@@ -611,16 +612,16 @@ sub TelegramBot_checkCmdKeyword($$$$$) {
   # Check special case end of messages considered separator
   if ( $mtext ne $ck ) { 
     $ck .= " " if ( $needsSep );
-    return undef if ( index($mtext,$ck) != 0 );
+    return ( undef, 0 )  if ( index($mtext,$ck) != 0 );
   }
 
   $cmd = substr( $mtext, length($ck) );
   $cmd =~ s/^\s+|\s+$//g;
 
   # validate security criteria for commands and return cmd only if succesful
-  return undef if ( ! TelegramBot_checkAllowedPeer( $hash, $mpeernorm, $mtext ) );
+  return ( undef, 1 )  if ( ! TelegramBot_checkAllowedPeer( $hash, $mpeernorm, $mtext ) );
 
-  return $cmd;
+  return ( $cmd, 1 );
 }
     
 
@@ -879,6 +880,7 @@ sub Telegram_HandleCommandInMessages($$$$)
 
   my $cmdRet;
   my $cmd;
+  my $doRet;
 
   # trim whitespace from message text
   $mtext =~ s/^\s+|\s+$//g;
@@ -886,39 +888,47 @@ sub Telegram_HandleCommandInMessages($$$$)
   #### Check authorization for cmd execution is done inside checkCmdKeyword
   
   # Check for cmdKeyword in msg
-  $cmd = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, AttrVal($name,'cmdKeyword',undef), 1 );
+  ( $cmd, $doRet ) = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, AttrVal($name,'cmdKeyword',undef), 1 );
   if ( defined( $cmd ) ) {
     $cmdRet = TelegramBot_ReadHandleCommand( $hash, $mpeernorm, $cmd, $mtext );
     Log3 $name, 4, "TelegramBot_ParseMsg $name: ReadHandleCommand returned :$cmdRet:" if ( defined($cmdRet) );
     return;
+  } elsif ( $doRet ) {
+    return;
   }
   
   # Check for sentCommands Keyword in msg
-  $cmd = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, AttrVal($name,'cmdSentCommands',undef), 1 );
+  ( $cmd, $doRet ) = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, AttrVal($name,'cmdSentCommands',undef), 1 );
   if ( defined( $cmd ) ) {
     $cmdRet = TelegramBot_SentLastCommand( $hash, $mpeernorm, $cmd );
     Log3 $name, 4, "TelegramBot_ParseMsg $name: SentLastCommand returned :$cmdRet:" if ( defined($cmdRet) );
     return;
+  } elsif ( $doRet ) {
+    return;
   }
     
   # Check for favorites Keyword in msg
-  $cmd = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, AttrVal($name,'cmdFavorites',undef), 0 );
+  ( $cmd, $doRet ) = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, AttrVal($name,'cmdFavorites',undef), 0 );
   if ( defined( $cmd ) ) {
     $cmdRet = TelegramBot_SentFavorites( $hash, $mpeernorm, $cmd, $mid );
     Log3 $name, 4, "TelegramBot_ParseMsg $name: SentFavorites returned :$cmdRet:" if ( defined($cmdRet) );
+    return;
+  } elsif ( $doRet ) {
     return;
   }
 
   # Check for favorite aliase in msg - execute command then
   if ( defined( $hash->{AliasCmds} ) ) {
     foreach my $aliasKey (keys $hash->{AliasCmds} ) {
-      $cmd = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, $aliasKey, 1 );
+      ( $cmd, $doRet ) = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, $aliasKey, 1 );
       if ( defined( $cmd ) ) {
         # Build the final command from the the alias and the remainder of the message
         Log3 $name, 5, "TelegramBot_ParseMsg $name: Alias Match :$aliasKey:";
         $cmd = $hash->{AliasCmds}{$aliasKey}." ".$cmd;
         $cmdRet = TelegramBot_ExecuteCommand( $hash, $mpeernorm, $cmd );
         Log3 $name, 4, "TelegramBot_ParseMsg $name: ExecuteFavoriteCmd returned :$cmdRet:" if ( defined($cmdRet) );
+        return;
+      } elsif ( $doRet ) {
         return;
       }
     }

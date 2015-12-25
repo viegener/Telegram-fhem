@@ -79,9 +79,10 @@
 #   Also set sentMsg Id and result in Readings (when finished)
 #   add docu for new readings on sentMsg
 #   fix for checkCmdKeyword to not sent unauthorized on every message
+#   avoid unauthorized messages to be sent multiple times 
 
-#   
-#   
+#   added sendVoice for Voice messages
+#   added sendMedia / sendDocument for arbitrary media files
 #   
 #   
 ##############################################################################
@@ -135,7 +136,11 @@ my %sets = (
 	"send" => "textField",
 
 	"sendImage" => "textField",
-#	"image" => "textField",
+	"sendPhoto" => "textField",
+
+	"sendDocument" => "textField",
+	"sendMedia" => "textField",
+	"sendVoice" => "textField",
 
 	"replaceContacts" => "textField",
 	"reset" => undef,
@@ -146,10 +151,8 @@ my %sets = (
 
 my %deprecatedsets = (
 
-	"messageTo" => "textField",   
-	"sendImageTo" => "textField", 
+	"image" => "textField",   
 	"sendPhoto" => "textField",   
-	"sendPhotoTo" => "textField"
 );
 
 my %gets = (
@@ -317,7 +320,7 @@ sub TelegramBot_Set($@)
 
   Log3 $name, 4, "TelegramBot_Set $name: Processing TelegramBot_Set( $cmd )";
 
-	if( (!exists($sets{$cmd})) && (!exists($deprecatedsets{$cmd})) ) {
+	if (!exists($sets{$cmd}))  {
 		my @cList;
 		foreach my $k (keys %sets) {
 			my $opts = undef;
@@ -335,8 +338,10 @@ sub TelegramBot_Set($@)
 
   my $ret = undef;
   
-	if( ($cmd eq 'message') || ($cmd eq 'msg') || ($cmd eq 'send') ) {
+	if( ($cmd eq 'message') || ($cmd eq 'msg') || ($cmd =~ /^send.*/ ) ) {
 
+    my $sendType = 0;
+    
     my $peers;
     while ( $args[0] =~ /^@(..+)$/ ) {
       my $ppart = $1;
@@ -348,47 +353,40 @@ sub TelegramBot_Set($@)
       last if ( $numberOfArgs == 0 );
     }
     
-    return "TelegramBot_Set: Command $cmd, no text (and no optional peer) specified" if ( $numberOfArgs < 1 );
+    return "TelegramBot_Set: Command $cmd, no text/file specified" if ( $numberOfArgs < 1 );
 
     if ( ! defined( $peers ) ) {
       $peers = AttrVal($name,'defaultPeer',undef);
       return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peers) );
     }
+    if ( ($cmd eq 'sendPhoto') || ($cmd eq 'sendImage') || ($cmd eq 'image') ) {
+      $sendType = 1;
+    } elsif ($cmd eq 'sendVoice')  {
+      $sendType = 2;
+    } elsif ( ($cmd eq 'sendDocument') || ($cmd eq 'sendMedia') ) {
+      $sendType = 3;
+    }
 
-    # should return undef if succesful
-    Log3 $name, 4, "TelegramBot_Set $name: start message send ";
-    my $arg = join(" ", @args );
-    $ret = TelegramBot_SendIt( $hash, $peers, $arg, undef, 0 );
+    my $msg;
+    my $addPar;
+    
+    if ( $sendType > 0 ) {
+      # should return undef if succesful
+      $msg = shift @args;
+      $msg = $1 if ( $msg =~ /^\"(.*)\"$/ );
 
-  } elsif ( ($cmd eq 'sendPhoto') || ($cmd eq 'sendImage') || ($cmd eq 'image') ) {
-
-    my $peers;
-    while ( $args[0] =~ /^@(..+)$/ ) {
-      my $ppart = $1;
-      $peers .= " " if ( defined( $peers ) );
-      $peers .= $ppart;
+      if ( $sendType == 1 ) {
+        # for Photos a caption can be given
+        $addPar = join(" ", @args ) if ( int(@args) > 0 );
+      } else {
+        return "TelegramBot_Set: Command $cmd, extra parameter specified after filename" if ( int(@args) > 0 );
+      }
+    } else {
+      $msg = join(" ", @args );
+    }
       
-      shift @args;
-      $numberOfArgs--;
-      last if ( $numberOfArgs == 0 );
-    }
-    
-    return "TelegramBot_Set: Command $cmd, need to specify filename " if ( $numberOfArgs < 1 );
-
-    if ( ! defined( $peers ) ) {
-      $peers = AttrVal($name,'defaultPeer',undef);
-      return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peers) );
-    }
-
-    # should return undef if succesful
-    my $file = shift @args;
-    $file = $1 if ( $file =~ /^\"(.*)\"$/ );
-    
-    my $caption;
-    $caption = join(" ", @args ) if ( int(@args) > 0 );
-
-    Log3 $name, 5, "TelegramBot_Set $name: start photo send ";
-    $ret = TelegramBot_SendIt( $hash, $peers, $file, $caption, 1 );
+    Log3 $name, 5, "TelegramBot_Set $name: start send for cmd :$cmd: and sendType :$sendType:";
+    $ret = TelegramBot_SendIt( $hash, $peers, $msg, $addPar, $sendType );
 
   } elsif($cmd eq 'zDebug') {
     # for internal testing only
@@ -1051,6 +1049,8 @@ sub TelegramBot_SendIt($$$$$)
   $TelegramBot_hu_do_params{hash} = $hash;
   $TelegramBot_hu_do_params{header} = $TelegramBot_header;
   delete( $TelegramBot_hu_do_params{boundary} );
+  # only for test / debug               
+#  $TelegramBot_hu_do_params{loglevel} = 3;
 
   # handle data creation only if no error so far
   if ( ! defined( $ret ) ) {
@@ -1072,13 +1072,12 @@ sub TelegramBot_SendIt($$$$$)
 
       # add msg (no file)
       $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "text", undef, $msg, 0 ) if ( ! defined( $ret ) );
-
       
       if ( defined( $addPar ) ) {
         $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "reply_markup", undef, $addPar, 0 ) if ( ! defined( $ret ) );
       }
 
-    } else {
+    } elsif ( $isMedia == 1 ) {
       # Photo send    
       $hash->{sentMsgText} = "Image: $msg".(( defined( $addPar ) )?" - ".$addPar:"");
 
@@ -1094,15 +1093,30 @@ sub TelegramBot_SendIt($$$$$)
       Log3 $name, 4, "TelegramBot_SendIt $name: Filename for image file :$msg:";
       $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "photo", undef, $msg, 1 ) if ( ! defined( $ret ) );
       
-      # only for test / debug               
-      $TelegramBot_hu_do_params{loglevel} = 3;
+    }  elsif ( $isMedia == 2 ) {
+      # Voicemsg send    == 2
+      $hash->{sentMsgText} = "Document: $msg";
+
+      $TelegramBot_hu_do_params{url} = $hash->{URL}."sendVoice";
+
+      # add msg (no file)
+      Log3 $name, 4, "TelegramBot_SendIt $name: Filename for document file :$msg:";
+      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "voice", undef, $msg, 1 ) if ( ! defined( $ret ) );
+    } else {
+      # Media send    == 3
+      $hash->{sentMsgText} = "Document: $msg";
+
+      $TelegramBot_hu_do_params{url} = $hash->{URL}."sendDocument";
+
+      # add msg (no file)
+      Log3 $name, 4, "TelegramBot_SendIt $name: Filename for document file :$msg:";
+      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "document", undef, $msg, 1 ) if ( ! defined( $ret ) );
     }
 
     # finalize multipart 
     $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, undef, undef, undef, 0 ) if ( ! defined( $ret ) );
 
   }
-
   
   if ( defined( $ret ) ) {
     Log3 $name, 3, "TelegramBot_SendIt $name: Failed with :$ret:";
@@ -2114,6 +2128,9 @@ sub TelegramBot_BinaryFileWrite($$$) {
     Local paths should be given local to the root directory of fhem (the directory of fhem.pl e.g. /opt/fhem).
     filenames containing spaces need to be given in parentheses.<br>
     Rule for specifying peers are the same as for messages. Multiple peers are to be separated by space. Captions can also contain multiple words and do not need to be quoted.
+    </li>
+    <li><code>sendMedia|sendDocument [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt;</code><br>Sends a media file (video, audio, image or other file type) to the given peer(s) or if ommitted to the default peer. Handling for files and peers is as specified above.
+    <li><code>sendVoice [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt;</code><br>Sends a voice message for playing directly in the browser to the given peer(s) or if ommitted to the default peer. Handling for files and peers is as specified above.
     </li>
   <br><br>
     <li><code>replaceContacts &lt;text&gt;</code><br>Set the contacts newly from a string. Multiple contacts can be separated by a space. 

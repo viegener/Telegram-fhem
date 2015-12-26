@@ -313,7 +313,7 @@ sub TelegramBot_Set($@)
 
 	### Check Args
 	my $numberOfArgs  = int(@args);
-	return "TelegramBot_Set: No value specified for set" if ( $numberOfArgs < 1 );
+	return "TelegramBot_Set: No cmd specified for set" if ( $numberOfArgs < 1 );
 
 	my $cmd = shift @args;
 
@@ -339,6 +339,8 @@ sub TelegramBot_Set($@)
   
 	if( ($cmd eq 'message') || ($cmd eq 'msg') || ($cmd =~ /^send.*/ ) ) {
 
+    return "TelegramBot_Set: Command $cmd, no peers and no text/file specified" if ( $numberOfArgs < 2 );
+
     my $sendType = 0;
     
     my $peers;
@@ -352,7 +354,7 @@ sub TelegramBot_Set($@)
       last if ( $numberOfArgs == 0 );
     }
     
-    return "TelegramBot_Set: Command $cmd, no text/file specified" if ( $numberOfArgs < 1 );
+    return "TelegramBot_Set: Command $cmd, no text/file specified" if ( $numberOfArgs < 2 );
 
     if ( ! defined( $peers ) ) {
       $peers = AttrVal($name,'defaultPeer',undef);
@@ -2128,6 +2130,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     Rule for specifying peers are the same as for messages. Multiple peers are to be separated by space. Captions can also contain multiple words and do not need to be quoted.
     </li>
     <li><code>sendMedia|sendDocument [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt;</code><br>Sends a media file (video, audio, image or other file type) to the given peer(s) or if ommitted to the default peer. Handling for files and peers is as specified above.
+    </li>
     <li><code>sendVoice [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt;</code><br>Sends a voice message for playing directly in the browser to the given peer(s) or if ommitted to the default peer. Handling for files and peers is as specified above.
     </li>
   <br><br>

@@ -80,10 +80,11 @@
 #   add docu for new readings on sentMsg
 #   fix for checkCmdKeyword to not sent unauthorized on every message
 #   avoid unauthorized messages to be sent multiple times 
-
 #   added sendVoice for Voice messages
 #   added sendMedia / sendDocument for arbitrary media files
 #   specified a longer description in the doc for gaining telegramBot tokens
+
+#   fix: allowunknowncontacts for known contacts
 #   
 ##############################################################################
 # TASKS 
@@ -1476,6 +1477,7 @@ sub TelegramBot_ParseMsg($$$)
 
   # ignore if unknown contacts shall be accepter
   if ( AttrVal($name,'allowUnknownContacts',1) == 0 ) {
+#    Debug "test if known :$mpeer";
     return $ret if ( ! TelegramBot_IsKnownContact( $hash, $mpeer ) ) ;
   }
 
@@ -1787,8 +1789,8 @@ sub TelegramBot_IsKnownContact($$)
 #        Log3 $hash->{NAME}, 4, "Contact :$key: is  :".$hash->{Contacts}{$key}.":";
 #      }
 
-
-  return ( defined( $hash->{$mpeer} ) );
+#  Debug "Is known ? ".( defined( $hash->{Contacts}{$mpeer} ) );
+  return ( defined( $hash->{Contacts}{$mpeer} ) );
 }
 
 #####################################

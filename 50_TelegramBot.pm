@@ -71,6 +71,7 @@
 #   pollingVerbose attribute checked on set
 #   allowUnknownContacts attribute added default 1
 # 1.2 2015-12-20 multiple contacts for send etc/removed depreacted messageTo,sendImageTo,sendPhotoTo/allowunknowncontacts
+#
 #   modified cmd handling in preparation for alias (and more efficient)
 #   allow alias to be defined for favorites: /aliasx=cmdx;
 #   docu for alias
@@ -83,8 +84,11 @@
 #   added sendVoice for Voice messages
 #   added sendMedia / sendDocument for arbitrary media files
 #   specified a longer description in the doc for gaining telegramBot tokens
-
 #   fix: allowunknowncontacts for known contacts
+# 1.3 2016-01-02 alias for commands, new readings, support for sending media files plus fixes
+
+#   
+#   
 #   
 ##############################################################################
 # TASKS 

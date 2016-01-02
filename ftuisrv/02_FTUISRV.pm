@@ -108,11 +108,9 @@ sub
 FTUISRV_Initialize($) {
     my ($hash) = @_;
     $hash->{DefFn}     = "FTUISRV_Define";
-    $hash->{DefFn}     = "FTUISRV_Define";
     $hash->{UndefFn}   = "FTUISRV_Undef";
-    #$hash->{AttrFn}    = "FTUISRV_Attr";
     $hash->{AttrList}  = "directoryindex " .
-                        "readings";
+                        "readings check:0,1 ";
     $hash->{AttrFn}    = "FTUISRV_Attr";                    
     #$hash->{SetFn}     = "FTUISRV_Set";
 
@@ -128,7 +126,7 @@ FTUISRV_Define($$) {
   my @a = split("[ \t]+", $def, 6);
 
 #cb  return "Usage: define <name> FTUISRV <infix> <directory> [&<callbackfn>] <friendlyname>"  if(( int(@a) != 5) && ( int(@a) != 6) );
-  return "Usage: define <name> FTUISRV <infix> <directory> <friendlyname>"  if(( int(@a) != 5) );
+  return "Usage: define <name> FTUISRV <infix> <directory> <friendlyname>"  if(( int(@a) < 5) );
   my $name= $a[0];
   my $infix= $a[2];
   my $directory= $a[3];
@@ -174,11 +172,13 @@ FTUISRV_Attr(@)
     my ($cmd,$name,$aName,$aVal) = @_;
     if ($cmd eq "set") {        
         if ($aName =~ "readings") {
-            if ($aVal !~ /^[A-Z_a-z0-9\,]+$/) {
-                Log3 $name, 2, "$name: Invalid reading list in attr $name $aName $aVal (only A-Z, a-z, 0-9, _ and , allowed)";
-                return "Invalid reading name $aVal (only A-Z, a-z, 0-9, _ and , allowed)";
-            }
-        addToDevAttrList($name, $aName);
+          if ($aVal !~ /^[A-Z_a-z0-9\,]+$/) {
+              Log3 $name, 2, "$name: Invalid reading list in attr $name $aName $aVal (only A-Z, a-z, 0-9, _ and , allowed)";
+              return "Invalid reading name $aVal (only A-Z, a-z, 0-9, _ and , allowed)";
+          }
+          addToDevAttrList($name, $aName);
+        } elsif ($aName =~ "check") {
+          $attr{$name}{'check'} = ($aVal eq "1")? "1": "0";
         }
     }
     return undef;
@@ -195,6 +195,8 @@ sub FTUISRV_CGI() {
   my ($request) = @_;   # /$infix/filename
 
 #  Debug "request= $request";
+  Log3 undef, 4, "FTUISRV: Request to FTUISRV :$request:";
+  
   
   # Match request first without trailing / in the link part 
   if($request =~ m,^(/[^/]+)(/([^\?]*)?)?(\?([^#]*))?$,) {
@@ -216,6 +218,10 @@ sub FTUISRV_CGI() {
 #    Debug "filename= ".((defined($filename))?$filename:"<undef>");
 #    Debug "qparams= ".((defined($qparams))?$qparams:"<undef>");
 #    Debug "name= $name";
+
+    if ( ! $name ) {
+      Log3 undef, 1, "FTUISRV: Request to FTUISRV but no link found !! :$request:";
+    }
 
     # return error if no such device
     return("text/plain; charset=utf-8", "No FTUISRV device for $link") unless($name);
@@ -245,6 +251,15 @@ sub FTUISRV_CGI() {
     
     my ($err, $content) = FTUISRV_handletemplatefile( $name, $filename, $parhash );
 
+    # Validate HTML
+    my $check = AttrVal($name,'check',0);
+    if ( ( $check ) && ( $filename =~ /\.html?/ ) ) {
+      Log3 $name, 3, "$name: validate HTML for request :$filename:";
+    
+#      FTUISRV_validateHtml( $name, $content, $filename );
+    }
+    
+    
     return("text/plain; charset=utf-8", "Error in filehandling: $err") if ( defined($err) );
       
     return("$MIMEtype; charset=utf-8", $content);
@@ -256,6 +271,29 @@ sub FTUISRV_CGI() {
     
 }   
     
+##############################################
+##############################################
+##
+## validate HTML
+##
+##############################################
+##############################################
+
+
+##################
+#
+# validate HTML according to basic criteria
+#   comments correctly closed
+#   build tag dictionary / array
+#   optional: check FTUI 
+sub FTUISRV_validateHtml( $$$ ) {
+
+  my ($name, $content, $filename) = @_;   
+
+  
+  
+}
+
 ##############################################
 ##############################################
 ##

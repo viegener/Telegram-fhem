@@ -87,13 +87,21 @@
 #   fix: allowunknowncontacts for known contacts
 # 1.3 2016-01-02 alias for commands, new readings, support for sending media files plus fixes
 
+#   receiving media files is possible --> file id is stored in msgFileId / msgText starting with "received..."
+#     additional info from message (type, name, etc) is contained in msgText 
+#   added get function to return url for file ids on media messages
+#     writes returned url into internal: fileUrl
 #   
 #   
 #   
 ##############################################################################
 # TASKS 
 #
-#   receive any media files and store locally
+#   Add confirmation dialog for alias/fav commands -> ask back with keyboard for confirmation of commands and timeout on missing confirmation
+#
+#   receive any media files
+#
+#   Store media files 
 #
 #   allow keyboards in the device api
 #   
@@ -160,7 +168,7 @@ my %deprecatedsets = (
 );
 
 my %gets = (
-#	"msgById" => "textField"
+	"getUrlForFile" => "textField"
 );
 
 my $TelegramBot_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0\r\nAccept: application/json\r\nAccept-Charset: utf-8";
@@ -314,10 +322,6 @@ sub TelegramBot_Set($@)
 {
 	my ( $hash, $name, @args ) = @_;
 	
-#  Debug "Argument 0 - :".$args[0].":";
-#  Debug "Argument 1 - :".$args[1].":";
-#  Debug "Argument 2 - :".$args[2].":";
-
   Log3 $name, 4, "TelegramBot_Set $name: called ";
 
 	### Check Args
@@ -471,14 +475,33 @@ sub TelegramBot_Get($@)
   
   my $ret = undef;
   
-	if($cmd eq 'msgById') {
+	if($cmd eq 'getUrlForFile') {
     if ( $numberOfArgs != 2 ) {
-      return "TelegramBot_Set: Command $cmd, no msg id specified";
+      return "TelegramBot_Get: Command $cmd, no file id specified";
     }
-    Log3 $name, 5, "TelegramBot_Get $name: $cmd not supported yet";
 
-    # should return undef if succesful
-   $ret = TelegramBot_GetMessage( $hash, $arg );
+    $hash->{fileUrl} = "";
+    
+    # return URL for file id
+    my $url = $hash->{URL}."getFile?file_id=".urlEncode($arg);
+    my $guret = TelegramBot_DoUrlCommand( $hash, $url );
+
+    if ( ( defined($guret) ) && ( ref($guret) eq "HASH" ) ) {
+      if ( defined($guret->{file_path} ) ) {
+        # URL is https://api.telegram.org/file/bot<token>/<file_path>
+        my $filePath = TelegramBot_GetUTF8Back( $guret->{file_path} );
+        $hash->{fileUrl} = "https://api.telegram.org/file/bot".$hash->{Token}."/".$filePath;
+        $ret = $hash->{fileUrl};
+      } else {
+        $ret = "getUrlForFile failed: no file path found";
+        $hash->{fileUrl} = $ret;
+      }      
+
+    } else {
+      $ret = "getUrlForFile failed: ".$guret;
+      $hash->{fileUrl} = $ret;
+    }
+
   }
   
   Log3 $name, 5, "TelegramBot_Get $name: done with $ret: ";
@@ -1509,14 +1532,86 @@ sub TelegramBot_ParseMsg($$$)
     push( @contacts, $user );
   }
 
-  # handle text message
+  # mtext contains the text of the message (if empty no further handling)
+  my ( $mtext, $mfileid );
+
   if ( defined( $message->{text} ) ) {
-    my $mtext = TelegramBot_GetUTF8Back( $message->{text} );
+    # handle text message
+    $mtext = $message->{text};
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: Textmessage";
+
+  } elsif ( defined( $message->{audio} ) ) {
+    # handle audio message
+    my $subtype = $message->{audio};
+    $mtext = "received audio ";
+
+    $mfileid = $subtype->{file_id};
+
+    $mtext .= " # Performer: ".$subtype->{performer} if ( defined( $subtype->{performer} ) );
+    $mtext .= " # Title: ".$subtype->{title} if ( defined( $subtype->{title} ) );
+    $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
+    $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: audio fileid: $mfileid";
+
+  } elsif ( defined( $message->{document} ) ) {
+    # handle document message
+    my $subtype = $message->{document};
+    $mtext = "received document ";
+
+    $mfileid = $subtype->{file_id};
+
+    $mtext .= " # Name: ".$subtype->{file_name} if ( defined( $subtype->{file_name} ) );
+    $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
+    $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: document fileid: $mfileid ";
+
+  } elsif ( defined( $message->{voice} ) ) {
+    # handle voice message
+    my $subtype = $message->{voice};
+    $mtext = "received voice ";
+
+    $mfileid = $subtype->{file_id};
+
+    $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
+    $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: voice fileid: $mfileid";
+
+  } elsif ( defined( $message->{video} ) ) {
+    # handle video message
+    my $subtype = $message->{video};
+    $mtext = "received video ";
+
+    $mfileid = $subtype->{file_id};
+
+    $mtext .= " # Caption: ".$message->{caption} if ( defined( $message->{caption} ) );
+    $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
+    $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: video fileid: $mfileid";
+
+  } elsif ( defined( $message->{photo} ) ) {
+    # handle photo message
+    # photos are always an array with (hopefully) the biggest size last in the array
+    my $photolist = $message->{photo};
+    
+    if ( scalar(@$photolist) > 0 ) {
+      my $subtype = $$photolist[scalar(@$photolist)-1] ;
+      $mtext = "received photo ";
+
+      $mfileid = $subtype->{file_id};
+
+      $mtext .= " # Caption: ".$message->{caption} if ( defined( $message->{caption} ) );
+      $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
+      $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
+      Log3 $name, 4, "TelegramBot_ParseMsg $name: photo fileid: $mfileid";
+    }
+  }
+
+
+  if ( defined( $mtext ) ) {
+    my $mtext = TelegramBot_GetUTF8Back( $mtext );
 
     Log3 $name, 4, "TelegramBot_ParseMsg $name: text   :$mtext:";
 
-#    Log3 $name, 4, "TelegramBot_ParseMsg $name: text utf8  :".encode( 'utf8', $mtext).":";
-    
     my $mpeernorm = $mpeer;
     $mpeernorm =~ s/^\s+|\s+$//g;
     $mpeernorm =~ s/ /_/g;
@@ -1533,6 +1628,7 @@ sub TelegramBot_ParseMsg($$$)
     readingsBulkUpdate($hash, "prevMsgPeerId", $hash->{READINGS}{msgPeerId}{VAL});				
     readingsBulkUpdate($hash, "prevMsgChat", $hash->{READINGS}{msgChat}{VAL});				
     readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});				
+    readingsBulkUpdate($hash, "prevMsgFileId", $hash->{READINGS}{msgFileId}{VAL});				
 
     readingsEndUpdate($hash, 0);
     
@@ -1542,23 +1638,23 @@ sub TelegramBot_ParseMsg($$$)
     readingsBulkUpdate($hash, "msgPeer", TelegramBot_GetFullnameForContact( $hash, $mpeernorm ));				
     readingsBulkUpdate($hash, "msgChat", TelegramBot_GetFullnameForChat( $hash, $chatId ) );				
     readingsBulkUpdate($hash, "msgPeerId", $mpeernorm);				
-    readingsBulkUpdate($hash, "msgText", $mtext);				
-#    readingsBulkUpdate($hash, "msgText", encode( 'utf8', $mtext));				
+    readingsBulkUpdate($hash, "msgText", $mtext);
 
+    readingsBulkUpdate($hash, "msgFileId", ( ( defined( $mfileid ) ) ? $mfileid : "" ) );				
 
     readingsEndUpdate($hash, 1);
     
-    # COMMAND Handling
-    Telegram_HandleCommandInMessages( $hash, $mpeernorm, $mtext, $mid );
+    # COMMAND Handling (only if no fileid found
+    Telegram_HandleCommandInMessages( $hash, $mpeernorm, $mtext, $mid ) if ( ! defined( $mfileid ) );
    
   } elsif ( scalar(@contacts) > 0 )  {
     # will also update reading
     TelegramBot_ContactUpdate( $hash, @contacts );
 
-    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer without text but with contacts";
+    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer without text/media but with contacts";
 
   } else {
-    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer without text";
+    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer without text/media";
   }
   
   return $ret;
@@ -2251,13 +2347,16 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li>msgPeer &lt;text&gt;<br>The sender name of the last received message (either full name or if not available @username)</li> 
     <li>msgPeerId &lt;text&gt;<br>The sender id of the last received message</li> 
     <li>msgText &lt;text&gt;<br>The last received message text is stored in this reading.</li> 
+    <li>msgFileId &lt;fileid&gt;<br>The last received message file_id (Audio, Photo, Video, Voice or other Document) is stored in this reading.</li> 
 
+    msgFileId
   <br><br>
 
     <li>prevMsgId &lt;text&gt;<br>The id of the SECOND last received message is stored in this reading</li> 
     <li>prevMsgPeer &lt;text&gt;<br>The sender name of the SECOND last received message (either full name or if not available @username)</li> 
     <li>prevMsgPeerId &lt;text&gt;<br>The sender id of the SECOND last received message</li> 
     <li>prevMsgText &lt;text&gt;<br>The SECOND last received message text is stored in this reading</li> 
+    <li>prevMsgFileId &lt;fileid&gt;<br>The SECOND last received file id is stored in this reading</li> 
 
   <br><br>
 

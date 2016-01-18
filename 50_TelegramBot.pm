@@ -314,6 +314,10 @@ sub TelegramBot_Set($@)
 {
 	my ( $hash, $name, @args ) = @_;
 	
+#  Debug "Argument 0 - :".$args[0].":";
+#  Debug "Argument 1 - :".$args[1].":";
+#  Debug "Argument 2 - :".$args[2].":";
+
   Log3 $name, 4, "TelegramBot_Set $name: called ";
 
 	### Check Args

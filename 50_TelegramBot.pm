@@ -86,11 +86,12 @@
 #   specified a longer description in the doc for gaining telegramBot tokens
 #   fix: allowunknowncontacts for known contacts
 # 1.3 2016-01-02 alias for commands, new readings, support for sending media files plus fixes
-
+#   
 #   receiving media files is possible --> file id is stored in msgFileId / msgText starting with "received..."
 #     additional info from message (type, name, etc) is contained in msgText 
-#   added get function to return url for file ids on media messages
+#   added get function to return url for file ids on media messages "urlForFile"
 #     writes returned url into internal: fileUrl
+
 #   
 #   
 #   
@@ -168,7 +169,7 @@ my %deprecatedsets = (
 );
 
 my %gets = (
-	"getUrlForFile" => "textField"
+	"urlForFile" => "textField"
 );
 
 my $TelegramBot_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0\r\nAccept: application/json\r\nAccept-Charset: utf-8";
@@ -475,7 +476,7 @@ sub TelegramBot_Get($@)
   
   my $ret = undef;
   
-	if($cmd eq 'getUrlForFile') {
+	if($cmd eq 'urlForFile') {
     if ( $numberOfArgs != 2 ) {
       return "TelegramBot_Get: Command $cmd, no file id specified";
     }
@@ -493,12 +494,12 @@ sub TelegramBot_Get($@)
         $hash->{fileUrl} = "https://api.telegram.org/file/bot".$hash->{Token}."/".$filePath;
         $ret = $hash->{fileUrl};
       } else {
-        $ret = "getUrlForFile failed: no file path found";
+        $ret = "urlForFile failed: no file path found";
         $hash->{fileUrl} = $ret;
       }      
 
     } else {
-      $ret = "getUrlForFile failed: ".$guret;
+      $ret = "urlForFile failed: ".$guret;
       $hash->{fileUrl} = $ret;
     }
 

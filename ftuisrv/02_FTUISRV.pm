@@ -38,6 +38,9 @@ package main;
 use strict;
 use warnings;
 use vars qw(%data);
+
+use File::Basename;
+
 #use HttpUtils;
 
 my $FTUISRV_matchlink = "^\/?(([^\/]*(\/[^\/]+)*)\/?)\$";
@@ -523,9 +526,46 @@ sub FTUISRV_callback($$) {
 <a name="FTUISRV"></a>
 <h3>FTUISRV</h3>
 <ul>
-  Provides a mini HTTP server plugin for FHEMWEB for the specific use with FTUI. It serves files from a given directory and parses them according to specific rules.
+  Provides a mini HTTP server plugin for FHEMWEB for the specific use with FTUI. 
+  It serves files from a given directory and parses them according to specific rules.
   
-  FTUISRV is an extension to <a href="FTUISRV">FHEMWEB</a>. You must install FHEMWEB to use FTUISRV.</p>
+  FTUISRV is an extension to <a href="FTUISRV">FHEMWEB</a> and based on HTTPSRV. You must install FHEMWEB to use FTUISRV.</p>
+  
+  FTUISRV is able to handled includes and replacements in files before sending the result back to the client (Browser).
+  Special handling of files is ONLY done if the filenames include the specific pattern ".ftui." in the filename. 
+  For example a file named "test.ftui.html" would be handled specifically in FTUISRV.
+  
+  <br><br>
+  FTUI files can contain the following elements  
+  <ul><br>
+    <li><code>&lt;?ftui-inc="name" varname1="content1" ... varnameN="contentN" ?&gt;</code> <br>
+      INCLUDE statement: Including other files that will be embedded in the result at the place of the include statement. 
+      Additionally in the embedded files the variables listed as varnamex will be replaced by the content 
+      enclosed in double quotes (").
+      <br>
+      The quotation marks and the spaces between the variable replacements and before the final ? are significant and can not be ommitted.
+      <br>Example: <code>&lt;?ftui-inc="temphum-inline.ftui.part" thdev="sensorWZ" thformat="top-space-2x" thtemp="measured-temp" ?&gt;</code>
+    </li><br>
+
+    <li><code>&lt;?ftui-key=varname ?&gt;</code> <br>
+      VARIABLE specification: Replacement of variables with given parameters in the include statement (or the include header).
+      The text specified for the corresponding variable will be inserted at the place of the FTUI-Statement in parentheses.
+      There will be no space or other padding added before or after the replacement, 
+      the replacement will be done exactly as specified in the definition in the include
+      <br>Example: <code>&lt;?ftui-key=measured-temp ?&gt;</code>
+    </li><br>
+
+    <li><code>&lt;?ftui-header="include name" varname1[="defaultcontent1"] .. varnameN[="defaultcontentN"] ?&gt;</code> <br>
+      HEADER definition: Optional header for included files that can be used also to specify which variables are used in the include
+      file and optionally specify default content for the variables that will be used if no content is specified in the include statement.
+      the header is removed from the output given by FTUISRV.
+      Headers are only required if default values should be specified and are helpful in showing the necessary variable names easy for users.
+      (The name for the include does not need to be matching the file name)
+      <br>Example: <code>&lt;?ftui-header="TempHum inline" thdev thformat thtemp="temperature" ?&gt;</code>
+    </li><br>
+  </ul>
+ 
+  <br><br>
 
   <a name="FTUISRVdefine"></a>
   <b>Define</b>

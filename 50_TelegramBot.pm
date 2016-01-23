@@ -92,15 +92,15 @@
 #   added get function to return url for file ids on media messages "urlForFile"
 #     writes returned url into internal: fileUrl
 
-#   
+#   INT: switch command result sending to direct _sendIt call
 #   
 #   
 ##############################################################################
 # TASKS 
 #
-#   Add confirmation dialog for alias/fav commands -> ask back with keyboard for confirmation of commands and timeout on missing confirmation
+#   Command returns to be checked for immage --> forum http://forum.fhem.de/index.php/topic,38328.msg396189.html#msg396189
 #
-#   receive any media files
+#   Add confirmation dialog for alias/fav commands -> ask back with keyboard for confirmation of commands and timeout on missing confirmation
 #
 #   Store media files 
 #
@@ -828,48 +828,58 @@ sub TelegramBot_ExecuteCommand($$$) {
   $ret = "shutdown command can not be executed" if ( $cmd =~ /^shutdown(\s+.*)?$/ );
   
   # Execute command
-  $ret = AnalyzeCommand( undef, $cmd, "" ) if ( ! defined( $ret ) );
+  my $isMediaStream = 0;
+  
+  if ( ! defined( $ret ) ) {
+    $ret = AnalyzeCommand( undef, $cmd, "" );
+
+    # Check for image stream in return ???
+#    $isMediaStream = TelegramBot_IdentifyStream( $ret ) if ( defined( $ret ) );
+    
+  }
 
   Log3 $name, 5, "TelegramBot_ExecuteCommand result for analyze :".(defined($ret)?$ret:"<undef>").": ";
 
   my $defpeer = AttrVal($name,'defaultPeer',undef);
   $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
   $defpeer = AttrVal($name,'defaultPeer',undef) if ( ! defined( $defpeer ) );
+  $defpeer = undef if ( $defpeer eq $mpeernorm );
   
   my $retstart = "TelegramBot fhem";
-  $retstart .= " from $pname ($mpeernorm)" if ( $defpeer ne $mpeernorm );
+  $retstart .= " from $pname ($mpeernorm)" if ( defined( $defpeer ) );
   
   my $retempty = AttrVal($name,'cmdReturnEmptyResult',1);
 
   # undef is considered ok
   if ( ( ! defined( $ret ) ) || ( length( $ret) == 0 ) ) {
     $ret = "$retstart cmd :$cmd: result OK" if ( $retempty );
-  } else {
+  } elsif ( ! $isMediaStream ) {
     $ret = "$retstart cmd :$cmd: result :$ret:";
   }
   Log3 $name, 5, "TelegramBot_ExecuteCommand $name: ".(defined($ret)?$ret:"<undef>").": ";
   
   if ( ( defined( $ret ) ) && ( length( $ret) != 0 ) ) {
-    # replace line ends with spaces
-    $ret =~ s/\r//gm;
-    
-    # shorten to maxReturnSize if set
-    my $limit = AttrVal($name,'maxReturnSize',4000);
+    if ( ! $isMediaStream ) {
+      # replace line ends with spaces
+      $ret =~ s/\r//gm;
+      
+      # shorten to maxReturnSize if set
+      my $limit = AttrVal($name,'maxReturnSize',4000);
 
-    if ( ( length($ret) > $limit ) && ( $limit != 0 ) ) {
-      $ret = substr( $ret, 0, $limit )."\n \n ...";
+      if ( ( length($ret) > $limit ) && ( $limit != 0 ) ) {
+        $ret = substr( $ret, 0, $limit )."\n \n ...";
+      }
+
+      $ret =~ s/\n/\\n/gm;
     }
 
-    $ret =~ s/\n/\\n/gm;
-
-    AnalyzeCommand( undef, "set $name message \@$mpeernorm $ret", "" );
+    my $peers = $mpeernorm;
 
     my $dpc = AttrVal($name,'defaultPeerCopy',1);
-    if ( ( $dpc ) && ( defined( $defpeer ) ) ) {
-      if ( $defpeer ne $mpeernorm ) {
-        AnalyzeCommand( undef, "set $name message $ret", "" );
-      }
-    }
+    $peers .= " ".$defpeer if ( ( $dpc ) && ( defined( $defpeer ) ) );
+
+    # Ignore result from sendIt here
+    my $retsend = TelegramBot_SendIt( $hash, $peers, $ret, undef, $isMediaStream ); 
   }
   
   return $ret;

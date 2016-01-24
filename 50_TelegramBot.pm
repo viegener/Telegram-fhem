@@ -2454,8 +2454,10 @@ sub TelegramBot_BinaryFileWrite($$$) {
 
     <li>Send a telegram message if fhem has been newly started
       <p>
-      <code>define notify_fhem_reload notify global:INITIALIZED set &lt;telegrambot&gt; message fhem newly started - just now !  </code>
+      <code>ok fhem { plotAsPng('SVG_FileLog_Aussen') }</code>
       </p> 
+      The png picture created by plotAsPng will then be send back in image format to the telegram client. This also works with other pictures returned and should also work with other media files (e.g. MP3 and doc files). The command can also be defined in a favorite.<br>
+      Remark: Example requires librsvg installed
     </li> 
   <br><br>
 
@@ -2468,7 +2470,19 @@ sub TelegramBot_BinaryFileWrite($$$) {
         </p> 
         When typing a slash, then the text above will immediately show up in the client.
     </li> 
-  </ul>
+
+  <br><br>
+
+    <li>Send a command to FHEM that produces an image as result and receive the image sent back to telegram
+      <p>
+      <code>define notify_fhem_reload notify global:INITIALIZED set &lt;telegrambot&gt; message fhem newly started - just now !  </code>
+      </p> 
+    </li> 
+  <br><br>
+
+
+
+    </ul>
   
   <br><br>
 </ul>

@@ -91,16 +91,18 @@
 #     additional info from message (type, name, etc) is contained in msgText 
 #   added get function to return url for file ids on media messages "urlForFile"
 #     writes returned url into internal: fileUrl
-
 #   INT: switch command result sending to direct _sendIt call
+
+#   forum msg396189
+#     favorite commands can be used also to send images back if the result of the command is an image 
+#     e.g. { plotAsPng('SVG_FileLog_something') } --> returns PNG if used in favorite the result will be send as photo
 #   
 #   
 ##############################################################################
 # TASKS 
 #
-#   Command returns to be checked for immage --> forum http://forum.fhem.de/index.php/topic,38328.msg396189.html#msg396189
-#
-#   Add confirmation dialog for alias/fav commands -> ask back with keyboard for confirmation of commands and timeout on missing confirmation
+#   Add confirmation dialog for alias/fav commands 
+#     -> ask back with keyboard for confirmation of commands and timeout on missing confirmation
 #
 #   Store media files 
 #
@@ -669,7 +671,7 @@ sub TelegramBot_SentFavorites($$$$) {
   Log3 $name, 4, "TelegramBot_SentFavorites cmd correct peer ";
 
   my $slc =  AttrVal($name,'favorites',"");
-  Log3 $name, 4, "TelegramBot_SentFavorites Favorites :$slc: ";
+#  Log3 $name, 5, "TelegramBot_SentFavorites Favorites :$slc: ";
   
   my @clist = split( /;/, $slc);
 
@@ -679,7 +681,7 @@ sub TelegramBot_SentFavorites($$$$) {
   if ( looks_like_number( $cmd ) ) {
     return $ret if ( $cmd == 0 );
     my $cmdId = ($cmd-1);
-#    Log3 $name, 3, "TelegramBot_SentFavorites exec cmd :$cmdId: ";
+    Log3 $name, 4, "TelegramBot_SentFavorites exec cmd :$cmdId: ";
     if ( ( $cmdId >= 0 ) && ( $cmdId < scalar( @clist ) ) ) { 
       my $ecmd = $clist[$cmdId];
       if ( $ecmd =~ /^\s*((\/[^=]+)=)(.*)$/ ) {
@@ -833,12 +835,12 @@ sub TelegramBot_ExecuteCommand($$$) {
   if ( ! defined( $ret ) ) {
     $ret = AnalyzeCommand( undef, $cmd, "" );
 
-    # Check for image stream in return ???
-#    $isMediaStream = TelegramBot_IdentifyStream( $ret ) if ( defined( $ret ) );
+    # Check for image/doc/audio stream in return (-1 image
+    ( $isMediaStream ) = TelegramBot_IdentifyStream( $hash, $ret ) if ( defined( $ret ) );
     
   }
 
-  Log3 $name, 5, "TelegramBot_ExecuteCommand result for analyze :".(defined($ret)?$ret:"<undef>").": ";
+  Log3 $name, 5, "TelegramBot_ExecuteCommand result for analyze :".TelegramBot_MsgForLog($ret, $isMediaStream ).": ";
 
   my $defpeer = AttrVal($name,'defaultPeer',undef);
   $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
@@ -856,7 +858,7 @@ sub TelegramBot_ExecuteCommand($$$) {
   } elsif ( ! $isMediaStream ) {
     $ret = "$retstart cmd :$cmd: result :$ret:";
   }
-  Log3 $name, 5, "TelegramBot_ExecuteCommand $name: ".(defined($ret)?$ret:"<undef>").": ";
+  Log3 $name, 5, "TelegramBot_ExecuteCommand $name: ".TelegramBot_MsgForLog($ret, $isMediaStream ).": ";
   
   if ( ( defined( $ret ) ) && ( length( $ret) != 0 ) ) {
     if ( ! $isMediaStream ) {
@@ -880,6 +882,9 @@ sub TelegramBot_ExecuteCommand($$$) {
 
     # Ignore result from sendIt here
     my $retsend = TelegramBot_SendIt( $hash, $peers, $ret, undef, $isMediaStream ); 
+    
+    # ensure return is not a stream (due to log handling)
+    $ret = TelegramBot_MsgForLog($ret, $isMediaStream )
   }
   
   return $ret;
@@ -1057,7 +1062,8 @@ sub TelegramBot_SendIt($$$$$)
     if ( ! defined( $hash->{sentQueue} ) ) {
       $hash->{sentQueue} = [];
     }
-    Log3 $name, 4, "TelegramBot_SendIt $name: add send to queue :$peers: -:$msg: - :".(defined($addPar)?$addPar:"<undef>").":";
+    Log3 $name, 4, "TelegramBot_SendIt $name: add send to queue :$peers: -:".
+        TelegramBot_MsgForLog($msg, ($isMedia<0) ).": - :".(defined($addPar)?$addPar:"<undef>").":";
     push( @{ $hash->{sentQueue} }, \@args );
     return;
   }  
@@ -1075,7 +1081,8 @@ sub TelegramBot_SendIt($$$$$)
     TelegramBot_SendIt( $hash, $peers, $msg, $addPar, $isMedia );
   }
   
-  Log3 $name, 5, "TelegramBot_SendIt $name: try to send message to :$peer: -:$msg: - :".(defined($addPar)?$addPar:"<undef>").":";
+  Log3 $name, 5, "TelegramBot_SendIt $name: try to send message to :$peer: -:".
+      TelegramBot_MsgForLog($msg, ($isMedia<0) ).": - :".(defined($addPar)?$addPar:"<undef>").":";
 
     # trim and convert spaces in peer to underline 
   my $peer2 = TelegramBot_GetIdForPeer( $hash, $peer );
@@ -1104,7 +1111,7 @@ sub TelegramBot_SendIt($$$$$)
 
     if ( ! $isMedia ) {
       $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage";
-#      $TelegramBot_hu_do_params{url} = "http://requestb.in/1dvvb8u1";
+#      $TelegramBot_hu_do_params{url} = "http://requestb.in/sgqxy2sg";
 
       if ( length($msg) > 1000 ) {
         $hash->{sentMsgText} = substr($msg,0, 1000)."...";
@@ -1121,40 +1128,43 @@ sub TelegramBot_SendIt($$$$$)
         $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "reply_markup", undef, $addPar, 0 ) if ( ! defined( $ret ) );
       }
 
-    } elsif ( $isMedia == 1 ) {
+    } elsif ( abs($isMedia) == 1 ) {
       # Photo send    
-      $hash->{sentMsgText} = "Image: $msg".(( defined( $addPar ) )?" - ".$addPar:"");
+      $hash->{sentMsgText} = "Image: ".TelegramBot_MsgForLog($msg, ($isMedia<0) ).
+          (( defined( $addPar ) )?" - ".$addPar:"");
 
       $TelegramBot_hu_do_params{url} = $hash->{URL}."sendPhoto";
-      #    $TelegramBot_hu_do_params{url} = "http://requestb.in/q6o06yq6";
+#      $TelegramBot_hu_do_params{url} = "http://requestb.in/1g8u9na1";
 
       # add caption
       if ( defined( $addPar ) ) {
         $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "caption", undef, $addPar, 0 ) if ( ! defined( $ret ) );
       }
       
-      # add msg (no file)
-      Log3 $name, 4, "TelegramBot_SendIt $name: Filename for image file :$msg:";
-      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "photo", undef, $msg, 1 ) if ( ! defined( $ret ) );
+      # add msg or file or stream
+      Log3 $name, 4, "TelegramBot_SendIt $name: Filename for image file :".
+      TelegramBot_MsgForLog($msg, ($isMedia<0) ).":";
+      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "photo", undef, $msg, $isMedia ) if ( ! defined( $ret ) );
       
     }  elsif ( $isMedia == 2 ) {
       # Voicemsg send    == 2
-      $hash->{sentMsgText} = "Document: $msg";
+      $hash->{sentMsgText} = "Voice: $msg";
 
       $TelegramBot_hu_do_params{url} = $hash->{URL}."sendVoice";
 
-      # add msg (no file)
-      Log3 $name, 4, "TelegramBot_SendIt $name: Filename for document file :$msg:";
+      # add msg or file or stream
+      Log3 $name, 4, "TelegramBot_SendIt $name: Filename for document file :".
+      TelegramBot_MsgForLog($msg, ($isMedia<0) ).":";
       $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "voice", undef, $msg, 1 ) if ( ! defined( $ret ) );
     } else {
       # Media send    == 3
-      $hash->{sentMsgText} = "Document: $msg";
+      $hash->{sentMsgText} = "Document: ".TelegramBot_MsgForLog($msg, ($isMedia<0) );
 
       $TelegramBot_hu_do_params{url} = $hash->{URL}."sendDocument";
 
       # add msg (no file)
       Log3 $name, 4, "TelegramBot_SendIt $name: Filename for document file :$msg:";
-      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "document", undef, $msg, 1 ) if ( ! defined( $ret ) );
+      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "document", undef, $msg, $isMedia ) if ( ! defined( $ret ) );
     }
 
     # finalize multipart 
@@ -1183,10 +1193,11 @@ sub TelegramBot_SendIt($$$$$)
 #   header for multipart
 #   content 
 #   isFile to specify if content is providing a file to be read as content
+#     
 #   > returns string in case of error or undef
 sub TelegramBot_AddMultipart($$$$$$)
 {
-	my ( $hash, $params, $parname, $parheader, $parcontent, $isFile ) = @_;
+	my ( $hash, $params, $parname, $parheader, $parcontent, $isMedia ) = @_;
   my $name = $hash->{NAME};
 
   my $ret;
@@ -1207,7 +1218,7 @@ sub TelegramBot_AddMultipart($$$$$$)
   my $finalcontent;
   if ( defined( $parname ) ) {
     $params->{data} .= "--".$params->{boundary}."\r\n";
-    if ( $isFile ) {
+    if ( $isMedia > 0) {
       my $baseFilename =  basename($parcontent);
       $parheader = "Content-Disposition: form-data; name=\"".$parname."\"; filename=\"".$baseFilename."\"\r\n".$parheader."\r\n";
 
@@ -1221,6 +1232,13 @@ sub TelegramBot_AddMultipart($$$$$$)
       if ( $finalcontent eq "" ) {
         return( "FAILED file :$parcontent: not found or empty" );
       }
+    } elsif ( $isMedia < 0) {
+      my ( $im, $ext ) = TelegramBot_IdentifyStream( $hash, $parcontent );
+
+      my $baseFilename =  "fhem.".$ext;
+
+      $parheader = "Content-Disposition: form-data; name=\"".$parname."\"; filename=\"".$baseFilename."\"\r\n".$parheader."\r\n";
+      $finalcontent = $parcontent;
     } else {
       $parheader = "Content-Disposition: form-data; name=\"".$parname."\"\r\n".$parheader."\r\n";
       $finalcontent = $parcontent;
@@ -2106,6 +2124,49 @@ sub TelegramBot_checkAllowedPeer($$$) {
 ##############################################################################
 ##############################################################################
 
+
+######################################
+#  Get a string and identify possible media streams
+#  PNG is tested
+#  returns 
+#   -1 for image
+#   -2 for Audio
+#   -3 for other media
+# and extension without dot as 2nd list element
+
+sub TelegramBot_IdentifyStream($$) {
+	my ($hash, $msg) = @_;
+
+  # signatures for media files are documented here --> https://en.wikipedia.org/wiki/List_of_file_signatures
+  # seems sometimes more correct: https://wangrui.wordpress.com/2007/06/19/file-signatures-table/
+  return (-1,"png") if ( $msg =~ /^\x89PNG\r\n\x1a\n/ );    # PNG
+  return (-1,"jpg") if ( $msg =~ /^\xFF\xD8\xFF/ );    # JPG not necessarily complete, but should be fine here
+  
+  return (-2 ,"mp3") if ( $msg =~ /^\xFF\xF3/ );    # MP3  	MPEG-1 Layer 3 file without an ID3 tag or with an ID3v1 tag
+  return (-2 ,"mp3") if ( $msg =~ /^\xFF\xFB/ );    # MP3  	MPEG-1 Layer 3 file without an ID3 tag or with an ID3v1 tag
+
+  return (-3,"pdf") if ( $msg =~ /^%PDF/ );    # PDF document
+  return (-3,"docx") if ( $msg =~ /^PK\x03\x04/ );    # Office new
+  return (-3,"docx") if ( $msg =~ /^PK\x05\x06/ );    # Office new
+  return (-3,"docx") if ( $msg =~ /^PK\x07\x08/ );    # Office new
+  return (-3,"doc") if ( $msg =~ /^\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1/ );    # Office old - D0 CF 11 E0 A1 B1 1A E1
+
+  return (0,undef);
+}
+
+#####################################
+#####################################
+# INTERNAL: prepare msg/ret for log file 
+sub TelegramBot_MsgForLog($;$) {
+	my ($msg, $stream) = @_;
+
+  if ( ! defined( $msg ) ) {
+    return "<undef>";
+  } elsif ( $stream ) {
+    return "<stream:".length($msg).">";
+  } 
+  return $msg;
+}
 
 ######################################
 #  read binary file for Phototransfer - returns undef or empty string on error

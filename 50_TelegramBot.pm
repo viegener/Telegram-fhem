@@ -92,11 +92,11 @@
 #   added get function to return url for file ids on media messages "urlForFile"
 #     writes returned url into internal: fileUrl
 #   INT: switch command result sending to direct _sendIt call
-
 #   forum msg396189
 #     favorite commands can be used also to send images back if the result of the command is an image 
 #     e.g. { plotAsPng('SVG_FileLog_something') } --> returns PNG if used in favorite the result will be send as photo
-#   
+
+#   Forbid all commands starting with shutdown
 #   
 ##############################################################################
 # TASKS 
@@ -501,7 +501,7 @@ sub TelegramBot_Get($@)
       }      
 
     } else {
-      $ret = "urlForFile failed: ".$guret;
+      $ret = "urlForFile failed: ".(defined($guret)?$guret:"<undef>");
       $hash->{fileUrl} = $ret;
     }
 
@@ -827,7 +827,7 @@ sub TelegramBot_ExecuteCommand($$$) {
   Log3 $name, 5, "TelegramBot_ExecuteCommand final cmd for analyze :".$cmd.": ";
 
   # special case shutdown caught here to avoid endless loop
-  $ret = "shutdown command can not be executed" if ( $cmd =~ /^shutdown(\s+.*)?$/ );
+  $ret = "shutdown command can not be executed" if ( $cmd =~ /^shutdown/ );
   
   # Execute command
   my $isMediaStream = 0;

@@ -95,8 +95,10 @@
 #   forum msg396189
 #     favorite commands can be used also to send images back if the result of the command is an image 
 #     e.g. { plotAsPng('SVG_FileLog_something') } --> returns PNG if used in favorite the result will be send as photo
-
 #   Forbid all commands starting with shutdown
+
+#   Recognize MP3 also with ID3v2 tag (empirical analysis)
+#   
 #   
 ##############################################################################
 # TASKS 
@@ -2144,6 +2146,7 @@ sub TelegramBot_IdentifyStream($$) {
   
   return (-2 ,"mp3") if ( $msg =~ /^\xFF\xF3/ );    # MP3  	MPEG-1 Layer 3 file without an ID3 tag or with an ID3v1 tag
   return (-2 ,"mp3") if ( $msg =~ /^\xFF\xFB/ );    # MP3  	MPEG-1 Layer 3 file without an ID3 tag or with an ID3v1 tag
+  return (-2 ,"mp3") if ( $msg =~ /^ID3.\x00/ );    # MP3  	MPEG-1 Layer 3 file wwith an ID3v2 tag (empirical found the \x00)!!!
 
   return (-3,"pdf") if ( $msg =~ /^%PDF/ );    # PDF document
   return (-3,"docx") if ( $msg =~ /^PK\x03\x04/ );    # Office new

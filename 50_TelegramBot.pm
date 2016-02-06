@@ -25,7 +25,7 @@
 # TelegramBot is making use of the Telegrom Bot API (see https://core.telegram.org/bots and https://core.telegram.org/bots/api)
 # For using it with fhem an telegram BOT API key is needed! --> see https://core.telegram.org/bots/api#authorizing-your-bot
 #
-# $Id: 50_TelegramBot.pm 9502 2015-10-17 20:36:21Z viegener $
+# $Id: 50_TelegramBot.pm 10745 2016-02-06 23:20:33Z viegener $
 #
 ##############################################################################
 # 0.0 2015-09-16 Started

@@ -97,7 +97,9 @@
 #     e.g. { plotAsPng('SVG_FileLog_something') } --> returns PNG if used in favorite the result will be send as photo
 #   Forbid all commands starting with shutdown
 #   Recognize MP3 also with ID3v2 tag (2.2 / 2.3 / 2.4)
+# 1.4 2016-02-07 receive media files, send media files directly from parameter (PNG, JPG, MP3, PDF, etc)
 
+#   
 #   
 #   
 #   

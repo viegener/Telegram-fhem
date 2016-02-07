@@ -22,10 +22,14 @@
 ################################################################
 #TODO:
 #
+# allow device content (either in inc statement, or in header or as new tag)
+#   header might be simplest (for implementation and overview): since it could be overwritten by the inc and handled like a default value
+#
+# validate html functionality
+#
 # Allow if for separate sections
 # log count of replacements
 #
-# remove call back handling?
 # deepcopy only if new keys found
 ##############################################
 # filenames need to have .ftui. before extension to be parsed
@@ -277,6 +281,8 @@ sub FTUISRV_CGI() {
 ##################
 #
 # validate HTML according to basic criteria
+# should be best build with HTML::Parser (cpan) --> allows also to parse processing instructions
+#   example: 23_KOSTALPIKO.pm
 #   comments correctly closed
 #   build tag dictionary / array
 #   optional: check FTUI 
@@ -284,8 +290,6 @@ sub FTUISRV_validateHtml( $$$ ) {
 
   my ($name, $content, $filename) = @_;   
 
-  
-  
 }
 
 ##############################################

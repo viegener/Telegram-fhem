@@ -16,7 +16,7 @@
 #   check and warn for remaining keys
 #   added header for includes also for defining default values
 #   changed key replacement to run through all content instead of list of keys
-#
+#   remove all callback elements
 #
 #
 ################################################################
@@ -128,26 +128,17 @@ FTUISRV_Define($$) {
 
   my @a = split("[ \t]+", $def, 6);
 
-#cb  return "Usage: define <name> FTUISRV <infix> <directory> [&<callbackfn>] <friendlyname>"  if(( int(@a) != 5) && ( int(@a) != 6) );
   return "Usage: define <name> FTUISRV <infix> <directory> <friendlyname>"  if(( int(@a) < 5) );
   my $name= $a[0];
   my $infix= $a[2];
   my $directory= $a[3];
   my $friendlyname;
-#cb  my $callback;
-  
-#cb  if ( $a[4] =~ /^&(.*)/ ) {
-#cb      # callback needs to be a function with two params $name (name of device of this type and $request (the request url) 
-#cb      $callback = $1;
-#cb      $friendlyname = $a[5];
-#cb  } else {
-      $friendlyname = $a[4].(( int(@a) == 6 )?" ".$a[5]:"");
-#cb  }
+
+  $friendlyname = $a[4].(( int(@a) == 6 )?" ".$a[5]:"");
   
   $hash->{fhem}{infix}= $infix;
   $hash->{fhem}{directory}= $directory;
   $hash->{fhem}{friendlyname}= $friendlyname;
-#cb  $hash->{fhem}{callback}= $callback;
 
   Log3 $name, 3, "$name: new ext defined infix:$infix: dir:$directory:";
 
@@ -496,18 +487,6 @@ sub FTUISRV_BinaryFileRead($) {
   return $fileData;
 }
 
-##################
-#
-# Callback for FTUI handling
-sub FTUISRV_callback($$) {
-   
-  my ($name, $request) = @_;   # name of extension and request (url)
-   
-  Log3 $name, 3, "$name: Request to :$request:";
-   
-  return("text/plain; charset=utf-8", "File not found for request : $request");
-}   
-   
 ##############################################
 ##############################################
 ##############################################

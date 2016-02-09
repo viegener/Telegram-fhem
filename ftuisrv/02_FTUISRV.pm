@@ -16,14 +16,14 @@
 #   check and warn for remaining keys
 #   added header for includes also for defining default values
 #   changed key replacement to run through all content instead of list of keys
-#   remove all callback elements
+#   removed all callback elements
+#   allow device content (either in inc statement, or in header or as new tag)
+#     header might be best (for implementation and overview): since it could be overwritten by the inc and handled like a default value
 #
 #
 ################################################################
 #TODO:
 #
-# allow device content (either in inc statement, or in header or as new tag)
-#   header might be simplest (for implementation and overview): since it could be overwritten by the inc and handled like a default value
 #
 # validate html functionality
 #
@@ -53,7 +53,9 @@ my $FTUISRV_matchtemplatefile = "^.*\.ftui\.[^\.]+\$";
 
 ##### <\?ftui-inc="([^"\?]+)"\s+([^\?]*)\?>
 my $FTUISRV_ftuimatch_inc = '<\?ftui-inc="([^"\?]+)"\s+([^\?]*)\?>';
-my $FTUISRV_ftuimatch_header = '<\?ftui-header="([^"\?]*)"\s+([^\?]*)\?>';
+
+#my $FTUISRV_ftuimatch_header = '<\?ftui-header="([^"\?]*)"\s+([^\?]*)\?>';
+my $FTUISRV_ftuimatch_header = '<\?ftui-header="([^"\?]*)"\s+(.*?)\?>';
 
 my $FTUISRV_ftuimatch_keysegment = '^\s*([^=\s]+)(="([^"]*)")?\s*';
 
@@ -332,6 +334,18 @@ sub FTUISRV_handletemplatefile( $$$ ) {
       my $hvalues = $2;
       Log3 $name, 4, "$name: found header with hvalues :$hvalues: ";
 
+      # replace [device:reading] or even perl expressions with replaceSetMagic 
+      my %dummy;
+      Log3 $name, 4, "$name: FTUISRV_handletemplatefile ReplaceSetmagic before :$hvalues:";
+      my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $hvalues ) );
+      
+      if ( $err ) {
+        Log3 $name, 1, "$name: FTUISRV_handletemplatefile failed on ReplaceSetmagic with :$err: on header :$hvalues:";
+      } else {
+        $hvalues = join(" ", @a);
+        Log3 $name, 4, "$name: FTUISRV_handletemplatefile ReplaceSetmagic after :".$hvalues.":";
+      }
+
       # grab keys for default values from header
       while ( $hvalues =~ /$FTUISRV_ftuimatch_keysegment/s ) {
         my $skey = $1;
@@ -343,6 +357,8 @@ sub FTUISRV_handletemplatefile( $$$ ) {
         }
         $hvalues =~ s/$FTUISRV_ftuimatch_keysegment//s;
       }
+
+
       # remove header from output 
       $content =~ s/$FTUISRV_ftuimatch_header//s
     }

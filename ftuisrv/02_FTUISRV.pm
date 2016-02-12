@@ -292,7 +292,215 @@ sub FTUISRV_validateHtml( $$$ ) {
 
   my ($name, $content, $filename) = @_;   
 
+  # state: 0: normal  / 1: in tag  / 2: in comment   / 3: in quotes  / 4: in dquotes  / 5: in ptag
+  #
+  # tags contains
+  #   <li   if tag has been found, but is not yet finished
+  #   li    if li tag is found and completed
+  #   "     in quotes
+  #   '     in double quotes
+  #   #     in comment
+  #   <?    in processing tag (unfinished)
+  
+  # pushtag / poptag
+  # check for negative state and produce error
+
+  $content .= "   ";
+  
+  my $state = 0;
+  my $line = 1;
+  my $pos = 0;
+  my $slen = length( $content );
+  my @tags = ();
+  my @tagline= ();
+  my $ctag = "";
+  
+  while ( $pos < $slen ) {
+    my $ch = substr( $content, $pos, 1 );
+    $pos++;
+    
+    # Processing tag
+    if ( $state == 5 ) {
+      if ( $ch eq "\\" ) {
+        $pos++;
+      } elsif ( $ch eq "\"" ) {
+        pushTag( \@tags, \@tagline, "<?", $line );
+        $state = 4;
+      } elsif ( $ch eq "\'" ) {
+        $state = 3;
+        pushTag( \@tags, \@tagline, "<?", $line );
+      } elsif ( ( $ch eq "?" ) && ( substr( $content, $pos, 1 ) eq ">" ) ) {
+        $pos++;
+        $state = popTag( \@tags, \@tagline );
+      }
+      
+    # quote tags
+    } elsif ( $state >= 3 ) {
+      if ( $ch eq "\\" ) {
+        $pos++;
+      } elsif ( ( $ch eq "\"" ) && ( $state == 4 ) ){
+        $state = popTag( \@tags, \@tagline );
+      } elsif ( $ch eq "\"" ) {
+        pushTag( \@tags, \@tagline, "\"", $line );
+        $state = 4;
+      } elsif ( ( $ch eq "\'" ) && ( $state == 3 ) ){
+        $state = popTag( \@tags, \@tagline );
+      } elsif ( $ch eq "\'" ) {
+        $state = 3;
+        pushTag( \@tags, \@tagline, "\'", $line );
+      }
+    
+    # comment tag
+    } elsif ( $state == 2 ) {
+      if ( ( $ch eq "-" ) && ( substr( $content, $pos, 2 ) eq "->" ) ) {
+        $pos+=2;
+        $state = popTag( \@tags, \@tagline );
+      }
+      
+    # in tag
+    } elsif ( $state == 1 ) {
+      if ( $ch eq "\"" ) {
+        pushTag( \@tags, \@tagline, $ctag, $line );
+        $state = 4;
+      } elsif ( $ch eq "\'" ) {
+        $state = 3;
+        pushTag( \@tags, \@tagline, $ctag, $line );
+      } elsif ( ( $ch eq "<" ) && ( substr( $content, $pos, 1 ) eq "?" ) ) {
+        $pos++;
+        $state = 5;
+        pushTag( \@tags, \@tagline, $ctag, $line );
+      } elsif ( ( $ch eq "<" ) && ( substr( $content, $pos, 2 ) eq "--" ) ) {
+        $pos+=2;
+        $state = 2;
+        pushTag( \@tags, \@tagline, $ctag, $line );
+      } elsif ( $ch eq "<" ) {
+        Log3(  $name, 2, "Warning Spurious < in $filename (line $line)" );
+      } elsif ( $ch eq ">" ) {
+        $state = popTag( \@tags, \@tagline );
+      }
+      
+    # out of everything
+    } else {
+      if ( ( $ch eq "<" ) && ( substr( $content, $pos, 1 ) eq "?" ) ) {
+        $pos++;
+        $state = 5;
+        pushTag( \@tags, \@tagline, "", $line );
+      } elsif ( ( $ch eq "<" ) && ( substr( $content, $pos, 2 ) eq "--" ) ) {
+        $pos+=2;
+        $state = 2;
+        pushTag( \@tags, \@tagline, "", $line );
+      } elsif ( ( $ch eq "<" ) && ( substr( $content, $pos, 1 ) eq "/" ) ) {
+        $pos++;
+        my $tag = "";
+        
+        while ( $pos < $slen ) {
+          my $ch2 = substr( $content, $pos, 1 );
+          $pos++;
+          
+          if ( $ch2 eq ">" ) {
+            last;
+          } elsif (( $ch2 eq "\n" ) || ( $ch2 eq " " ) || ( $ch2 eq "\t" ) ) {
+            $pos = $slen;
+          } else {
+            $tag += $ch2;
+          }
+
+        }
+        if ( $pos >= $slen ) {
+          Log3(  $name, 2, "Warning end tag :".(defined($tag)?$tag:"<undef>").": not finished with > in $filename (line $line)" );
+        } else {
+          while ( scalar(@tags) > 0 ) {
+            my $ptag = pop( @tags );
+            my $pline = pop( @tagline );
+            
+            if ( $ptag eq $tag ) {
+              last;
+            } elsif ( scalar(@tags) == 0 ) {
+              Log3(  $name, 1, "Warning tag :".(defined($tag)?$tag:"<undef>").": closed but not open $filename (line $line)" );
+              $pos = $slen;
+            } else {
+              Log3(  $name, 1, "Warning tag :".(defined($ptag)?$ptag:"<undef>").": not closed $filename (opened in line $pline)" );
+            }
+          }
+        }
+        
+      } elsif ( $ch eq "<" ) {
+        # identify tag
+        $pos++;
+        my $tag = "<";
+        
+        while ( $pos < $slen ) {
+          my $ch2 = substr( $content, $pos, 1 );
+          $pos++;
+          
+          if ( $ch2 eq ">" ) {
+            last;
+          } elsif (( $ch2 eq "\n" ) || ( $ch2 eq " " ) || ( $ch2 eq "\t" ) ) {
+            $pos--;
+            last;
+          } else {
+            $tag += $ch2;
+          }
+
+        }
+        if ( $pos >= $slen ) {
+          Log3(  $name, 2, "Warning start tag :".(defined($tag)?$tag:"<undef>").": not finished with > in $filename (line $line)" );
+        } else {
+          $ctag = $tag;
+          $state = 1;
+          pushTag( \@tags, \@tagline, "", $line );
+        }
+      }
+      
+    }
+    
+    $line++ if ( $ch eq "\n" );
+
+  }
 }
+
+##############################################
+sub pushTag( $$$$ ) {
+
+  my ( $ptags, $ptagline, $ch, $line ) = @_ ;
+
+  push( @{ $ptags }, $ch );
+  push( @{ $ptagline }, $line );
+  
+}
+  
+
+##############################################
+sub popTag( $$ ) {
+
+  my ( $ptags, $ptagline ) = @_; 
+
+  my $ch = pop( @{ $ptags } );
+  my $line = pop( @{ $ptagline } );
+  my $state = 0;
+  
+  # state: 0: normal  / 1: in tag  / 2: in comment   / 3: in quotes  / 4: in dquotes  / 5: in ptag
+  if ( $ch eq "" ) {
+    $state = 0;
+  } elsif ( $ch eq "<--" ) {
+    $state = 2;
+  } elsif ( $ch eq "<?" ) {
+    $state = 5;
+  } elsif ( $ch eq "\'" ) {
+    $state = 3;
+  } elsif ( $ch eq "\"" ) {
+    $state = 4;
+  } elsif ( substr($ch,0,1) eq "<" ) {
+    $state = 4;
+    pushTag( $ptags, $ptagline, substr($ch,1), $line );
+  } else {
+    # nothing else must be tag
+    $state = 1;
+  }
+  return $state;
+  
+}
+  
 
 ##############################################
 ##############################################

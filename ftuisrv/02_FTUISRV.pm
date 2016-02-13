@@ -256,7 +256,7 @@ sub FTUISRV_CGI() {
     if ( ( $check ) && ( $filename =~ /\.html?/ ) ) {
       Log3 $name, 3, "$name: validate HTML for request :$filename:";
     
-#      FTUISRV_validateHtml( $name, $content, $filename );
+      FTUISRV_validateHtml( $name, $content, $filename );
     }
     
     
@@ -302,8 +302,11 @@ sub FTUISRV_validateHtml( $$$ ) {
   #   #     in comment
   #   <?    in processing tag (unfinished)
   
-  # pushtag / poptag
-  # check for negative state and produce error
+  # handle /> as end of tag
+  # handle no close tags ==> meta, img
+  # handle doctype with <! ==> as in processing tag no end
+  # pushtag / poptag add prefix FTUISRV_
+  
 
   $content .= "   ";
   
@@ -330,8 +333,9 @@ sub FTUISRV_validateHtml( $$$ ) {
         $state = 3;
         pushTag( \@tags, \@tagline, "<?", $line );
       } elsif ( ( $ch eq "?" ) && ( substr( $content, $pos, 1 ) eq ">" ) ) {
+        Debug "<< Leave Processing Tag: #$line";
         $pos++;
-        $state = popTag( \@tags, \@tagline );
+        ( $state, $ctag ) = popTag( \@tags, \@tagline );
       }
       
     # quote tags
@@ -339,12 +343,13 @@ sub FTUISRV_validateHtml( $$$ ) {
       if ( $ch eq "\\" ) {
         $pos++;
       } elsif ( ( $ch eq "\"" ) && ( $state == 4 ) ){
-        $state = popTag( \@tags, \@tagline );
+        ( $state, $ctag ) = popTag( \@tags, \@tagline );
+#        Debug "New state $state #$line";
       } elsif ( $ch eq "\"" ) {
         pushTag( \@tags, \@tagline, "\"", $line );
         $state = 4;
       } elsif ( ( $ch eq "\'" ) && ( $state == 3 ) ){
-        $state = popTag( \@tags, \@tagline );
+        ( $state, $ctag ) = popTag( \@tags, \@tagline );
       } elsif ( $ch eq "\'" ) {
         $state = 3;
         pushTag( \@tags, \@tagline, "\'", $line );
@@ -354,41 +359,57 @@ sub FTUISRV_validateHtml( $$$ ) {
     } elsif ( $state == 2 ) {
       if ( ( $ch eq "-" ) && ( substr( $content, $pos, 2 ) eq "->" ) ) {
         $pos+=2;
-        $state = popTag( \@tags, \@tagline );
+        Debug "<< Leave Comment: #$line";
+        ( $state, $ctag ) = popTag( \@tags, \@tagline );
       }
       
     # in tag
     } elsif ( $state == 1 ) {
       if ( $ch eq "\"" ) {
         pushTag( \@tags, \@tagline, $ctag, $line );
+#        Debug "Go to state 4 #$line";
         $state = 4;
       } elsif ( $ch eq "\'" ) {
-        $state = 3;
         pushTag( \@tags, \@tagline, $ctag, $line );
+        $state = 3;
       } elsif ( ( $ch eq "<" ) && ( substr( $content, $pos, 1 ) eq "?" ) ) {
+        pushTag( \@tags, \@tagline, $ctag, $line );
         $pos++;
         $state = 5;
+      } elsif ( ( $ch eq "<" ) && ( substr( $content, $pos, 3 ) eq "!--" ) ) {
         pushTag( \@tags, \@tagline, $ctag, $line );
-      } elsif ( ( $ch eq "<" ) && ( substr( $content, $pos, 2 ) eq "--" ) ) {
         $pos+=2;
         $state = 2;
-        pushTag( \@tags, \@tagline, $ctag, $line );
       } elsif ( $ch eq "<" ) {
-        Log3(  $name, 2, "Warning Spurious < in $filename (line $line)" );
+        Log3(  $name, 2, "FTUISRV_validate: Warning Spurious < in $filename (line $line)" );
+      } elsif ( ( $ch eq "/" ) && ( substr( $content, $pos, 1 ) eq ">" ) ) {
+        my $dl = $tagline[$#tagline];
+        ( $state, $ctag ) = popTag( \@tags, \@tagline );
+        Debug "<< Tag finished :$ctag: #$line";
+        # correct state (outside tag)
+        $state = 0;
       } elsif ( $ch eq ">" ) {
-        $state = popTag( \@tags, \@tagline );
+        my $dl = $tagline[$#tagline];
+        ( $state, $ctag ) = popTag( \@tags, \@tagline );
+        Debug "-- Tag complete :$ctag: #$line";
+        # restore old tag start line
+        pushTag( \@tags, \@tagline, substr($ctag,1), $dl );
+        # correct state (outside tag)
+        $state = 0;
       }
       
     # out of everything
     } else {
       if ( ( $ch eq "<" ) && ( substr( $content, $pos, 1 ) eq "?" ) ) {
+        pushTag( \@tags, \@tagline, "", $line );
         $pos++;
         $state = 5;
+        Debug ">> Enter Processing Tag: #$line";
+      } elsif ( ( $ch eq "<" ) && ( substr( $content, $pos, 3 ) eq "!--" ) ) {
         pushTag( \@tags, \@tagline, "", $line );
-      } elsif ( ( $ch eq "<" ) && ( substr( $content, $pos, 2 ) eq "--" ) ) {
         $pos+=2;
         $state = 2;
-        pushTag( \@tags, \@tagline, "", $line );
+        Debug ">> Enter Comment: #$line";
       } elsif ( ( $ch eq "<" ) && ( substr( $content, $pos, 1 ) eq "/" ) ) {
         $pos++;
         my $tag = "";
@@ -402,13 +423,15 @@ sub FTUISRV_validateHtml( $$$ ) {
           } elsif (( $ch2 eq "\n" ) || ( $ch2 eq " " ) || ( $ch2 eq "\t" ) ) {
             $pos = $slen;
           } else {
-            $tag += $ch2;
+            $tag .= $ch2;
           }
 
         }
         if ( $pos >= $slen ) {
-          Log3(  $name, 2, "Warning end tag :".(defined($tag)?$tag:"<undef>").": not finished with > in $filename (line $line)" );
+          Log3(  $name, 2, "FTUISRV_validate: Error incomplete tag :".(defined($tag)?$tag:"<undef>").": not finished with > in $filename (line $line)" );
+          @tags = 0;
         } else {
+          Debug "<< Leave tag :$tag: : #$line";
           while ( scalar(@tags) > 0 ) {
             my $ptag = pop( @tags );
             my $pline = pop( @tagline );
@@ -416,17 +439,16 @@ sub FTUISRV_validateHtml( $$$ ) {
             if ( $ptag eq $tag ) {
               last;
             } elsif ( scalar(@tags) == 0 ) {
-              Log3(  $name, 1, "Warning tag :".(defined($tag)?$tag:"<undef>").": closed but not open $filename (line $line)" );
+              Log3(  $name, 1, "FTUISRV_validate: Error tag :".(defined($tag)?$tag:"<undef>").": closed but not open $filename (line $line)" );
               $pos = $slen;
             } else {
-              Log3(  $name, 1, "Warning tag :".(defined($ptag)?$ptag:"<undef>").": not closed $filename (opened in line $pline)" );
+              Log3(  $name, 2, "FTUISRV_validate: Warning tag :".(defined($ptag)?$ptag:"<undef>").": not closed $filename (opened in line $pline)" );
             }
           }
         }
         
       } elsif ( $ch eq "<" ) {
         # identify tag
-        $pos++;
         my $tag = "<";
         
         while ( $pos < $slen ) {
@@ -434,29 +456,40 @@ sub FTUISRV_validateHtml( $$$ ) {
           $pos++;
           
           if ( $ch2 eq ">" ) {
+            $pos--;
             last;
           } elsif (( $ch2 eq "\n" ) || ( $ch2 eq " " ) || ( $ch2 eq "\t" ) ) {
             $pos--;
             last;
           } else {
-            $tag += $ch2;
+            $tag .= $ch2;
           }
 
         }
         if ( $pos >= $slen ) {
-          Log3(  $name, 2, "Warning start tag :".(defined($tag)?$tag:"<undef>").": not finished with > in $filename (line $line)" );
+          Log3(  $name, 2, "FTUISRV_validate: Warning start tag :".(defined($tag)?$tag:"<undef>").": not finished in $filename (line $line)" );
         } else {
+          Debug "<< Enter tag :$tag: : #$line";
           $ctag = $tag;
           $state = 1;
-          pushTag( \@tags, \@tagline, "", $line );
+          pushTag( \@tags, \@tagline, $ctag, $line );
         }
       }
       
     }
     
     $line++ if ( $ch eq "\n" );
-
   }
+
+  # remaining tags report
+#  while ( scalar(@tags) > 0 ) {
+#    my $ptag = pop( @tags );
+#    my $pline = pop( @tagline );
+    
+#    Log3(  $name, 2, "FTUISRV_validate: Warning tag :".(defined($ptag)?$ptag:"<undef>").": not closed $filename (opened in line $pline)" );
+#  }
+  
+  
 }
 
 ##############################################
@@ -474,6 +507,8 @@ sub pushTag( $$$$ ) {
 sub popTag( $$ ) {
 
   my ( $ptags, $ptagline ) = @_; 
+  
+  return (0, "") if ( scalar($ptags) == 0 ); 
 
   my $ch = pop( @{ $ptags } );
   my $line = pop( @{ $ptagline } );
@@ -482,7 +517,7 @@ sub popTag( $$ ) {
   # state: 0: normal  / 1: in tag  / 2: in comment   / 3: in quotes  / 4: in dquotes  / 5: in ptag
   if ( $ch eq "" ) {
     $state = 0;
-  } elsif ( $ch eq "<--" ) {
+  } elsif ( $ch eq "<!--" ) {
     $state = 2;
   } elsif ( $ch eq "<?" ) {
     $state = 5;
@@ -491,13 +526,12 @@ sub popTag( $$ ) {
   } elsif ( $ch eq "\"" ) {
     $state = 4;
   } elsif ( substr($ch,0,1) eq "<" ) {
-    $state = 4;
-    pushTag( $ptags, $ptagline, substr($ch,1), $line );
+    $state = 1;
   } else {
     # nothing else must be tag
-    $state = 1;
+    $state = 0;
   }
-  return $state;
+  return ( $state, $ch );
   
 }
   

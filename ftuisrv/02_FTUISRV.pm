@@ -19,13 +19,16 @@
 #   removed all callback elements
 #   allow device content (either in inc statement, or in header or as new tag)
 #     header might be best (for implementation and overview): since it could be overwritten by the inc and handled like a default value
-#
+#   add validateFiles / validateResult as attributes for HTML validation
+#   validate for HTML and part files
+#   validate a specific file only once (if unchanged)
+#   validate* 1 means only errors/warnings / 2 means also opening and closing being logged 
+#   documentation for validate* added
+# 0.2 Extended by validation of html, device data and default values (header)
 #
 ################################################################
 #TODO:
 #
-#
-# validate html functionality
 #
 # Allow if for separate sections
 # log count of replacements
@@ -64,7 +67,8 @@ my $FTUISRV_ftuimatch_keygeneric = '<\?ftui-key=([^\s]+)\s*\?>';
 #########################
 # FORWARD DECLARATIONS
 
-sub FTUISRV_handletemplatefile( $$$ );
+sub FTUISRV_handletemplatefile( $$$$ );
+sub FTUISRV_validateHtml( $$$$ );
 
 
 
@@ -119,7 +123,7 @@ FTUISRV_Initialize($) {
     $hash->{DefFn}     = "FTUISRV_Define";
     $hash->{UndefFn}   = "FTUISRV_Undef";
     $hash->{AttrList}  = "directoryindex " .
-                        "readings check:0,1 ";
+                        "readings validateFiles:0,1,2 validateResult:0,1,2 ";
     $hash->{AttrFn}    = "FTUISRV_Attr";                    
     #$hash->{SetFn}     = "FTUISRV_Set";
 
@@ -177,8 +181,10 @@ FTUISRV_Attr(@)
               return "Invalid reading name $aVal (only A-Z, a-z, 0-9, _ and , allowed)";
           }
           addToDevAttrList($name, $aName);
-        } elsif ($aName =~ "check") {
-          $attr{$name}{'check'} = ($aVal eq "1")? "1": "0";
+        } elsif ($aName =~ "validateFiles") {
+          $attr{$name}{'validateFiles'} = (($aVal eq "2")? "2": (($aVal eq "1")? "1": "0"));
+        } elsif ($aName =~ "validateResult") {
+          $attr{$name}{'validateResult'} = (($aVal eq "2")? "2": (($aVal eq "1")? "1": "0"));
         }
     }
     return undef;
@@ -248,17 +254,15 @@ sub FTUISRV_CGI() {
     return("text/plain; charset=utf-8", "File not found: $filename") if(! -e $filename );
     
     my $parhash = {};
+    my $validatehash = {};
     
-    my ($err, $content) = FTUISRV_handletemplatefile( $name, $filename, $parhash );
+    my ($err, $validated, $content) = FTUISRV_handletemplatefile( $name, $filename, $parhash, $validatehash );
 
-    # Validate HTML
-    my $check = AttrVal($name,'check',0);
-    if ( ( $check ) && ( $filename =~ /\.html?/ ) ) {
-      Log3 $name, 3, "$name: validate HTML for request :$filename:";
-    
-      FTUISRV_validateHtml( $name, $content, $filename );
+    # Validate HTML Result after parsing
+    my $validate = AttrVal($name,'validateResult',0);
+    if ( ( $validate ) && ( ( $filename =~ /\.html?$/i ) || ( $filename =~ /\.part?$/i )  ) && ( ! $validated ) ) {
+      FTUISRV_validateHtml( $name, $content, $validate, $filename );
     }
-    
     
     return("text/plain; charset=utf-8", "Error in filehandling: $err") if ( defined($err) );
       
@@ -288,9 +292,9 @@ sub FTUISRV_CGI() {
 #   comments correctly closed
 #   build tag dictionary / array
 #   optional: check FTUI 
-sub FTUISRV_validateHtml( $$$ ) {
+sub FTUISRV_validateHtml( $$$$ ) {
 
-  my ($name, $content, $filename) = @_;   
+  my ($name, $content, $validateLevel, $filename ) = @_;   
 
   # state: 0: normal  / 1: in tag  / 2: in comment   / 3: in quotes  / 4: in dquotes  / 5: in ptag
   #
@@ -307,6 +311,7 @@ sub FTUISRV_validateHtml( $$$ ) {
   # handle doctype with <! ==> as in processing tag no end
   # pushtag / poptag add prefix FTUISRV_
   
+  Log3 $name, (( $validateLevel > 1 )?1:4), "$name: validate parsed HTML for request :$filename:";
 
   $content .= "   ";
   
@@ -333,7 +338,8 @@ sub FTUISRV_validateHtml( $$$ ) {
         $state = 3;
         pushTag( \@tags, \@tagline, "<?", $line );
       } elsif ( ( $ch eq "?" ) && ( substr( $content, $pos, 1 ) eq ">" ) ) {
-        Debug "<< Leave Processing Tag: #$line";
+        Log3(  $name, 1, "<< Leave Processing Tag: #$line" ) if ( $validateLevel > 1 );
+
         $pos++;
         ( $state, $ctag ) = popTag( \@tags, \@tagline );
       }
@@ -346,20 +352,20 @@ sub FTUISRV_validateHtml( $$$ ) {
         ( $state, $ctag ) = popTag( \@tags, \@tagline );
 #        Debug "New state $state #$line";
       } elsif ( $ch eq "\"" ) {
-        pushTag( \@tags, \@tagline, "\"", $line );
+        pushTag( \@tags, \@tagline, "\'", $line );
         $state = 4;
       } elsif ( ( $ch eq "\'" ) && ( $state == 3 ) ){
         ( $state, $ctag ) = popTag( \@tags, \@tagline );
       } elsif ( $ch eq "\'" ) {
         $state = 3;
-        pushTag( \@tags, \@tagline, "\'", $line );
+        pushTag( \@tags, \@tagline, "\"", $line );
       }
     
     # comment tag
     } elsif ( $state == 2 ) {
       if ( ( $ch eq "-" ) && ( substr( $content, $pos, 2 ) eq "->" ) ) {
         $pos+=2;
-        Debug "<< Leave Comment: #$line";
+        Log3(  $name, 1, "<< Leave Comment: #$line" ) if ( $validateLevel > 1 );
         ( $state, $ctag ) = popTag( \@tags, \@tagline );
       }
       
@@ -381,17 +387,17 @@ sub FTUISRV_validateHtml( $$$ ) {
         $pos+=2;
         $state = 2;
       } elsif ( $ch eq "<" ) {
-        Log3(  $name, 2, "FTUISRV_validate: Warning Spurious < in $filename (line $line)" );
+        Log3(  $name, 1, "FTUISRV_validate: Warning Spurious < in $filename (line $line)" );
       } elsif ( ( $ch eq "/" ) && ( substr( $content, $pos, 1 ) eq ">" ) ) {
         my $dl = $tagline[$#tagline];
         ( $state, $ctag ) = popTag( \@tags, \@tagline );
-        Debug "<< Tag finished :$ctag: #$line";
+        Log3(  $name, 1, "<< end tag directly :$ctag: #$line" ) if ( $validateLevel > 1 );
         # correct state (outside tag)
         $state = 0;
       } elsif ( $ch eq ">" ) {
         my $dl = $tagline[$#tagline];
         ( $state, $ctag ) = popTag( \@tags, \@tagline );
-        Debug "-- Tag complete :$ctag: #$line";
+        Log3(  $name, 1, "-- start tag complete :$ctag: #$line" ) if ( $validateLevel > 1 );
         # restore old tag start line
         pushTag( \@tags, \@tagline, substr($ctag,1), $dl );
         # correct state (outside tag)
@@ -404,12 +410,12 @@ sub FTUISRV_validateHtml( $$$ ) {
         pushTag( \@tags, \@tagline, "", $line );
         $pos++;
         $state = 5;
-        Debug ">> Enter Processing Tag: #$line";
+        Log3(  $name, 1, ">> Enter Processing Tag #$line" ) if ( $validateLevel > 1 );
       } elsif ( ( $ch eq "<" ) && ( substr( $content, $pos, 3 ) eq "!--" ) ) {
         pushTag( \@tags, \@tagline, "", $line );
         $pos+=2;
         $state = 2;
-        Debug ">> Enter Comment: #$line";
+        Log3(  $name, 1, ">> Enter Comment #$line" )  if ( $validateLevel > 1 );
       } elsif ( ( $ch eq "<" ) && ( substr( $content, $pos, 1 ) eq "/" ) ) {
         $pos++;
         my $tag = "";
@@ -428,21 +434,23 @@ sub FTUISRV_validateHtml( $$$ ) {
 
         }
         if ( $pos >= $slen ) {
-          Log3(  $name, 2, "FTUISRV_validate: Error incomplete tag :".(defined($tag)?$tag:"<undef>").": not finished with > in $filename (line $line)" );
+          Log3(  $name, 1, "FTUISRV_validate: Error incomplete tag :".(defined($tag)?$tag:"<undef>").": not finished with > in $filename (line $line)" );
           @tags = 0;
         } else {
-          Debug "<< Leave tag :$tag: : #$line";
+          Log3(  $name, 1, "<< end tag $tag: #$line" ) if ( $validateLevel > 1 );
           while ( scalar(@tags) > 0 ) {
             my $ptag = pop( @tags );
             my $pline = pop( @tagline );
             
             if ( $ptag eq $tag ) {
+              Log3( $name, 1, "FTUISRV_validate: Warning void tag :".(defined($tag)?$tag:"<undef>").": unnecessarily closed $filename (opened in line $pline)" ) if ( FTUISRV_isVoidTag( $tag ) );
               last;
             } elsif ( scalar(@tags) == 0 ) {
               Log3(  $name, 1, "FTUISRV_validate: Error tag :".(defined($tag)?$tag:"<undef>").": closed but not open $filename (line $line)" );
               $pos = $slen;
             } else {
-              Log3(  $name, 2, "FTUISRV_validate: Warning tag :".(defined($ptag)?$ptag:"<undef>").": not closed $filename (opened in line $pline)" );
+              Log3(  $name, 1, "FTUISRV_validate: Warning tag :".(defined($ptag)?$ptag:"<undef>").": not closed $filename (opened in line $pline)" ) 
+                  if ( ! FTUISRV_isVoidTag( $ptag ) );
             }
           }
         }
@@ -467,9 +475,9 @@ sub FTUISRV_validateHtml( $$$ ) {
 
         }
         if ( $pos >= $slen ) {
-          Log3(  $name, 2, "FTUISRV_validate: Warning start tag :".(defined($tag)?$tag:"<undef>").": not finished in $filename (line $line)" );
+          Log3(  $name, 1, "FTUISRV_validate: Warning start tag :".(defined($tag)?$tag:"<undef>").": not finished in $filename (line $line)" );
         } else {
-          Debug "<< Enter tag :$tag: : #$line";
+          Log3(  $name, 1, "<< start tag $tag: #$line" ) if ( $validateLevel > 1 );
           $ctag = $tag;
           $state = 1;
           pushTag( \@tags, \@tagline, $ctag, $line );
@@ -479,17 +487,33 @@ sub FTUISRV_validateHtml( $$$ ) {
     }
     
     $line++ if ( $ch eq "\n" );
+    
+    # ???
+    # $pos = $slen if ( $line > 50 );
+    
   }
 
   # remaining tags report
-#  while ( scalar(@tags) > 0 ) {
-#    my $ptag = pop( @tags );
-#    my $pline = pop( @tagline );
+  while ( scalar(@tags) > 0 ) {
+    my $ptag = pop( @tags );
+    my $pline = pop( @tagline );
     
-#    Log3(  $name, 2, "FTUISRV_validate: Warning tag :".(defined($ptag)?$ptag:"<undef>").": not closed $filename (opened in line $pline)" );
-#  }
+    Log3(  $name, 1, "FTUISRV_validate: Warning tag :".(defined($ptag)?$ptag:"<undef>").": not closed $filename (opened in line $pline)" )
+        if ( ! FTUISRV_isVoidTag( $ptag ) );
+
+  }
   
   
+}
+
+
+##################
+#  Check if tag does not require an explicit end  
+sub FTUISRV_isVoidTag( $ ) {
+
+  my ($tag) = @_;   
+
+  return ( index( " area base br col command embed hr img input link meta param source !DOCTYPE ", " ".$tag." " ) != -1 );  
 }
 
 ##############################################
@@ -551,23 +575,36 @@ sub popTag( $$ ) {
 #   name of the current ftui device
 #   filename full fledged filename to be handled
 #   parhash reference to a hash with the current key-values
+#   validated is ref to hash with filenames
 # returns
 #   err
+#   validated if the file handed over has been validated in unmodified form (only if not parsed, then this will be reseit)
 #   contents
-sub FTUISRV_handletemplatefile( $$$ ) {
+sub FTUISRV_handletemplatefile( $$$$ ) {
 
-  my ($name, $filename, $parhash) = @_;
+  my ($name, $filename, $parhash, $validatehash) = @_;
 
   my $content;
   my $err;
+  my $validated = 0;
   
   Log3 $name, 5, "$name: handletemplatefile :$filename:";
 
   $content = FTUISRV_BinaryFileRead( $filename );
-  return ("$name: File not existing or empty :$filename:", $content) if ( length($content) == 0 );
+  return ("$name: File not existing or empty :$filename:", $validated, $content) if ( length($content) == 0 );
 
+  # Validate HTML Result after parsing
+  my $validate = AttrVal($name,'validateFiles',0);
+  if ( ( $validate ) && ( ! defined($validatehash->{$filename} ) ) && ( ( $filename =~ /\.html?$/i ) || ( $filename =~ /\.part?$/i )  ) ) {
+    $validated = 1;
+    $validatehash->{$filename} = 1 if ( ! defined($validatehash->{$filename} ) );
+    FTUISRV_validateHtml( $name, $content, $validate, $filename );
+  }
+    
+  
   if ( $filename =~ /$FTUISRV_matchtemplatefile/ ) {
     Log3 $name, 4, "$name: is real template :$filename:";
+    $validated = 0;
 
     my ($dum, $curdir) = fileparse( $filename );
 
@@ -629,7 +666,7 @@ sub FTUISRV_handletemplatefile( $$$ ) {
       my $values = $2;
 
       Log3 $name, 4, "$name: include found :$filename:    inc :$incfile:   vals :$values:";
-      return ("$name: Empty file name in include :$filename:", $content) if ( length($incfile) == 0 );
+      return ("$name: Empty file name in include :$filename:", $validated, $content) if ( length($incfile) == 0 );
       
       # deepcopy parhash here 
       my $incparhash = deepcopy( $parhash );
@@ -652,19 +689,20 @@ sub FTUISRV_handletemplatefile( $$$ ) {
         
       Log3 $name, 4, "$name: start handling include (rec) :$incfile:";
       my $inccontent;
-      ($err, $inccontent) = FTUISRV_handletemplatefile( $name, $incfile, $incparhash );
+      my $dummy;
+      ($err, $dummy, $inccontent) = FTUISRV_handletemplatefile( $name, $incfile, $incparhash, $validatehash );
       
       Log3 $name, 4, "$name: done handling include (rec) :$incfile: ".(defined($err)?"Err: ".$err:"ok");
 
       # error will always result in stopping recursion
-      return ($err." (included)", $content) if ( defined($err) );
+      return ($err." (included)", $validated, $content) if ( defined($err) );
                     
       $content =~ s/$FTUISRV_ftuimatch_inc/$inccontent/s;
 #      Log3 $name, 3, "$name: done handling include new content:----------------\n$content\n--------------------";
     }
   }
     
-  return ($err,$content);
+  return ($err,$validated,$content);
 }
 
 ##################
@@ -770,7 +808,7 @@ sub FTUISRV_BinaryFileRead($) {
   Provides a mini HTTP server plugin for FHEMWEB for the specific use with FTUI. 
   It serves files from a given directory and parses them according to specific rules.
   
-  FTUISRV is an extension to <a href="FTUISRV">FHEMWEB</a> and based on HTTPSRV. You must install FHEMWEB to use FTUISRV.</p>
+  FTUISRV is an extension to <a href="FTUISRV">FHEMWEB</a> and code is based on HTTPSRV. You must install FHEMWEB to use FTUISRV.</p>
   
   FTUISRV is able to handled includes and replacements in files before sending the result back to the client (Browser).
   Special handling of files is ONLY done if the filenames include the specific pattern ".ftui." in the filename. 
@@ -830,7 +868,14 @@ sub FTUISRV_BinaryFileRead($) {
   <b>Attributes</b>
   <br><br>
   <ul>
-    n/a
+    <li><code>validateFiles &lt;0,1,2&gt;</code><br>
+      Allows basic validation of HTML/Part files on correct opening/closing tags etc. 
+      Here the original files   from disk are validated (setting to 1 means validation is done / 2 means also the full parsing is logged (Attention very verbose !) 
+    </li>   
+    <li><code>validateResult &lt;0,1,2&gt;</code><br>
+      Allows basic validation of HTML content on correct opening/closing tags etc. Here the resulting content provided to the browser 
+      (after parsing) are validated (setting to 1 means validation is done / 2 means also the full parsing is logged (Attention very verbose !) 
+    </li> 
   </ul>
   <br><br>
 

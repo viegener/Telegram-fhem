@@ -99,7 +99,7 @@
 #   Recognize MP3 also with ID3v2 tag (2.2 / 2.3 / 2.4)
 # 1.4 2016-02-07 receive media files, send media files directly from parameter (PNG, JPG, MP3, PDF, etc)
 
-#   Retry-Vorbereitung: args zwischengespeichert und params 
+#   Retry-Preparation: store arsg in param array / delete in case of error before sending
 #   
 #   
 #   

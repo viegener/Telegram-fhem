@@ -99,13 +99,16 @@
 #   Recognize MP3 also with ID3v2 tag (2.2 / 2.3 / 2.4)
 # 1.4 2016-02-07 receive media files, send media files directly from parameter (PNG, JPG, MP3, PDF, etc)
 
-#   
+#   Retry-Vorbereitung: args zwischengespeichert und params 
 #   
 #   
 #   
 ##############################################################################
 # TASKS 
 #
+#
+#   Buffer messages on send error:  maxretry time/count ; retry time  
+#   
 #   Add confirmation dialog for alias/fav commands 
 #     -> ask back with keyboard for confirmation of commands and timeout on missing confirmation
 #
@@ -1051,16 +1054,23 @@ sub TelegramBot_DoUrlCommand($$)
 #####################################
 # INTERNAL: Function to send a photo (and text message) to a peer and handle result
 # addPar is caption for images / keyboard for text
-sub TelegramBot_SendIt($$$$$)
+sub TelegramBot_SendIt($$$$$;$)
 {
 	my ( $hash, @args) = @_;
 
-	my ( $peers, $msg, $addPar, $isMedia) = @args;
+	my ( $peers, $msg, $addPar, $isMedia, $retryCount) = @args;
   my $name = $hash->{NAME};
+  
+  if ( ! defined( $retryCount ) ) {
+    $retryCount = 0;
+  }
+
+  # increase retrycount for next try
+  $args[4] = $retryCount+1;
 	
   Log3 $name, 5, "TelegramBot_SendIt $name: called ";
 
-  if ( ( defined( $hash->{sentMsgResult} ) ) && ( $hash->{sentMsgResult} eq "WAITING" ) ){
+  if ( ( defined( $hash->{sentMsgResult} ) ) && ( $hash->{sentMsgResult} =~ /^WAITING/ ) ){
     # add to queue
     if ( ! defined( $hash->{sentQueue} ) ) {
       $hash->{sentQueue} = [];
@@ -1102,6 +1112,7 @@ sub TelegramBot_SendIt($$$$$)
   # init param hash
   $TelegramBot_hu_do_params{hash} = $hash;
   $TelegramBot_hu_do_params{header} = $TelegramBot_header;
+  delete( $TelegramBot_hu_do_params{args} );
   delete( $TelegramBot_hu_do_params{boundary} );
   # only for test / debug               
 #  $TelegramBot_hu_do_params{loglevel} = 3;
@@ -1180,6 +1191,7 @@ sub TelegramBot_SendIt($$$$$)
     TelegramBot_Callback( \%TelegramBot_hu_do_params, $ret, "");
 
   } else {
+    $TelegramBot_hu_do_params{args} = \@args;
     HttpUtils_NonblockingGet( \%TelegramBot_hu_do_params);
 
   }

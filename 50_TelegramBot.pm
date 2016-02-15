@@ -146,7 +146,7 @@ sub TelegramBot_Set($@);
 sub TelegramBot_Get($@);
 
 sub TelegramBot_Callback($$$);
-sub TelegramBot_SendIt($$$$$);
+sub TelegramBot_SendIt($$$$$;$);
 sub TelegramBot_checkAllowedPeer($$$);
 
 #########################
@@ -1399,7 +1399,7 @@ sub TelegramBot_Callback($$$)
  
 
 ### mark as latin1 to ensure no conversion is happening (this works surprisingly)
-     eval {
+    eval {
        $data = encode( 'latin1', $data );
 # Debug "-----AFTER------\n".$data."\n-------UC=".${^UNICODE} ."-----\n";
        $jo = decode_json( $data );

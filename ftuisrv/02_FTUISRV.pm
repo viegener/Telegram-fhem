@@ -17,8 +17,7 @@
 #   added header for includes also for defining default values
 #   changed key replacement to run through all content instead of list of keys
 #   removed all callback elements
-#   allow device content (either in inc statement, or in header or as new tag)
-#     header might be best (for implementation and overview): since it could be overwritten by the inc and handled like a default value
+#   allow device content readings (and perl commands) in header 
 #   add validateFiles / validateResult as attributes for HTML validation
 #   validate for HTML and part files
 #   validate a specific file only once (if unchanged)
@@ -26,9 +25,13 @@
 #   documentation for validate* added
 # 0.2 Extended by validation of html, device data and default values (header)
 #
+#   add documentation for device readings (set logic)
+#   allow reading values also in inc tag
+#
 ################################################################
 #TODO:
 #
+#   allow device readings also in ftui-inc
 #
 # Allow if for separate sections
 # log count of replacements
@@ -615,14 +618,14 @@ sub FTUISRV_handletemplatefile( $$$$ ) {
 
       # replace [device:reading] or even perl expressions with replaceSetMagic 
       my %dummy;
-      Log3 $name, 4, "$name: FTUISRV_handletemplatefile ReplaceSetmagic before :$hvalues:";
+      Log3 $name, 4, "$name: FTUISRV_handletemplatefile ReplaceSetmagic HEADER before :$hvalues:";
       my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $hvalues ) );
       
       if ( $err ) {
         Log3 $name, 1, "$name: FTUISRV_handletemplatefile failed on ReplaceSetmagic with :$err: on header :$hvalues:";
       } else {
         $hvalues = join(" ", @a);
-        Log3 $name, 4, "$name: FTUISRV_handletemplatefile ReplaceSetmagic after :".$hvalues.":";
+        Log3 $name, 4, "$name: FTUISRV_handletemplatefile ReplaceSetmagic HEADER after :".$hvalues.":";
       }
 
       # grab keys for default values from header
@@ -668,6 +671,18 @@ sub FTUISRV_handletemplatefile( $$$$ ) {
       Log3 $name, 4, "$name: include found :$filename:    inc :$incfile:   vals :$values:";
       return ("$name: Empty file name in include :$filename:", $validated, $content) if ( length($incfile) == 0 );
       
+      # replace [device:reading] or even perl expressions with replaceSetMagic 
+      my %dummy;
+      Log3 $name, 4, "$name: FTUISRV_handletemplatefile ReplaceSetmagic INC before :$values:";
+      my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $values ) );
+      
+      if ( $err ) {
+        Log3 $name, 1, "$name: FTUISRV_handletemplatefile failed on ReplaceSetmagic with :$err: on INC :$values:";
+      } else {
+        $values = join(" ", @a);
+        Log3 $name, 4, "$name: FTUISRV_handletemplatefile ReplaceSetmagic INC after :".$values.":";
+      }
+
       # deepcopy parhash here 
       my $incparhash = deepcopy( $parhash );
 
@@ -841,6 +856,8 @@ sub FTUISRV_BinaryFileRead($) {
       Headers are only required if default values should be specified and are helpful in showing the necessary variable names easy for users.
       (The name for the include does not need to be matching the file name)
       <br>Example: <code>&lt;?ftui-header="TempHum inline" thdev thformat thtemp="temperature" ?&gt;</code>
+      Headers can also use device readings in for setting default values in the form of <code>[device:reading]</code>(according to the syntax and logic used in the set command)
+      <br>Example: <code>&lt;?ftui-header="TempHum inline" thdev thformat thbattery=[temphm:batteryok] thtemp="temperature" ?&gt;</code>
     </li><br>
   </ul>
  

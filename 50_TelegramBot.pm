@@ -100,7 +100,8 @@
 # 1.4 2016-02-07 receive media files, send media files directly from parameter (PNG, JPG, MP3, PDF, etc)
 
 #   Retry-Preparation: store arsg in param array / delete in case of error before sending
-#   
+#   added maxRetries for Retry send with wait time 1=10s / 2=100s / 3=1000s ~ 17min / 4=10000s ~ 3h / 5=100000s ~ 30h
+#   Retry of send in case of errors (after finalizing message)
 #   
 #   
 ##############################################################################
@@ -226,7 +227,7 @@ sub TelegramBot_Initialize($) {
 	$hash->{GetFn}      = "TelegramBot_Get";
 	$hash->{SetFn}      = "TelegramBot_Set";
 	$hash->{AttrFn}     = "TelegramBot_Attr";
-	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None allowUnknownContacts:1,0 ".
+	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None allowUnknownContacts:1,0 maxRetries:0,1,2,3,4,5".
 						$readingFnAttributes;           
 }
 
@@ -296,6 +297,8 @@ sub TelegramBot_Undef($$)
   HttpUtils_Close(\%TelegramBot_hu_do_params); 
 
   RemoveInternalTimer($hash);
+
+  RemoveInternalTimer(\%TelegramBot_hu_do_params);
 
   Log3 $name, 4, "TelegramBot_Undef $name: done ";
   return undef;
@@ -1070,11 +1073,11 @@ sub TelegramBot_SendIt($$$$$;$)
 	
   Log3 $name, 5, "TelegramBot_SendIt $name: called ";
 
+  # ensure sentQueue exists
+  $hash->{sentQueue} = [] if ( ! defined( $hash->{sentQueue} ) );
+
   if ( ( defined( $hash->{sentMsgResult} ) ) && ( $hash->{sentMsgResult} =~ /^WAITING/ ) ){
     # add to queue
-    if ( ! defined( $hash->{sentQueue} ) ) {
-      $hash->{sentQueue} = [];
-    }
     Log3 $name, 4, "TelegramBot_SendIt $name: add send to queue :$peers: -:".
         TelegramBot_MsgForLog($msg, ($isMedia<0) ).": - :".(defined($addPar)?$addPar:"<undef>").":";
     push( @{ $hash->{sentQueue} }, \@args );
@@ -1083,6 +1086,9 @@ sub TelegramBot_SendIt($$$$$;$)
     
   my $ret;
   $hash->{sentMsgResult} = "WAITING";
+  
+  $hash->{sentMsgResult} .= " retry $retryCount" if ( $retryCount > 0 );
+  
   $hash->{sentMsgId} = "";
 
   my $peer;
@@ -1361,6 +1367,25 @@ sub TelegramBot_UpdatePoll($)
 
 
 #####################################
+#  INTERNAL: Called to retry a send operation after wait time
+#   Gets the do params
+sub TelegramBot_RetrySend($)
+{
+  my ( $param ) = @_;
+  my $hash= $param->{hash};
+  my $name = $hash->{NAME};
+
+
+  my $args = $param->{args};
+  
+  my $ref = $param->{args};
+  Log3 $name, 5, "TelegramBot_Retrysend $name: retry @$ref[4] :@$ref[0]: -:@$ref[1]: ";
+  TelegramBot_SendIt( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3], @$ref[4] );
+  
+}
+  
+  
+#####################################
 #  INTERNAL: Callback is the callback for any nonblocking call to the bot api (e.g. the long poll on update call)
 #   3 params are defined for callbacks
 #     param-hash
@@ -1499,12 +1524,32 @@ sub TelegramBot_Callback($$$)
     $msgId = $result->{message_id} if ( defined($result) );
        
   }
-  
-  
+
   $ret = "SUCCESS" if ( ! defined( $ret ) );
   Log3 $name, $ll, "TelegramBot_Callback $name: resulted in :$ret: from ".(( defined( $param->{isPolling} ) )?"Polling":"SendIt");
 
   if ( ! defined( $param->{isPolling} ) ) {
+    $hash->{sentLastResult} = $ret;
+
+    # handle retry
+    # ret defined / args defined in params 
+    if ( ( $ret ne  "SUCCESS" ) && ( defined( $param->{args} ) ) ) {
+      my $wait = $param->{args}[4]);
+      
+      my $maxRetries =  AttrVal($name,'maxRetries',0);
+      if ( $wait <= $maxRetries ) {
+        # calculate wait time 10s / 100s / 1000s ~ 17min / 10000s ~ 3h / 100000s ~ 30h
+        $wait = 10**$wait;
+        
+        # set timer
+        InternalTimer(gettimeofday()+$wait, "TelegramBot_RetrySend", $param,0); 
+        
+        # finish
+        return;
+      }
+      
+    } 
+    
     $hash->{sentMsgResult} = $ret;
     $hash->{sentMsgId} = ((defined($msgId))?$msgId:"");
 
@@ -1514,10 +1559,10 @@ sub TelegramBot_Callback($$$)
     readingsBulkUpdate($hash, "sentMsgId", ((defined($msgId))?$msgId:"") );				
     readingsEndUpdate($hash, 1);
 
-    if ( ( defined( $hash->{sentQueue} ) ) && (  scalar( @{ $hash->{sentQueue} } ) ) ) {
+    if ( scalar( @{ $hash->{sentQueue} } ) ) {
       my $ref = shift @{ $hash->{sentQueue} };
       Log3 $name, 5, "TelegramBot_Callback $name: handle queued send with :@$ref[0]: -:@$ref[1]: ";
-      TelegramBot_SendIt( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3] );
+      TelegramBot_SendIt( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3], @$ref[4] );
     }
   }
   

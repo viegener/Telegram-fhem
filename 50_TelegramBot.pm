@@ -101,8 +101,9 @@
 
 #   Retry-Preparation: store arsg in param array / delete in case of error before sending
 #   added maxRetries for Retry send with wait time 1=10s / 2=100s / 3=1000s ~ 17min / 4=10000s ~ 3h / 5=100000s ~ 30h
-#   Retry of send in case of errors (after finalizing message)
-#   
+#   tested Retry of send in case of errors (after finalizing message)
+#   attr returns text to avoid automatic attr setting in fhem.pl
+#   documented maxRetries
 #   
 ##############################################################################
 # TASKS 
@@ -227,7 +228,7 @@ sub TelegramBot_Initialize($) {
 	$hash->{GetFn}      = "TelegramBot_Get";
 	$hash->{SetFn}      = "TelegramBot_Set";
 	$hash->{AttrFn}     = "TelegramBot_Attr";
-	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None allowUnknownContacts:1,0 maxRetries:0,1,2,3,4,5".
+	$hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None allowUnknownContacts:1,0 maxRetries:0,1,2,3,4,5 ".
 						$readingFnAttributes;           
 }
 
@@ -526,6 +527,7 @@ sub TelegramBot_Get($@)
 sub TelegramBot_Attr(@) {
 	my ($cmd,$name,$aName,$aVal) = @_;
 	my $hash = $defs{$name};
+  my $ok = 0;
 
   Log3 $name, 5, "TelegramBot_Attr $name: called ";
 
@@ -540,6 +542,7 @@ sub TelegramBot_Attr(@) {
 	# $name is device name
 	# aName and aVal are Attribute name and value
 	if ($cmd eq "set") {
+    $ok = 1;
     if ($aName eq 'defaultPeer') {
 			$attr{$name}{'defaultPeer'} = $aVal;
 
@@ -593,14 +596,21 @@ sub TelegramBot_Attr(@) {
 		} elsif ($aName eq 'cmdTriggerOnly') {
 			$attr{$name}{'cmdTriggerOnly'} = ($aVal eq "1")? "1": "0";
 
-      } elsif ($aName eq 'maxFileSize') {
+    } elsif ($aName eq 'maxFileSize') {
       if ( $aVal =~ /^[[:digit:]]+$/ ) {
         $attr{$name}{'maxFileSize'} = $aVal;
       }
 
-		} elsif ($aName eq 'maxReturnSize') {
+    } elsif ($aName eq 'maxReturnSize') {
       if ( $aVal =~ /^[[:digit:]]+$/ ) {
         $attr{$name}{'maxReturnSize'} = $aVal;
+      }
+
+    } elsif ($aName eq 'maxRetries') {
+      if ( $aVal =~ /^[[:digit:]]$/ ) {
+        $attr{$name}{'maxRetries'} = min(5,$aVal);
+      } else {
+        $attr{$name}{'maxRetries'} = 0;
       }
 
     } elsif ($aName eq 'pollingTimeout') {
@@ -619,9 +629,13 @@ sub TelegramBot_Attr(@) {
       $attr{$name}{'pollingVerbose'} = $aVal;
 		} elsif ($aName eq 'allowUnknownContacts') {
 			$attr{$name}{'allowUnknownContacts'} = ($aVal eq "1")? "1": "0";
+    } else {
+      $ok = 0;
     }
 	}
 
+  return "Attribute $aName set to ".$attr{$name}{$aName} if ( $ok );
+  
 	return undef;
 }
 
@@ -1076,7 +1090,7 @@ sub TelegramBot_SendIt($$$$$;$)
   # ensure sentQueue exists
   $hash->{sentQueue} = [] if ( ! defined( $hash->{sentQueue} ) );
 
-  if ( ( defined( $hash->{sentMsgResult} ) ) && ( $hash->{sentMsgResult} =~ /^WAITING/ ) ){
+  if ( ( defined( $hash->{sentMsgResult} ) ) && ( $hash->{sentMsgResult} =~ /^WAITING/ ) && (  $retryCount == 0 ) ){
     # add to queue
     Log3 $name, 4, "TelegramBot_SendIt $name: add send to queue :$peers: -:".
         TelegramBot_MsgForLog($msg, ($isMedia<0) ).": - :".(defined($addPar)?$addPar:"<undef>").":";
@@ -1131,6 +1145,7 @@ sub TelegramBot_SendIt($$$$$;$)
 
     if ( ! $isMedia ) {
       $TelegramBot_hu_do_params{url} = $hash->{URL}."sendMessage";
+      
 #      $TelegramBot_hu_do_params{url} = "http://requestb.in/sgqxy2sg";
 
       if ( length($msg) > 1000 ) {
@@ -1379,7 +1394,7 @@ sub TelegramBot_RetrySend($)
   my $args = $param->{args};
   
   my $ref = $param->{args};
-  Log3 $name, 5, "TelegramBot_Retrysend $name: retry @$ref[4] :@$ref[0]: -:@$ref[1]: ";
+  Log3 $name, 4, "TelegramBot_Retrysend $name: retry @$ref[4] :@$ref[0]: -:@$ref[1]: ";
   TelegramBot_SendIt( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3], @$ref[4] );
   
 }
@@ -1534,19 +1549,24 @@ sub TelegramBot_Callback($$$)
     # handle retry
     # ret defined / args defined in params 
     if ( ( $ret ne  "SUCCESS" ) && ( defined( $param->{args} ) ) ) {
-      my $wait = $param->{args}[4]);
+      my $wait = $param->{args}[4];
       
       my $maxRetries =  AttrVal($name,'maxRetries',0);
       if ( $wait <= $maxRetries ) {
         # calculate wait time 10s / 100s / 1000s ~ 17min / 10000s ~ 3h / 100000s ~ 30h
         $wait = 10**$wait;
         
+        Log3 $name, 4, "TelegramBot_Callback $name: do retry ".$param->{args}[4]." timer: $wait (ret: $ret) for msg ".
+              $param->{args}[0]." : ".$param->{args}[1];
+
         # set timer
         InternalTimer(gettimeofday()+$wait, "TelegramBot_RetrySend", $param,0); 
         
         # finish
         return;
       }
+
+      Log3 $name, 3, "TelegramBot_Callback $name: Reached max retries (ret: $ret) for msg ".$param->{args}[0]." : ".$param->{args}[1];
       
     } 
     
@@ -2459,6 +2479,8 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>maxFileSize &lt;number of bytes&gt;</code><br>Maximum file size in bytes for transfer of files (images). If not set the internal limit is specified as 10MB (10485760B).
     </li> 
     <li><code>maxReturnSize &lt;number of chars&gt;</code><br>Maximum size of command result returned as a text message including header (Default is unlimited). The internal shown on the device is limited to 1000 chars.
+    </li> 
+    <li><code>maxRetries &lt;0,1,2,3,4,5&gt;</code><br>MSpecify the number of retries for sending a message in case of a failure. The first retry is sent after 10sec, the second after 100, then after 1000s (~16min), then after 10000s (~2.5h), then after ~ a day. Setinng the value to 0 (default) will result in no retries.
     </li> 
 
     <br><br>

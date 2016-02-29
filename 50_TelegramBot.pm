@@ -105,6 +105,7 @@
 #   attr returns text to avoid automatic attr setting in fhem.pl
 #   documented maxRetries
 #   fixed attributehandling to normalize and correct attribute values
+#   fix for perl "keys on reference is experimental" forum#msg417968
 #   
 #   
 ##############################################################################
@@ -325,7 +326,7 @@ sub TelegramBot_State($$$$) {
 
   if ($name eq 'Contacts')  {
     TelegramBot_CalcContactsHash( $hash, $value );
-    Log3 $hash->{NAME}, 4, "TelegramBot_State Contacts hash has now :".scalar(keys $hash->{Contacts}).":";
+    Log3 $hash->{NAME}, 4, "TelegramBot_State Contacts hash has now :".scalar(keys %{$hash->{Contacts}}).":";
 	}
 	
 	return undef;
@@ -560,7 +561,7 @@ sub TelegramBot_Attr(@) {
 
       # Empty current alias list in hash
       if ( defined( $hash->{AliasCmds} ) ) {
-        foreach my $key (keys $hash->{AliasCmds} )
+        foreach my $key (keys %{$hash->{AliasCmds}} )
             {
                 delete $hash->{AliasCmds}{$key};
             }
@@ -979,7 +980,7 @@ sub Telegram_HandleCommandInMessages($$$$)
 
   # Check for favorite aliase in msg - execute command then
   if ( defined( $hash->{AliasCmds} ) ) {
-    foreach my $aliasKey (keys $hash->{AliasCmds} ) {
+    foreach my $aliasKey (keys %{$hash->{AliasCmds}} ) {
       ( $cmd, $doRet ) = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mtext, $aliasKey, 1 );
       if ( defined( $cmd ) ) {
         # Build the final command from the the alias and the remainder of the message
@@ -1895,7 +1896,7 @@ sub TelegramBot_GetIdForPeer($$)
     # Allow also sending to ids which are not in the contacts list
     $id = $mpeer;
   } elsif ( $mpeer =~ /^[@#].*$/ ) {
-    foreach  my $mkey ( keys $hash->{Contacts} ) {
+    foreach  my $mkey ( keys %{$hash->{Contacts}} ) {
       my @clist = split( /:/, $hash->{Contacts}{$mkey} );
       if ( (defined($clist[2])) && ( $clist[2] eq $mpeer ) ) {
         $id = $clist[0];
@@ -1905,7 +1906,7 @@ sub TelegramBot_GetIdForPeer($$)
   } else {
     $mpeer =~ s/^\s+|\s+$//g;
     $mpeer =~ s/ /_/g;
-    foreach  my $mkey ( keys $hash->{Contacts} ) {
+    foreach  my $mkey ( keys %{$hash->{Contacts}} ) {
       my @clist = split( /:/, $hash->{Contacts}{$mkey} );
       if ( (defined($clist[1])) && ( $clist[1] eq $mpeer ) ) {
         $id = $clist[0];
@@ -2004,7 +2005,7 @@ sub TelegramBot_CalcContactsHash($$)
 
   # create a new hash
   if ( defined( $hash->{Contacts} ) ) {
-    foreach my $key (keys $hash->{Contacts} )
+    foreach my $key (keys %{$hash->{Contacts}} )
         {
             delete $hash->{Contacts}{$key};
         }
@@ -2070,7 +2071,7 @@ sub TelegramBot_ContactUpdate($@) {
 
   TelegramBot_InternalContactsFromReading( $hash ) if ( ! defined( $hash->{Contacts} ) );
   
-  Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hash before :".scalar(keys $hash->{Contacts}).":";
+  Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hash before :".scalar(keys %{$hash->{Contacts}}).":";
 
   foreach my $user ( @contacts ) {
     my $contactString = TelegramBot_userObjectToString( $user );
@@ -2084,10 +2085,10 @@ sub TelegramBot_ContactUpdate($@) {
     $hash->{Contacts}{$user->{id}} = $contactString;
   }
 
-  Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hash after :".scalar(keys $hash->{Contacts}).":";
+  Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hash after :".scalar(keys %{$hash->{Contacts}}).":";
 
   my $rc = "";
-  foreach my $key (keys $hash->{Contacts} )
+  foreach my $key (keys {$hash->{Contacts}} )
     {
       if ( length($rc) > 0 ) {
         $rc .= " ".$hash->{Contacts}{$key};

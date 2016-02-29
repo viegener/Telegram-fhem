@@ -104,6 +104,8 @@
 #   tested Retry of send in case of errors (after finalizing message)
 #   attr returns text to avoid automatic attr setting in fhem.pl
 #   documented maxRetries
+#   fixed attributehandling to normalize and correct attribute values
+#   
 #   
 ##############################################################################
 # TASKS 
@@ -527,7 +529,6 @@ sub TelegramBot_Get($@)
 sub TelegramBot_Attr(@) {
 	my ($cmd,$name,$aName,$aVal) = @_;
 	my $hash = $defs{$name};
-  my $ok = 0;
 
   Log3 $name, 5, "TelegramBot_Attr $name: called ";
 
@@ -542,7 +543,6 @@ sub TelegramBot_Attr(@) {
 	# $name is device name
 	# aName and aVal are Attribute name and value
 	if ($cmd eq "set") {
-    $ok = 1;
     if ($aName eq 'defaultPeer') {
 			$attr{$name}{'defaultPeer'} = $aVal;
 
@@ -584,38 +584,31 @@ sub TelegramBot_Attr(@) {
       $aVal =~ s/^\s+|\s+$//g;
       $attr{$name}{'cmdRestrictedPeer'} = $aVal;
       
-		} elsif ($aName eq 'defaultPeerCopy') {
-			$attr{$name}{'defaultPeerCopy'} = ($aVal eq "1")? "1": "0";
-
-		} elsif ($aName eq 'saveStateOnContactChange') {
-			$attr{$name}{'saveStateOnContactChange'} = ($aVal eq "1")? "1": "0";
-
-		} elsif ($aName eq 'cmdReturnEmptyResult') {
-			$attr{$name}{'cmdReturnEmptyResult'} = ($aVal eq "1")? "1": "0";
-
-		} elsif ($aName eq 'cmdTriggerOnly') {
-			$attr{$name}{'cmdTriggerOnly'} = ($aVal eq "1")? "1": "0";
+		} elsif ( ($aName eq 'defaultPeerCopy') ||
+              ($aName eq 'saveStateOnContactChange') ||
+              ($aName eq 'cmdReturnEmptyResult') ||
+              ($aName eq 'cmdTriggerOnly') ||
+              ($aName eq 'allowUnknownContacts') ) {
+      $aVal = ($aVal eq "1")? "1": "0";
 
     } elsif ($aName eq 'maxFileSize') {
-      if ( $aVal =~ /^[[:digit:]]+$/ ) {
-        $attr{$name}{'maxFileSize'} = $aVal;
+      if ( $aVal !~ /^[[:digit:]]+$/ ) {
+        return "\"TelegramBot_Attr: \" maxFileSize needs to be given in digits only"; 
       }
 
     } elsif ($aName eq 'maxReturnSize') {
-      if ( $aVal =~ /^[[:digit:]]+$/ ) {
-        $attr{$name}{'maxReturnSize'} = $aVal;
+      if ( $aVal !~ /^[[:digit:]]+$/ ) {
+        return "\"TelegramBot_Attr: \" maxReturnSize needs to be given in digits only"; 
       }
 
     } elsif ($aName eq 'maxRetries') {
-      if ( $aVal =~ /^[[:digit:]]$/ ) {
-        $attr{$name}{'maxRetries'} = min(5,$aVal);
-      } else {
-        $attr{$name}{'maxRetries'} = 0;
+      if ( $aVal !~ /^[[:digit:]]$/ ) {
+        return "\"TelegramBot_Attr: \" maxRetries needs to be given in digits only"; 
       }
 
     } elsif ($aName eq 'pollingTimeout') {
-      if ( $aVal =~ /^[[:digit:]]+$/ ) {
-        $attr{$name}{'pollingTimeout'} = $aVal;
+      if ( $aVal !~ /^[[:digit:]]+$/ ) {
+        return "\"TelegramBot_Attr: \" pollingTimeout needs to be given in digits only"; 
       }
       # let all existing methods run into block
       RemoveInternalTimer($hash);
@@ -627,15 +620,12 @@ sub TelegramBot_Attr(@) {
 		} elsif ($aName eq 'pollingVerbose') {
       return "\"TelegramBot_Attr: \" Incorrect value given for pollingVerbose" if ( $aVal !~ /^((1_Digest)|(2_Log)|(0_None))$/ );
       $attr{$name}{'pollingVerbose'} = $aVal;
-		} elsif ($aName eq 'allowUnknownContacts') {
-			$attr{$name}{'allowUnknownContacts'} = ($aVal eq "1")? "1": "0";
-    } else {
-      $ok = 0;
     }
+
+    $_[3] = $aVal;
+  
 	}
 
-  return "Attribute $aName set to ".$attr{$name}{$aName} if ( $ok );
-  
 	return undef;
 }
 

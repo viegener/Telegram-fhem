@@ -106,14 +106,12 @@
 #   documented maxRetries
 #   fixed attributehandling to normalize and correct attribute values
 #   fix for perl "keys on reference is experimental" forum#msg417968
+#   allow confirmation for favorite commands by prefixing with question ark (?)
 #   
 #   
 ##############################################################################
 # TASKS 
 #
-#
-#   Buffer messages on send error:  maxretry time/count ; retry time  
-#   
 #   Add confirmation dialog for alias/fav commands 
 #     -> ask back with keyboard for confirmation of commands and timeout on missing confirmation
 #
@@ -688,8 +686,12 @@ sub TelegramBot_SentFavorites($$$$) {
 #  Log3 $name, 5, "TelegramBot_SentFavorites Favorites :$slc: ";
   
   my @clist = split( /;/, $slc);
-
-  $cmd = $1 if ( $cmd =~ /^\s*([0-9]+)[^0-9=]*=.*$/ );
+  my $isConfirm;
+  
+  if ( $cmd =~ /^\s*([0-9]+)(\??)[^0-9=]*=.*$/ ) {
+    $cmd = $1;
+    $isConfirm = ($2 eq "?")?1:0;
+  }
   
   # if given a number execute the numbered favorite as a command
   if ( looks_like_number( $cmd ) ) {
@@ -701,7 +703,30 @@ sub TelegramBot_SentFavorites($$$$) {
       if ( $ecmd =~ /^\s*((\/[^=]+)=)(.*)$/ ) {
         $ecmd = $3;
       }
-      return TelegramBot_ExecuteCommand( $hash, $mpeernorm, $ecmd );
+      
+      if ( ( ! $isConfirm ) && ( $ecmd =~ /^\s*\?(.*)$/ ) ) {
+        # ask first for confirmation
+        $ecmd = $1;
+
+        my $fcmd = AttrVal($name,'cmdFavorites',undef);
+        
+        my @tmparr;
+        my @keys = ();
+        my @tmparr1 = ( $fcmd.$cmd."? = ".$ecmd );
+        push( @keys, \@tmparr1 );
+        my @tmparr2 = ( "Abbruch" );
+        push( @keys, \@tmparr2 );
+
+        my $jsonkb = TelegramBot_MakeKeyboard( $hash, 1, @keys );
+
+        $ret = "TelegramBot fhem  : ($mpeernorm)\n Bestätigung \n";
+        
+        return TelegramBot_SendIt( $hash, $mpeernorm, $ret, $jsonkb, 0 );
+        
+      } else {
+        $ecmd = $1 if ( $ecmd =~ /^\s*\?(.*)$/ );
+        return TelegramBot_ExecuteCommand( $hash, $mpeernorm, $ecmd );
+      }
     } else {
       Log3 $name, 3, "TelegramBot_SentFavorites cmd id not defined :($cmdId+1): ";
     }
@@ -2442,6 +2467,10 @@ sub TelegramBot_BinaryFileWrite($$$) {
           <li>A message "favorite 1" or "/light" to the bot would execute the command <code>set lights on</code></li>
           <li>A message "/heating on" to the bot would execute the command <code>set heater on</code><br> (Attention the remainder after the alias will be added to the command in fhem!)</li>
         </ul>
+    <br>
+    Favorite commands can also be prefixed with a question mark (?) to enable a confirmation being requested before executing the command.
+    <br>
+        Examples: <code>get lights status; /light=?set lights on; /dark=set lights off; ?set heater;</code> <br>
     <br>
    
     </li> 

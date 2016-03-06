@@ -107,7 +107,7 @@
 #   fixed attributehandling to normalize and correct attribute values
 #   fix for perl "keys on reference is experimental" forum#msg417968
 #   allow confirmation for favorite commands by prefixing with question ark (?)
-#   
+#   fix contact update 
 #   
 ##############################################################################
 # TASKS 
@@ -2113,7 +2113,7 @@ sub TelegramBot_ContactUpdate($@) {
   Log3 $hash->{NAME}, 4, "TelegramBot_ContactUpdate # Contacts in hash after :".scalar(keys %{$hash->{Contacts}}).":";
 
   my $rc = "";
-  foreach my $key (keys {$hash->{Contacts}} )
+  foreach  my $key ( keys %{$hash->{Contacts}} )
     {
       if ( length($rc) > 0 ) {
         $rc .= " ".$hash->{Contacts}{$key};

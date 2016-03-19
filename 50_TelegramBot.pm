@@ -119,9 +119,6 @@
 ##############################################################################
 # TASKS 
 #
-#   Add confirmation dialog for alias/fav commands 
-#     -> ask back with keyboard for confirmation of commands and timeout on missing confirmation
-#
 #   allow keyboards in the device api
 #   
 #   dialog function

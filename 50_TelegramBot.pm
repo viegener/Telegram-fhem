@@ -25,6 +25,8 @@
 # TelegramBot is making use of the Telegrom Bot API (see https://core.telegram.org/bots and https://core.telegram.org/bots/api)
 # For using it with fhem an telegram BOT API key is needed! --> see https://core.telegram.org/bots/api#authorizing-your-bot
 #
+# Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,38328.0.html
+#
 # $Id: 50_TelegramBot.pm 10745 2016-02-06 23:20:33Z viegener $
 #
 ##############################################################################
@@ -108,6 +110,11 @@
 #   fix for perl "keys on reference is experimental" forum#msg417968
 #   allow confirmation for favorite commands by prefixing with question ark (?)
 #   fix contact update 
+# 1.5 2016-03-19 retry for send / confirmation 
+
+#   
+#   
+#   
 #   
 ##############################################################################
 # TASKS 

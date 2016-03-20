@@ -27,7 +27,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,38328.0.html
 #
-# $Id: 50_TelegramBot.pm 10745 2016-02-06 23:20:33Z viegener $
+# $Id: 50_TelegramBot.pm 11090 2016-03-19 21:38:31Z viegener $
 #
 ##############################################################################
 # 0.0 2015-09-16 Started
@@ -112,8 +112,9 @@
 #   fix contact update 
 # 1.5 2016-03-19 retry for send / confirmation 
 
-#   
-#   
+#   supergroups added now also to contacts
+#   fix for first name of contacts undefined
+#   remove stale/duplicate contacts (based on username) on update of contacts (supergroups get new ids)
 #   
 #   
 ##############################################################################
@@ -2104,6 +2105,14 @@ sub TelegramBot_ContactUpdate($@) {
 
   foreach my $user ( @contacts ) {
     my $contactString = TelegramBot_userObjectToString( $user );
+
+    # keep the username part of the new contatc for deleting old users with same username
+    my $unamepart;
+    my @clist = split( /:/, $contactString );
+    if (defined($clist[2])) {
+      $unamepart = $clist[2]; 
+    }
+    
     if ( ! defined( $hash->{Contacts}{$user->{id}} ) ) {
       Log3 $hash->{NAME}, 3, "TelegramBot_ContactUpdate new contact :".$contactString.":";
       next if ( AttrVal($hash->{NAME},'allowUnknownContacts',1) == 0 );
@@ -2111,6 +2120,18 @@ sub TelegramBot_ContactUpdate($@) {
     } elsif ( $contactString ne $hash->{Contacts}{$user->{id}} ) {
       Log3 $hash->{NAME}, 3, "TelegramBot_ContactUpdate updated contact :".$contactString.":";
     }
+
+    # remove all contacts with same username
+    if ( defined( $unamepart ) ) {
+      my $dupid = TelegramBot_GetIdForPeer( $hash, $unamepart );
+      while ( $dupid ) {
+         Log3 $hash->{NAME}, 3, "TelegramBot_ContactUpdate removed stale/duplicate contact ($dupid:$unamepart):".$hash->{Contacts}{$dupid}.":" if ( $dupid ne $user->{id} );
+         delete( $hash->{Contacts}{$dupid} );
+         $dupid = TelegramBot_GetIdForPeer( $hash, $unamepart );
+      }
+    }
+    
+    # set new contact data
     $hash->{Contacts}{$user->{id}} = $contactString;
   }
 
@@ -2146,8 +2167,8 @@ sub TelegramBot_userObjectToString($) {
   
   my $ret = $user->{id}.":";
   
-  # user objects do not contain a type field / chat objects need to contain a type but only if type=group it is really a group
-  if ( ( defined( $user->{type} ) ) && ( $user->{type} eq "group" ) ) {
+  # user objects do not contain a type field / chat objects need to contain a type but only if type=group or type=supergroup it is really a group
+  if ( ( defined( $user->{type} ) ) && ( ( $user->{type} eq "group" ) || ( $user->{type} eq "supergroup" ) ) ) {
     
     $ret .= ":";
 
@@ -2155,7 +2176,9 @@ sub TelegramBot_userObjectToString($) {
 
   } else {
 
-    my $part = $user->{first_name};
+    my $part = "";
+
+    $part .= $user->{first_name} if ( defined( $user->{first_name} ) );
     $part .= " ".$user->{last_name} if ( defined( $user->{last_name} ) );
 
     $ret .= TelegramBot_encodeContactString($part).":";
@@ -2504,7 +2527,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     </li> 
     <li><code>maxReturnSize &lt;number of chars&gt;</code><br>Maximum size of command result returned as a text message including header (Default is unlimited). The internal shown on the device is limited to 1000 chars.
     </li> 
-    <li><code>maxRetries &lt;0,1,2,3,4,5&gt;</code><br>MSpecify the number of retries for sending a message in case of a failure. The first retry is sent after 10sec, the second after 100, then after 1000s (~16min), then after 10000s (~2.5h), then after ~ a day. Setinng the value to 0 (default) will result in no retries.
+    <li><code>maxRetries &lt;0,1,2,3,4,5&gt;</code><br>Specify the number of retries for sending a message in case of a failure. The first retry is sent after 10sec, the second after 100, then after 1000s (~16min), then after 10000s (~2.5h), then after approximately a day. Setting the value to 0 (default) will result in no retries.
     </li> 
 
     <br><br>

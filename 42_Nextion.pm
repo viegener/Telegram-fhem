@@ -1,3 +1,51 @@
+##############################################################################
+#
+#     42_Nextion.pm
+#
+#     This file is part of Fhem.
+#
+#     Fhem is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 2 of the License, or
+#     (at your option) any later version.
+#
+#     Fhem is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with Fhem.  If not, see <http://www.gnu.org/licenses/>.
+#
+##############################################################################
+#  
+#  TelegramBot (c) Johannes Viegener / https://github.com/viegener/Telegram-fhem
+#
+##############################################################################
+# 0.0 2016-03-23 Started
+#   Inital Version to communicate with Nextion via transparent bridge send raw commands and get returns as readings
+#   Fix for result without error 
+#   multiCommandSend (allows also set logic)
+#   
+#   
+#   
+#   
+#   
+#   
+#   
+##############################################
+##############################################
+### TODO
+#
+#   SendAndWaitforAnswer
+#   Init commands
+#   init commands also on reconnect
+#   react on events with commands allowing values from FHEM
+#   text readings for messages starting with $
+#   progress bar 
+#
+##############################################
+##############################################
 ##############################################
 package main;
 
@@ -133,12 +181,49 @@ Nextion_SendCommand($$$)
 {
   my ($hash,$msg,$answer) = @_;
   my $name = $hash->{NAME};
+  my @ret; 
+  
+  Log3 $name, 1, "Nextion_SendCommand $name: send commands :".$msg.": ";
+  
+  # First replace any magics
+  my %dummy; 
+  my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $msg ) );
+  
+  if ( $err ) {
+    Log3 $name, 1, "$name: Nextion_SendCommand failed on ReplaceSetmagic with :$err: on commands :$msg:";
+  } else {
+    $msg = join(" ", @a);
+    Log3 $name, 4, "$name: Nextion_SendCommand ReplaceSetmagic commnds after :".$msg.":";
+  }   
+
+  # Split commands into separate elements at single semicolons (escape double ;; before)
+  $msg =~ s/;;/SeMiCoLoN/g; 
+  my @msgList = split(";", $msg);
+  my $singleMsg;
+  while(defined($singleMsg = shift @msgList)) {
+    $singleMsg =~ s/SeMiCoLoN/;/g;
+    my $lret = Nextion_SendSingleCommand($hash, $singleMsg, $answer);
+    push(@ret, $lret) if(defined($lret));
+  }
+
+  return join("\n", @ret) if(@ret);
+  return undef; 
+}
+
+#####################################
+sub
+Nextion_SendSingleCommand($$$)
+{
+  my ($hash,$msg,$answer) = @_;
+  my $name = $hash->{NAME};
 
   # ??? handle answer
   
   Log3 $name, 1, "Nextion_SendCommand $name: send command :".$msg.": ";
   
   DevIo_SimpleWrite($hash, $msg."\xff\xff\xff", 0);
+  
+  return undef;
 }
 
 #####################################

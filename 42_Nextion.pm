@@ -27,6 +27,7 @@
 #   Fix for result without error 
 #   multiCommandSend (allows also set logic)
 #   
+#   SendAndWaitforAnswer
 #   
 #   
 #   
@@ -37,7 +38,9 @@
 ##############################################
 ### TODO
 #
-#   SendAndWaitforAnswer
+#   Test: SendAndWaitforAnswer
+#   check answer only if init commands send
+#   put error in internal on send command
 #   Init commands
 #   init commands also on reconnect
 #   react on events with commands allowing values from FHEM
@@ -53,11 +56,41 @@ use strict;
 use warnings;
 use Time::HiRes qw(gettimeofday);
 
+#########################
+# Forward declaration
+
 sub Nextion_Read($@);
 sub Nextion_Write($$$);
-sub Nextion_ReadAnswer($$$);
+sub Nextion_ReadAnswer($$);
 sub Nextion_Ready($);
 
+#########################
+# Globals
+my %Nextion_errCodes = (
+  "\x00" => "Nextion: Invalid instruction",
+
+  "\x03" => "Nextion: Page ID invalid",
+  "\x04" => "Nextion: Picture ID invalid",
+  "\x05" => "Nextion: Font ID invalid",
+  
+  "\x11" => "Nextion: Baud rate setting invalid",
+  "\x12" => "Nextion: Curve control ID or channel number invalid",
+  "\x1a" => "Nextion: Variable name invalid",
+  "\x1b" => "Nextion: Variable operation invalid",
+
+  "\x01" => "Nextion: Success"   # Only for completeness
+);
+
+
+
+
+##############################################################################
+##############################################################################
+##
+## Module operation
+##
+##############################################################################
+##############################################################################
 
 sub
 Nextion_Initialize($)
@@ -112,24 +145,24 @@ Nextion_Set($@)
 {
   my ($hash, @a) = @_;
   my $name = shift @a;
-  my %sets = ("raw"=>"textField", "reopen"=>1);
+  my %sets = ("cmd"=>"textField", "raw"=>"textField", "reopen"=>undef, "disconnect"=>undef);
 
   return "set $name needs at least one parameter" if(@a < 1);
   my $type = shift @a;
 
   my $ret = undef; 
 
-  return "Unknown argument $type, choose one of " . join(" ", sort keys %sets)
-    if(!defined($sets{$type}));
+  return "Unknown argument $type, choose one of " . join(" ", sort keys %sets) if (!exists($sets{$type}));
 
-  if($type eq "raw") {
+  if( ($type eq "raw") || ($type eq "cmd") ) {
     my $cmd = join(" ", @a );
-    $ret = Nextion_SendCommand($hash,$cmd, 0);
-  }
-
-  if($type eq "reopen") {
+    $ret = Nextion_SendCommand($hash,$cmd, 1);
+  } elsif($type eq "reopen") {
     DevIo_CloseDev($hash);
     return DevIo_OpenDev($hash, 0, "Nextion_DoInit");
+  } elsif($type eq "disconnect") {
+    DevIo_Disconnected($hash);
+    delete $hash->{DevIoJustClosed} if($hash->{DevIoJustClosed});
   }
 
   if ( ! defined( $ret ) ) {
@@ -218,12 +251,16 @@ Nextion_SendSingleCommand($$$)
   my $name = $hash->{NAME};
 
   # ??? handle answer
+  my $err;
   
   Log3 $name, 1, "Nextion_SendCommand $name: send command :".$msg.": ";
   
   DevIo_SimpleWrite($hash, $msg."\xff\xff\xff", 0);
+  $err =  Nextion_ReadAnswer($hash, $msg) if ( $answer );
+  Log3 $name, 1, "Nextion_SendCommand Error :".$err.": " if ( defined($err) );
+  Log3 $name, 3, "Nextion_SendCommand Success " if ( ! defined($err) );
   
-  return undef;
+  return $err;
 }
 
 #####################################
@@ -231,7 +268,7 @@ Nextion_SendSingleCommand($$$)
 sub
 Nextion_Read($@)
 {
-  my ($hash, $local, $regexp) = @_;
+  my ($hash, $local) = @_;
 
   my $buf = ($local ? $local : DevIo_SimpleRead($hash));
   return "" if(!defined($buf));
@@ -253,7 +290,7 @@ Nextion_Read($@)
   my $ret;
   while(length($data) > 0) {
 
-    if ( $data =~ /^([^\xff]*)\xff(.*)$/ ) {
+    if ( $data =~ /^([^\xff]*)\xff\xff\xff(.*)$/ ) {
       my $rcvd = $1;
       $data = $2;
       
@@ -268,7 +305,7 @@ Nextion_Read($@)
           $msg .= "(".chr($char).")" if ( ( $char >= 32 ) && ( $char <= 127 ) ) ;
         }
 
-        Log3 $name, 1, "Nextion: Received command :$msg:";
+        Log3 $name, 1, "Nextion: Received message :$msg:";
 
         if ( defined( ReadingsVal($name,"received",undef) ) ) {
           if ( defined( ReadingsVal($name,"old1",undef) ) ) {
@@ -307,35 +344,62 @@ Nextion_Read($@)
 }
 
 #####################################
-# This is a direct read for commands like get
+# This is a direct read for command results
 sub
-Nextion_ReadAnswer($$$)
+Nextion_ReadAnswer($$)
 {
 
-  # ??? ReadAnswer to be handled
+  my ($hash, $arg) = @_;
+  my $name = $hash->{NAME};
 
-  my ($hash, $arg, $regexp) = @_;
-  return ("No FD (dummy device?)", undef)
-        if(!$hash || ($^O !~ /Win/ && !defined($hash->{FD})));
+  Log3 $name, 1, "Nextion_ReadAnswer $name: for send commands :".$arg.": ";
 
+  return "No FD (dummy device?)" if(!$hash || ($^O !~ /Win/ && !defined($hash->{FD})));
+
+  my $data = "";
+  
   for(;;) {
-    return ("Device lost when reading answer for get $arg", undef)
-      if(!$hash->{FD});
+    return "Device lost when reading answer for get $arg" if(!$hash->{FD});
     my $rin = '';
     vec($rin, $hash->{FD}, 1) = 1;
-    my $nfound = select($rin, undef, undef, 3);
-    if($nfound <= 0) {
-      next if ($! == EAGAIN() || $! == EINTR());
-      my $err = ($! ? $! : "Timeout");
-      #$hash->{TIMEOUT} = 1;
-      #DevIo_Disconnected($hash);
-      return("Nextion_ReadAnswer $arg: $err", undef);
+    my $nfound = select($rin, undef, undef, 1);
+    if($nfound < 0) {
+      next if ($! == EAGAIN() || $! == EINTR() || $! == 0);
+      my $err = $!;
+      DevIo_Disconnected($hash);
+      return"Nextion_ReadAnswer $arg: $err";
     }
-    my $buf = DevIo_SimpleRead($hash);
-    return ("No data", undef) if(!defined($buf));
+    return "Timeout reading answer for get $arg" if($nfound == 0); 
 
-    my $ret = Nextion_Read($hash, $buf, $regexp);
-    return (undef, $ret) if(defined($ret));
+    my $buf = DevIo_SimpleRead($hash);
+    return "No data" if(!defined($buf));
+
+    my $ret;
+    
+    my $data .= $buf;
+    
+    # not yet long enough select again
+    next if ( length($data) < 4 );
+    
+    # TODO: might have to check for remaining data in buffer?
+    if ( $buf =~ /^\xff*([^\xff])\xff\xff\xff(.*)$/ ) {
+      my $rcvd = $1;
+      $buf = $2;
+      
+      if ( $rcvd ne "\x01" ) {
+        $ret = $Nextion_errCodes{$rcvd};
+        $ret = "Nextion: Unknown error with code ".sprintf( "H%2.2x", $rcvd ) if ( ! defined( $ret ) );
+      }
+    } else {
+      $ret = "Nextion: No answer received >".$buf."< " if ( ! defined( $ret ) );
+    }
+    
+    # read rest of buffer direct in read function
+    if ( length($buf) > 0 ) {
+      Nextion_Read($hash, $buf);
+    }
+
+    return $ret;
   }
 }
 

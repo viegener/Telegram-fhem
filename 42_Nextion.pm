@@ -28,6 +28,9 @@
 #   multiCommandSend (allows also set logic)
 #   
 #   SendAndWaitforAnswer
+#   disconnect with state modification
+#   put error/cmdresult in reading on send command
+#   text readings for messages starting with $ and specific codes
 #   
 #   
 #   
@@ -38,13 +41,11 @@
 ##############################################
 ### TODO
 #
-#   Test: SendAndWaitforAnswer
-#   check answer only if init commands send
-#   put error in internal on send command
 #   Init commands
 #   init commands also on reconnect
+#   init page from fhem
+#   add 0x65 code
 #   react on events with commands allowing values from FHEM
-#   text readings for messages starting with $
 #   progress bar 
 #
 ##############################################
@@ -67,18 +68,18 @@ sub Nextion_Ready($);
 #########################
 # Globals
 my %Nextion_errCodes = (
-  "\x00" => "Nextion: Invalid instruction",
+  "\x00" => "Invalid instruction",
 
-  "\x03" => "Nextion: Page ID invalid",
-  "\x04" => "Nextion: Picture ID invalid",
-  "\x05" => "Nextion: Font ID invalid",
+  "\x03" => "Page ID invalid",
+  "\x04" => "Picture ID invalid",
+  "\x05" => "Font ID invalid",
   
-  "\x11" => "Nextion: Baud rate setting invalid",
-  "\x12" => "Nextion: Curve control ID or channel number invalid",
-  "\x1a" => "Nextion: Variable name invalid",
-  "\x1b" => "Nextion: Variable operation invalid",
+  "\x11" => "Baud rate setting invalid",
+  "\x12" => "Curve control ID or channel number invalid",
+  "\x1a" => "Variable name invalid",
+  "\x1b" => "Variable operation invalid",
 
-  "\x01" => "Nextion: Success"   # Only for completeness
+  "\x01" => "Success" 
 );
 
 
@@ -260,6 +261,12 @@ Nextion_SendSingleCommand($$$)
   Log3 $name, 1, "Nextion_SendCommand Error :".$err.": " if ( defined($err) );
   Log3 $name, 3, "Nextion_SendCommand Success " if ( ! defined($err) );
   
+   # Also set sentMsg Id and result in Readings
+  readingsBeginUpdate($hash);
+  readingsBulkUpdate($hash, "cmdSent", $msg);        
+  readingsBulkUpdate($hash, "cmdResult", (( defined($err))?$err:"empty") );        
+  readingsEndUpdate($hash, 1);
+
   return $err;
 }
 
@@ -268,7 +275,7 @@ Nextion_SendSingleCommand($$$)
 sub
 Nextion_Read($@)
 {
-  my ($hash, $local) = @_;
+  my ($hash, $local, $isCmd) = @_;
 
   my $buf = ($local ? $local : DevIo_SimpleRead($hash));
   return "" if(!defined($buf));
@@ -295,15 +302,8 @@ Nextion_Read($@)
       $data = $2;
       
       if ( length($rcvd) > 0 ) {
-        my $msg = "";
       
-        while(length($rcvd) > 0) {
-          my $char = ord($rcvd);
-          $rcvd = substr($rcvd,1);
-          $msg .= " " if ( length($msg) > 0 );
-          $msg .= sprintf( "H%2.2x", $char );
-          $msg .= "(".chr($char).")" if ( ( $char >= 32 ) && ( $char <= 127 ) ) ;
-        }
+        my ( $msg, $text ) = Nextion_convertMsg($rcvd);
 
         Log3 $name, 1, "Nextion: Received message :$msg:";
 
@@ -328,7 +328,10 @@ Nextion_Read($@)
           $hash->{READINGS}{old1}{TIME} = $hash->{READINGS}{received}{TIME};
         }
 
-        readingsSingleUpdate($hash,"received",$msg,1);
+        readingsBeginUpdate($hash);
+        readingsBulkUpdate($hash,"received",$msg);
+        readingsBulkUpdate($hash,"rectext",( (defined($text)) ? $text : "" ));
+        readingsEndUpdate($hash, 1);
 
       }
     } else {
@@ -379,27 +382,27 @@ Nextion_ReadAnswer($$)
     my $data .= $buf;
     
     # not yet long enough select again
-    next if ( length($data) < 4 );
+#    next if ( length($data) < 4 );
     
     # TODO: might have to check for remaining data in buffer?
-    if ( $buf =~ /^\xff*([^\xff])\xff\xff\xff(.*)$/ ) {
+    if ( $data =~ /^\xff*([^\xff])\xff\xff\xff(.*)$/ ) {
       my $rcvd = $1;
-      $buf = $2;
+      $data = $2;
       
-      if ( $rcvd ne "\x01" ) {
-        $ret = $Nextion_errCodes{$rcvd};
-        $ret = "Nextion: Unknown error with code ".sprintf( "H%2.2x", $rcvd ) if ( ! defined( $ret ) );
-      }
+      $ret = $Nextion_errCodes{$rcvd};
+      $ret = "Nextion: Unknown error with code ".sprintf( "H%2.2x", $rcvd ) if ( ! defined( $ret ) );
+    } elsif ( length($data) == 0 )  {
+      $ret = "No answer";
     } else {
-      $ret = "Nextion: No answer received >".$buf."< " if ( ! defined( $ret ) );
+      $ret = "Message received";
     }
     
     # read rest of buffer direct in read function
-    if ( length($buf) > 0 ) {
-      Nextion_Read($hash, $buf);
+    if ( length($data) > 0 ) {
+      Nextion_Read($hash, $data);
     }
 
-    return $ret;
+    return (($ret eq $Nextion_errCodes{"\x01"}) ? undef : $ret);
   }
 }
 
@@ -413,6 +416,90 @@ Nextion_Ready($)
                 if($hash->{STATE} eq "disconnected");
   return 0;
 }
+
+##############################################################################
+##############################################################################
+##
+## Helper
+##
+##############################################################################
+##############################################################################
+
+#####################################
+sub
+Nextion_convertMsg($) 
+{
+  my ($raw) = @_;
+
+  my $msg = "";
+  my $text;
+  
+  my $rcvd = $raw;
+
+  while(length($rcvd) > 0) {
+    my $char = ord($rcvd);
+    $rcvd = substr($rcvd,1);
+    $msg .= " " if ( length($msg) > 0 );
+    $msg .= sprintf( "H%2.2x", $char );
+    $msg .= "(".chr($char).")" if ( ( $char >= 32 ) && ( $char <= 127 ) ) ;
+  }
+
+  if ( $raw =~ /^(\$.*=)(\x71?)(.*)$/ ) {
+    # raw msg with $ start is manually defined message standard
+    # sent on release event
+    #   print "$bt0="
+    #   get bt0.val  OR   print bt0.val
+    #
+    $text = $1;
+    my $rest = $3;
+    if ( length($rest) == 4 ) {
+       my $val = ord($rest);
+       $rest = substr($rest,1);
+       $val += ord($rest)*256;
+       $rest = substr($rest,1);
+       $val += ord($rest)*256*256;
+       $rest = substr($rest,1);
+       $val += ord($rest)*256*256*256;
+       $text .= sprintf("%d",$val);
+    } else {
+      $text .= $rest;
+    }
+  } elsif ( $raw =~ /^\x70(.*)$/ ) {
+    # string return
+    my $rest = $1;
+    $text = "string \"" + $rest + "\"";
+  } elsif ( $raw =~ /^\x71(.*)$/ ) {
+    # numeric return
+    $text = "num ";
+    my $rest = $1;
+    if ( length($rest) == 4 ) {
+       my $val = ord($rest);
+       $rest = substr($rest,1);
+       $val += ord($rest)*256;
+       $rest = substr($rest,1);
+       $val += ord($rest)*256*256;
+       $rest = substr($rest,1);
+       $val += ord($rest)*256*256*256;
+       $text .= sprintf("%d",$val);
+    } else {
+      $text .= $rest;
+    }
+  } elsif ( $raw =~ /^\x66(.)$/ ) {
+    # numeric return
+    $text = "page ";
+    my $rest = $1;
+    my $val = ord($rest);
+    $text .= sprintf("%d",$val);
+  }
+
+  return ( $msg, $text );
+}
+
+
+
+##################################################################################################################
+##################################################################################################################
+##################################################################################################################
 
 1;
 

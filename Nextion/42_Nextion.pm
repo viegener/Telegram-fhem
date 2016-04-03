@@ -31,7 +31,7 @@
 #   disconnect with state modification
 #   put error/cmdresult in reading on send command
 #   text readings for messages starting with $ and specific codes
-#   
+#   initPageX attributes and execution when page is entered with replaceSetMagic --> needs testing
 #   
 #   
 #   
@@ -42,8 +42,15 @@
 ### TODO
 #
 #   Init commands
+#     attribute initCmds
+#   commands 
+#     set - page x
+#     set - text elem text
+#     set - val elem val
+#     picture setting
 #   init commands also on reconnect
-#   init page from fhem
+#   init page from fhem might sent a magic starter and finisher something like get 4711 to recognize the init command results (can be filtered away)
+#   number of pages as define (std max 0-9)
 #   add 0x65 code
 #   react on events with commands allowing values from FHEM
 #   progress bar 
@@ -107,11 +114,15 @@ Nextion_Initialize($)
   $hash->{UndefFn}      = "Nextion_Undef";
   $hash->{ShutdownFn}   = "Nextion_Undef";
   $hash->{ReadAnswerFn} = "Nextion_ReadAnswer";
+  
+  $hash->{AttrFn}     = "Nextion_Attr";
+  $hash->{AttrList}   = "initPage0:textField-long initPage1:textField-long initPage2:textField-long initPage3:textField-long initPage4:textField-long ".
+                        "initPage5:textField-long initPage6:textField-long initPage7:textField-long initPage8:textField-long initPage9:textField-long ".
+                        "initCommands:textField-long ".$readingFnAttributes;           
 
 # Normal devices
   $hash->{DefFn}   = "Nextion_Define";
   $hash->{SetFn}   = "Nextion_Set";
-  $hash->{AttrList}= "dummy:1,0";
 }
 
 
@@ -174,6 +185,44 @@ Nextion_Set($@)
   return $ret;
 }
 
+##############################
+# attr function for setting fhem attributes for the device
+sub Nextion_Attr(@) {
+  my ($cmd,$name,$aName,$aVal) = @_;
+  my $hash = $defs{$name};
+
+  Log3 $name, 5, "Nextion_Attr $name: called ";
+
+  return "\"Nextion_Attr: \" $name does not exist" if (!defined($hash));
+
+  if (defined($aVal)) {
+    Log3 $name, 5, "Nextion_Attr $name: $cmd  on $aName to $aVal";
+  } else {
+    Log3 $name, 5, "Nextion_Attr $name: $cmd  on $aName to <undef>";
+  }
+  # $cmd can be "del" or "set"
+  # $name is device name
+  # aName and aVal are Attribute name and value
+  if ($cmd eq "set") {
+    if ($aName eq 'dummy') {
+      $attr{$name}{'dummy'} = $aVal;
+
+    } elsif ($aName eq 'unsupported') {
+      if ( $aVal !~ /^[[:digit:]]+$/ ) {
+        return "\"Nextion_Attr: \" unsupported"; 
+      }
+    }
+    
+    $_[3] = $aVal;
+  
+  }
+
+  return undef;
+}
+
+
+
+
 #####################################
 sub
 Nextion_DoInit($)
@@ -181,10 +230,16 @@ Nextion_DoInit($)
   my $hash = shift;
   my $name = $hash->{NAME};
 
-  ### ??? send init commands
-
   my $ret = undef;
   
+  ### send init commands
+  my $initCmds = Attrval( $name, "initCommands", undef ); 
+    
+  Log3 $name, 3, "Nextion_DoInit $name: Execute initCommands :".(defined(initCmds)?$initCmds:"<undef>").":";
+
+  # Send command handles replaceSetMagic and splitting
+  $ret = Nextion_SendCommand( $hash, $initCmds, 0 ) if ( defined( $initCmds ) );
+
   return $ret;
 }
 
@@ -254,6 +309,9 @@ Nextion_SendSingleCommand($$$)
   # ??? handle answer
   my $err;
   
+  # trim the msg
+  $msg =~ s/^\s+|\s+$//g;
+
   Log3 $name, 1, "Nextion_SendCommand $name: send command :".$msg.": ";
   
   DevIo_SimpleWrite($hash, $msg."\xff\xff\xff", 0);
@@ -295,6 +353,8 @@ Nextion_Read($@)
   $data .= $buf;
 
   my $ret;
+  my $newPageId;
+  
   while(length($data) > 0) {
 
     if ( $data =~ /^([^\xff]*)\xff\xff\xff(.*)$/ ) {
@@ -303,7 +363,12 @@ Nextion_Read($@)
       
       if ( length($rcvd) > 0 ) {
       
-        my ( $msg, $text ) = Nextion_convertMsg($rcvd);
+        my ( $msg, $text, $val, $id ) = Nextion_convertMsg($rcvd);
+        if ( defined( $id ) ) {
+          if ( $id =~ /^[0-9]+$/ ) {
+            $newPageId = $id;
+          }
+        }
 
         Log3 $name, 1, "Nextion: Received message :$msg:";
 
@@ -342,6 +407,21 @@ Nextion_Read($@)
 
   $hash->{PARTIAL} = $data;
   $hash->{READ_TS} = gettimeofday() if($data);
+
+
+  # initialize last page id found:
+  if ( defined( $newPageId ) ) {
+    $newPageId = $newPageId + 0;
+    
+    my $initCmds = Attrval( $name, "initPage".sprintf("%d",$newPageId), undef ); 
+    
+    Log3 $name, 3, "Nextion_InitPage $name: page  :".$newPageId.": with commands :".(defined(initCmds)?$initCmds:"<undef>").":";
+    return if ( ! defined( $initCmds ) );
+
+    # Send command handles replaceSetMagic and splitting
+    Nextion_SendCommand( $hash, $initCmds, 0 );
+  }
+
   return $ret if(defined($local));
   return undef;
 }
@@ -425,7 +505,13 @@ Nextion_Ready($)
 ##############################################################################
 ##############################################################################
 
+
 #####################################
+# returns 
+#   msg in Hex converted format
+#   text equivalent of message if applicable
+#   val in message either numeric or text
+#   id of a control <pageid>:<controlid>:...   or just a page  <pageid>   or undef
 sub
 Nextion_convertMsg($) 
 {
@@ -433,6 +519,8 @@ Nextion_convertMsg($)
 
   my $msg = "";
   my $text;
+  my $val;
+  my $id;
   
   my $rcvd = $raw;
 
@@ -453,7 +541,7 @@ Nextion_convertMsg($)
     $text = $1;
     my $rest = $3;
     if ( length($rest) == 4 ) {
-       my $val = ord($rest);
+       $val = ord($rest);
        $rest = substr($rest,1);
        $val += ord($rest)*256;
        $rest = substr($rest,1);
@@ -463,17 +551,18 @@ Nextion_convertMsg($)
        $text .= sprintf("%d",$val);
     } else {
       $text .= $rest;
+      $val = $rest;
     }
   } elsif ( $raw =~ /^\x70(.*)$/ ) {
     # string return
-    my $rest = $1;
-    $text = "string \"" + $rest + "\"";
+    $val = $1;
+    $text = "string \"" + $val + "\"";
   } elsif ( $raw =~ /^\x71(.*)$/ ) {
     # numeric return
     $text = "num ";
     my $rest = $1;
     if ( length($rest) == 4 ) {
-       my $val = ord($rest);
+       $val = ord($rest);
        $rest = substr($rest,1);
        $val += ord($rest)*256;
        $rest = substr($rest,1);
@@ -483,16 +572,17 @@ Nextion_convertMsg($)
        $text .= sprintf("%d",$val);
     } else {
       $text .= $rest;
+      $val = $rest;
     }
   } elsif ( $raw =~ /^\x66(.)$/ ) {
-    # numeric return
+    # page started
     $text = "page ";
     my $rest = $1;
-    my $val = ord($rest);
-    $text .= sprintf("%d",$val);
+    $id = ord($rest);
+    $text .= sprintf("%d",$id);
   }
 
-  return ( $msg, $text );
+  return ( $msg, $text, $val, $id );
 }
 
 

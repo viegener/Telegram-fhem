@@ -26,13 +26,17 @@
 #   Inital Version to communicate with Nextion via transparent bridge send raw commands and get returns as readings
 #   Fix for result without error 
 #   multiCommandSend (allows also set logic)
+# 0.2 2016-03-29 Basic capabilities
 #   
 #   SendAndWaitforAnswer
 #   disconnect with state modification
 #   put error/cmdresult in reading on send command
 #   text readings for messages starting with $ and specific codes
-#   initPageX attributes and execution when page is entered with replaceSetMagic --> needs testing
-#   
+#   initPageX attributes and execution when page is entered with replaceSetMagic
+#   Init commands - Attribute initCommands
+#   init commands will also be sent on reconnect
+#   currentPage reading will only be maintained if attribut hasSendMe is set
+# 0.3 2016-04-03 init commands and test with notifys
 #   
 #   
 #   
@@ -41,19 +45,36 @@
 ##############################################
 ### TODO
 #
-#   Init commands
-#     attribute initCmds
+#   Documentation 
+#   Tutorial
+#   react on events with commands allowing values from FHEM
+#   remove wait for answer by attribute
 #   commands 
 #     set - page x
 #     set - text elem text
 #     set - val elem val
 #     picture setting
-#   init commands also on reconnect
 #   init page from fhem might sent a magic starter and finisher something like get 4711 to recognize the init command results (can be filtered away)
 #   number of pages as define (std max 0-9)
 #   add 0x65 code
-#   react on events with commands allowing values from FHEM
 #   progress bar 
+#
+##############################################
+##############################################
+### Considerations for the Nextion UI
+#
+#   - sendme is needed on pages otherwise initCmds can not be used
+#   - to react on button usages $ cmds are introduced
+#        add in postinitialize event something like
+#           print "$b0="
+#           get 1
+#        or for double state buttons / switches
+#           print "$bt0="
+#           print bt0.val#
+#        will result in $b0=1 / $bt0=0 or $bt0=1 being sent to fhem
+#   - Recommended use bkcmd=3 in pre initialize event of page 0 (to not to have to wait on timeouts for commands / otherwise fhem is blocked)
+#
+#
 #
 ##############################################
 ##############################################
@@ -118,7 +139,7 @@ Nextion_Initialize($)
   $hash->{AttrFn}     = "Nextion_Attr";
   $hash->{AttrList}   = "initPage0:textField-long initPage1:textField-long initPage2:textField-long initPage3:textField-long initPage4:textField-long ".
                         "initPage5:textField-long initPage6:textField-long initPage7:textField-long initPage8:textField-long initPage9:textField-long ".
-                        "initCommands:textField-long ".$readingFnAttributes;           
+                        "initCommands:textField-long hasSendMe:0,1 ".$readingFnAttributes;           
 
 # Normal devices
   $hash->{DefFn}   = "Nextion_Define";
@@ -204,8 +225,9 @@ sub Nextion_Attr(@) {
   # $name is device name
   # aName and aVal are Attribute name and value
   if ($cmd eq "set") {
-    if ($aName eq 'dummy') {
-      $attr{$name}{'dummy'} = $aVal;
+    if ($aName eq 'hasSendMe') {
+      $aVal = ($aVal eq "1")? "1": "0";
+      readingsSingleUpdate($hash, "currentPage", -1, 1);
 
     } elsif ($aName eq 'unsupported') {
       if ( $aVal !~ /^[[:digit:]]+$/ ) {
@@ -233,9 +255,14 @@ Nextion_DoInit($)
   my $ret = undef;
   
   ### send init commands
-  my $initCmds = Attrval( $name, "initCommands", undef ); 
+  my $initCmds = AttrVal( $name, "initCommands", undef ); 
     
-  Log3 $name, 3, "Nextion_DoInit $name: Execute initCommands :".(defined(initCmds)?$initCmds:"<undef>").":";
+  Log3 $name, 3, "Nextion_DoInit $name: Execute initCommands :".(defined($initCmds)?$initCmds:"<undef>").":";
+
+  
+  ## ??? quick hack send on init always page 0 twice to ensure proper start
+  # Send command handles replaceSetMagic and splitting
+  $ret = Nextion_SendCommand( $hash, "page 0;page 0", 0 );
 
   # Send command handles replaceSetMagic and splitting
   $ret = Nextion_SendCommand( $hash, $initCmds, 0 ) if ( defined( $initCmds ) );
@@ -396,6 +423,8 @@ Nextion_Read($@)
         readingsBeginUpdate($hash);
         readingsBulkUpdate($hash,"received",$msg);
         readingsBulkUpdate($hash,"rectext",( (defined($text)) ? $text : "" ));
+        readingsBulkUpdate($hash,"currentPage",$id) if ( ( defined( $id ) ) && ( AttrVal($name,"hasSendMe",0) ) );
+
         readingsEndUpdate($hash, 1);
 
       }
@@ -413,9 +442,9 @@ Nextion_Read($@)
   if ( defined( $newPageId ) ) {
     $newPageId = $newPageId + 0;
     
-    my $initCmds = Attrval( $name, "initPage".sprintf("%d",$newPageId), undef ); 
+    my $initCmds = AttrVal( $name, "initPage".sprintf("%d",$newPageId), undef ); 
     
-    Log3 $name, 3, "Nextion_InitPage $name: page  :".$newPageId.": with commands :".(defined(initCmds)?$initCmds:"<undef>").":";
+    Log3 $name, 3, "Nextion_InitPage $name: page  :".$newPageId.": with commands :".(defined($initCmds)?$initCmds:"<undef>").":";
     return if ( ! defined( $initCmds ) );
 
     # Send command handles replaceSetMagic and splitting

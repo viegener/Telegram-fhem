@@ -118,14 +118,16 @@
 #   Allow localization outward facing messages -> templates with replacements (German as default)
 #     New attributes for visible telegram responses: 
 #       textResponseConfirm, textResponseFavorites, textResponseCommands, textResponseResult, textResponseUnauthorized
+#   descriptions for favorites can be specified (enclosed in [])
+#   descriptions are shown in favorite list and confirmation dialogue
+#   texts are converted to UTF8 also for keyboards
 
+#   
 #   
 #   
 ##############################################################################
 # TASKS 
 #
-#   Allow descriptions for favorites, showing only descriptions in /fav keyboard, also for alias cmds
-#   
 #   Look for solution on space at beginning of line --> checked that data is sent correctly to telegram but does not end up in the message
 #
 #   allow keyboards in the device api
@@ -164,6 +166,9 @@ sub TelegramBot_Get($@);
 sub TelegramBot_Callback($$$);
 sub TelegramBot_SendIt($$$$$;$);
 sub TelegramBot_checkAllowedPeer($$$);
+
+sub TelegramBot_GetUTF8Back( $ );
+sub TelegramBot_PutToUTF8( $ );
 
 #########################
 # Globals
@@ -584,9 +589,10 @@ sub TelegramBot_Attr(@) {
       my @clist = split( /;/, $aVal);
 
       foreach my $cs (  @clist ) {
-        if ( $cs =~ /^\s*((\/[^=]+)=)(.*)$/ ) {
-          my $alx = $2;
-          my $alcmd = $3;
+        my ( $alias, $desc, $parsecmd, $needsConfirm ) = TelegramBot_SplitFavoriteDef( $hash, $cs );
+        if ( $alias ) {
+          my $alx = $alias;
+          my $alcmd = $parsecmd;
           
           Log3 $name, 2, "TelegramBot_Attr $name: Alias $alcmd defined multiple times" if ( defined( $hash->{AliasCmds}{$alx} ) );
           $hash->{AliasCmds}{$alx} = $alcmd;
@@ -687,6 +693,39 @@ sub TelegramBot_checkCmdKeyword($$$$$) {
 
 #####################################
 #####################################
+# INTERNAL: Split Favorite def in alias(optional), description (optional), parsecmd, needsConfirm
+sub TelegramBot_SplitFavoriteDef($$) {
+  my ($hash, $cmd ) = @_;
+  my $name = $hash->{NAME};
+
+  # Valid favoritedef
+  #   list TYPE=SOMFY
+  #   ?set TYPE=CUL_WM getconfig
+  #   /rolladen=list TYPE=SOMFY
+  #   /rolladen=?list TYPE=SOMFY
+  
+  #   /[Liste Rolladen]=list TYPE=SOMFY
+  #   /[Liste Rolladen]=?list TYPE=SOMFY
+  #   /rolladen[Liste Rolladen]=list TYPE=SOMFY
+  #   /rolladen[Liste Rolladen]=list TYPE=SOMFY
+  
+  my ( $alias, $desc, $parsecmd, $confirm );
+
+  if ( $cmd =~ /^\s*(\/([^\[=]+)?(\[([^\]]+)\])?=)?(\??)(.*)$/ ) {
+    $alias = $2;
+    $desc = $4;
+    $confirm = $5;
+    $parsecmd = $6;
+#    Debug "Parse 1  a:".$alias.":  d:".$desc.":  c:".$parsecmd.":";
+  } else {
+    Log3 $name, 1, "TelegramBot_SplitFavoriteDef invalid favorite definition :$cmd: ";
+  }
+  
+  return ( $alias, $desc, $parsecmd, (($confirm eq "?")?1:0) );
+}
+    
+#####################################
+#####################################
 # INTERNAL: handle sentlast and favorites
 sub TelegramBot_SentFavorites($$$$) {
   my ($hash, $mpeernorm, $cmd, $mid ) = @_;
@@ -702,9 +741,9 @@ sub TelegramBot_SentFavorites($$$$) {
   my @clist = split( /;/, $slc);
   my $isConfirm;
   
-  if ( $cmd =~ /^\s*([0-9]+)(\??)[^0-9=]*=.*$/ ) {
+  if ( $cmd =~ /^\s*([0-9]+)(\??)\s*=.*$/ ) {
     $cmd = $1;
-    $isConfirm = ($2 eq "?")?1:0;
+    $isConfirm = ($2 eq "?")?1:0; 
   }
   
   # if given a number execute the numbered favorite as a command
@@ -714,19 +753,19 @@ sub TelegramBot_SentFavorites($$$$) {
     Log3 $name, 4, "TelegramBot_SentFavorites exec cmd :$cmdId: ";
     if ( ( $cmdId >= 0 ) && ( $cmdId < scalar( @clist ) ) ) { 
       my $ecmd = $clist[$cmdId];
-      if ( $ecmd =~ /^\s*((\/[^=]+)=)(.*)$/ ) {
-        $ecmd = $3;
-      }
       
-      if ( ( ! $isConfirm ) && ( $ecmd =~ /^\s*\?(.*)$/ ) ) {
-        # ask first for confirmation
-        $ecmd = $1;
+      my ( $alias, $desc, $parsecmd, $needsConfirm ) = TelegramBot_SplitFavoriteDef( $hash, $ecmd );
+      $ecmd = $parsecmd;
 
+      # Debug "Needsconfirm: ". $needsConfirm;
+      
+      if ( ( ! $isConfirm ) && ( $needsConfirm ) ) {
+        # ask first for confirmation
         my $fcmd = AttrVal($name,'cmdFavorites',undef);
         
         my @tmparr;
         my @keys = ();
-        my @tmparr1 = ( $fcmd.$cmd."? = ".$ecmd );
+        my @tmparr1 = ( TelegramBot_PutToUTF8( $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd)." ausführen?" ) );
         push( @keys, \@tmparr1 );
         my @tmparr2 = ( "Abbruch" );
         push( @keys, \@tmparr2 );
@@ -758,10 +797,11 @@ sub TelegramBot_SentFavorites($$$$) {
       
       foreach my $cs (  @clist ) {
         $cnt += 1;
-        my @tmparr = ( $fcmd.$cnt." = ".$cs );
+        my ( $alias, $desc, $parsecmd, $needsConfirm ) = TelegramBot_SplitFavoriteDef( $hash, $cs );
+        my @tmparr = ( TelegramBot_PutToUTF8( $fcmd.$cnt." = ".(($desc)?$desc:$parsecmd) ) );
         push( @keys, \@tmparr );
       }
-#      my @tmparr = ( $fcmd."0 = Abbruch" );
+#      my @tmparr = ( TelegramBot_PutToUTF8( $fcmd."0 = Abbruch" ) );
 #     push( @keys, \@tmparr );
 
       my $jsonkb = TelegramBot_MakeKeyboard( $hash, 1, @keys );
@@ -816,7 +856,7 @@ sub TelegramBot_SentLastCommand($$$) {
   my @keys = ();
 
   foreach my $cs (  @cmds ) {
-    my @tmparr = ( $cs );
+    my @tmparr = ( TelegramBot_PutToUTF8( $cs ) );
     push( @keys, \@tmparr );
   }
 #  my @tmparr = ( $fcmd."0 = Abbruch" );
@@ -910,7 +950,7 @@ sub TelegramBot_ExecuteCommand($$$) {
   $defpeer = undef if ( $defpeer eq $mpeernorm );
   
   # LOCAL: External message
-  my $retMsg = AttrVal( $name, 'textResponseResult', 'TelegramBot FHEM : $peer\n    Befehl:$cmd:\n\tErgebnis:\n$result\n');
+  my $retMsg = AttrVal( $name, 'textResponseResult', 'TelegramBot FHEM : $peer\n    Befehl:$cmd:\n  Ergebnis:\n$result \n ');
   $retMsg =~ s/\$cmd/$cmd/g;
   
   if ( defined( $defpeer ) ) {
@@ -1645,16 +1685,6 @@ sub TelegramBot_Callback($$$)
   
 }
 
-
-#####################################
-#  INTERNAL: Convert (Mark) a scalar as UTF8
-sub TelegramBot_GetUTF8Back( $ ) {
-  my ( $data ) = @_;
-  
-  return encode('utf8', $data);
-}
-  
-
 #####################################
 #  INTERNAL: _ParseMsg handle a message from the update call 
 #   params are the hash, the updateid and the actual message
@@ -2288,6 +2318,26 @@ sub TelegramBot_checkAllowedPeer($$$) {
 ##############################################################################
 
 
+#####################################
+#  INTERNAL: Convert (Mark) a scalar as UTF8 - coming from telegram
+sub TelegramBot_GetUTF8Back( $ ) {
+  my ( $data ) = @_;
+  
+  return encode('utf8', $data);
+}
+  
+
+
+#####################################
+#  INTERNAL: used to encode a string aas Utf-8 coming from the code
+sub TelegramBot_PutToUTF8( $ ) {
+  my ( $data ) = @_;
+  
+  return decode('utf8', $data);
+}
+  
+
+
 ######################################
 #  Get a string and identify possible media streams
 #  PNG is tested
@@ -2525,21 +2575,23 @@ sub TelegramBot_BinaryFileWrite($$$) {
     </li> 
     <li><code>favorites &lt;list of commands&gt;</code><br>Specify a list of favorite commands for Fhem (without cmdKeyword). Multiple commands are separated by semicolon (;). This also means that only simple commands (without embedded semicolon) can be defined. <br>
     <br>
-    Favorite commands are fhem commands with an optional alias for the command given. The alias can be sent as message (instead of the favoriteCmd) to execute the command. Favorites are specified as prefix to the command starting with a '/' and separated from the command with a '='.
+    Favorite commands are fhem commands with an optional alias for the command given. The alias can be sent as message (instead of the favoriteCmd) to execute the command. Before the favorite command also an alias (other shortcut for the favorite) or/and a descriptive text (enclosed in []) can be specifed. If alias or description is specified this needs to be prefixed with a '/' and the alias if given needs to be specified first.
+ 
     <br>
         Example: Assuming cmdFavorites is set to a value of <code>favorite</code> and this attribute is set to a value of
-        <br><code>get lights status; /light=set lights on; /dark=set lights off; /heating=set heater;</code> <br>
+        <br><code>get lights status; /light=set lights on; /dark[Make it dark]=set lights off; /heating=set heater; /[status]=get heater status;</code> <br>
         <ul>
-          <li>Then a message "favorite0" to the bot would execute the command <code>get lights status</code></li>
-          <li>A message "favorite 1" or "/light" to the bot would execute the command <code>set lights on</code></li>
-          <li>A message "/heating on" to the bot would execute the command <code>set heater on</code><br> (Attention the remainder after the alias will be added to the command in fhem!)</li>
+          <li>Then a message "favorite1" to the bot would execute the command <code>get lights status</code></li>
+          <li>A message "favorite 2" or "/light" to the bot would execute the command <code>set lights on</code>. And the favorite would show as "make it dark" in the list of favorites.</li>
+          <li>A message "/heating on" or "favorite 3 on" to the bot would execute the command <code>set heater on</code><br> (Attention the remainder after the alias will be added to the command in fhem!)</li>
+          <li>A message "favorite 4" to the bot would execute the command <code>get heater status</code> and this favorite would show as "status" as a description in the favorite list</li>
         </ul>
     <br>
-    Favorite commands can also be prefixed with a question mark (?) to enable a confirmation being requested before executing the command.
+    Favorite commands can also be prefixed with a question mark ('?') to enable a confirmation being requested before executing the command.
     <br>
         Examples: <code>get lights status; /light=?set lights on; /dark=set lights off; ?set heater;</code> <br>
     <br>
-   
+    Meaning the full format for a single favorite is <code>/alias[description]=command</code> where the alias can be empty or <code>/alias=command</code> or just the <code>command</code>. In any case the command can be also prefixed with a '?'.
     </li> 
 
 

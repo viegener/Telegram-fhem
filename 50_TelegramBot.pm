@@ -119,14 +119,10 @@
 #     New attributes for visible telegram responses: 
 #       textResponseConfirm, textResponseFavorites, textResponseCommands, textResponseResult, textResponseUnauthorized
 
-
-
 #   
 #   
 ##############################################################################
 # TASKS 
-#
-#   test attributes for localization
 #
 #   Allow descriptions for favorites, showing only descriptions in /fav keyboard, also for alias cmds
 #   
@@ -246,10 +242,11 @@ sub TelegramBot_Initialize($) {
   $hash->{GetFn}      = "TelegramBot_Get";
   $hash->{SetFn}      = "TelegramBot_Set";
   $hash->{AttrFn}     = "TelegramBot_Attr";
-  $hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCancel:textField textResponseConfirm:textField  maxRetries:0,1,2,3,4,5 ".
-            $readingFnAttributes;           
+  $hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer ". "cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None ".
+  "allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCommands:textField ". 
+  "textResponseFavorites:textField textResponseResult:textField textResponseUnauthorized:textField ".
+  " maxRetries:0,1,2,3,4,5 ".$readingFnAttributes;           
 }
-
 
 
 ######################################

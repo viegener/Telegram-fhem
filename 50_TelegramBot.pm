@@ -121,6 +121,7 @@
 #   descriptions for favorites can be specified (enclosed in [])
 #   descriptions are shown in favorite list and confirmation dialogue
 #   texts are converted to UTF8 also for keyboards
+#   favorite list corrected
 
 #   
 #   
@@ -166,6 +167,8 @@ sub TelegramBot_Get($@);
 sub TelegramBot_Callback($$$);
 sub TelegramBot_SendIt($$$$$;$);
 sub TelegramBot_checkAllowedPeer($$$);
+
+sub TelegramBot_SplitFavoriteDef($$);
 
 sub TelegramBot_GetUTF8Back( $ );
 sub TelegramBot_PutToUTF8( $ );
@@ -711,7 +714,7 @@ sub TelegramBot_SplitFavoriteDef($$) {
   
   my ( $alias, $desc, $parsecmd, $confirm );
 
-  if ( $cmd =~ /^\s*(\/([^\[=]+)?(\[([^\]]+)\])?=)?(\??)(.*)$/ ) {
+  if ( $cmd =~ /^\s*((\/[^\[=]+)?(\[([^\]]+)\])?=)?(\??)(.*)$/ ) {
     $alias = $2;
     $desc = $4;
     $confirm = $5;
@@ -798,7 +801,7 @@ sub TelegramBot_SentFavorites($$$$) {
       foreach my $cs (  @clist ) {
         $cnt += 1;
         my ( $alias, $desc, $parsecmd, $needsConfirm ) = TelegramBot_SplitFavoriteDef( $hash, $cs );
-        my @tmparr = ( TelegramBot_PutToUTF8( $fcmd.$cnt." = ".(($desc)?$desc:$parsecmd) ) );
+        my @tmparr = ( TelegramBot_PutToUTF8( $fcmd.$cnt." = ".($alias?$alias." = ":"").(($desc)?$desc:$parsecmd) ) );
         push( @keys, \@tmparr );
       }
 #      my @tmparr = ( TelegramBot_PutToUTF8( $fcmd."0 = Abbruch" ) );

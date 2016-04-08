@@ -122,6 +122,7 @@
 #   descriptions are shown in favorite list and confirmation dialogue
 #   texts are converted to UTF8 also for keyboards
 #   favorite list corrected
+# 1.6 2016-04-08 text customization for replies/messages and favorite descriptions 
 
 #   
 #   
@@ -135,8 +136,6 @@
 #   
 #   dialog function
 #   
-#   Correct Readings times for prev Msg?
-#
 ##############################################################################
 # Ideas / Future
 #   add replyTo

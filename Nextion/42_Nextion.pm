@@ -38,8 +38,8 @@
 #   currentPage reading will only be maintained if attribut hasSendMe is set
 # 0.3 2016-04-03 init commands and test with notifys
 #   
-#   
-#   
+#   Convert iso to/from utf-8 on messages from nextion
+#   ReplaceSetMagic called once per command in initPage due to issue with fhem-pl change 
 #   
 ##############################################
 ##############################################
@@ -84,6 +84,7 @@ package main;
 use strict;
 use warnings;
 use Time::HiRes qw(gettimeofday);
+use Encode qw( decode encode );
 
 #########################
 # Forward declaration
@@ -303,14 +304,14 @@ Nextion_SendCommand($$$)
   
   # First replace any magics
   my %dummy; 
-  my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $msg ) );
+#  my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $msg ) );
   
-  if ( $err ) {
-    Log3 $name, 1, "$name: Nextion_SendCommand failed on ReplaceSetmagic with :$err: on commands :$msg:";
-  } else {
-    $msg = join(" ", @a);
-    Log3 $name, 4, "$name: Nextion_SendCommand ReplaceSetmagic commnds after :".$msg.":";
-  }   
+#  if ( $err ) {
+#    Log3 $name, 1, "$name: Nextion_SendCommand failed on ReplaceSetmagic with :$err: on commands :$msg:";
+#  } else {
+#    $msg = join(" ", @a);
+#    Log3 $name, 4, "$name: Nextion_SendCommand ReplaceSetmagic commnds after :".$msg.":";
+#  }   
 
   # Split commands into separate elements at single semicolons (escape double ;; before)
   $msg =~ s/;;/SeMiCoLoN/g; 
@@ -318,6 +319,15 @@ Nextion_SendCommand($$$)
   my $singleMsg;
   while(defined($singleMsg = shift @msgList)) {
     $singleMsg =~ s/SeMiCoLoN/;/g;
+
+    my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $singleMsg ) );
+    if ( $err ) {
+      Log3 $name, 1, "$name: Nextion_SendCommand failed on ReplaceSetmagic with :$err: on commands :$singleMsg:";
+    } else {
+      $singleMsg = join(" ", @a);
+      Log3 $name, 4, "$name: Nextion_SendCommand ReplaceSetmagic commnds after :".$singleMsg.":";
+    }   
+    
     my $lret = Nextion_SendSingleCommand($hash, $singleMsg, $answer);
     push(@ret, $lret) if(defined($lret));
   }
@@ -341,8 +351,10 @@ Nextion_SendSingleCommand($$$)
 
   Log3 $name, 1, "Nextion_SendCommand $name: send command :".$msg.": ";
   
-  DevIo_SimpleWrite($hash, $msg."\xff\xff\xff", 0);
-  $err =  Nextion_ReadAnswer($hash, $msg) if ( $answer );
+  my $isoMsg = Nextion_EncodeToIso($msg);
+
+  DevIo_SimpleWrite($hash, $isoMsg."\xff\xff\xff", 0);
+  $err =  Nextion_ReadAnswer($hash, $isoMsg) if ( $answer );
   Log3 $name, 1, "Nextion_SendCommand Error :".$err.": " if ( defined($err) );
   Log3 $name, 3, "Nextion_SendCommand Success " if ( ! defined($err) );
   
@@ -561,7 +573,7 @@ Nextion_convertMsg($)
     $msg .= "(".chr($char).")" if ( ( $char >= 32 ) && ( $char <= 127 ) ) ;
   }
 
-  if ( $raw =~ /^(\$.*=)(\x71?)(.*)$/ ) {
+  if ( $raw =~ /^(\$.*=)(\x71?)(.*)$/s ) {
     # raw msg with $ start is manually defined message standard
     # sent on release event
     #   print "$bt0="
@@ -582,10 +594,11 @@ Nextion_convertMsg($)
       $text .= $rest;
       $val = $rest;
     }
-  } elsif ( $raw =~ /^\x70(.*)$/ ) {
+  } elsif ( $raw =~ /^\x70(.*)$/s ) {
     # string return
     $val = $1;
-    $text = "string \"" + $val + "\"";
+#    Log3 undef, 1, "Nextion_convertMsg String message val :".$val.": ";
+    $text = "string \"" . $val . "\"";
   } elsif ( $raw =~ /^\x71(.*)$/ ) {
     # numeric return
     $text = "num ";
@@ -611,9 +624,45 @@ Nextion_convertMsg($)
     $text .= sprintf("%d",$id);
   }
 
+  $text = Nextion_DecodeFromIso( $text );
+  $msg = Nextion_DecodeFromIso( $msg );
+  
+  
   return ( $msg, $text, $val, $id );
 }
 
+#####################################
+sub
+Nextion_EncodeToIso($)
+{
+  my ($orgmsg) = @_;
+
+  # encode in ISO8859-1 from UTF8
+  
+  # decode to Perl's internal format
+  my $msg = decode( 'utf-8', $orgmsg );
+  # encode to iso-8859-1
+  $msg = encode( 'iso-8859-1', $msg );
+
+  return $msg;
+}
+
+
+#####################################
+sub
+Nextion_DecodeFromIso($)
+{
+  my ($orgmsg) = @_;
+
+  # encode in ISO8859-1 from UTF8
+  
+  # decode to Perl's internal format
+  my $msg = decode( 'iso-8859-1', $orgmsg );
+  # encode to iso-8859-1
+  $msg = encode( 'utf-8', $msg );
+
+  return $msg;
+}
 
 
 ##################################################################################################################

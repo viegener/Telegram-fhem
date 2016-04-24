@@ -40,12 +40,14 @@
 #   
 #   Convert iso to/from utf-8 on messages from nextion
 #   ReplaceSetMagic called once per command in initPage due to issue with fhem-pl change 
+#   Initial documentation completed
+#   added new set commands: page and pageCmd
+# 0.4 2016-04-24 documentation / page and pageCmds
 #   
 ##############################################
 ##############################################
 ### TODO
 #
-#   Documentation 
 #   Tutorial
 #   react on events with commands allowing values from FHEM
 #   remove wait for answer by attribute
@@ -179,10 +181,15 @@ Nextion_Set($@)
 {
   my ($hash, @a) = @_;
   my $name = shift @a;
-  my %sets = ("cmd"=>"textField", "raw"=>"textField", "reopen"=>undef, "disconnect"=>undef);
+  my %sets = ("cmd"=>"textField", "raw"=>"textField", "reopen"=>undef, "disconnect"=>undef
+              , "pageCmd"=>"textField-long", "page"=>"0,1,2,3,4,5,6,7,8,9" );
 
-  return "set $name needs at least one parameter" if(@a < 1);
+  my $numberOfArgs  = int(@a); 
+
+  return "set $name needs at least one parameter" if($numberOfArgs < 1);
+
   my $type = shift @a;
+  $numberOfArgs--; 
 
   my $ret = undef; 
 
@@ -191,6 +198,35 @@ Nextion_Set($@)
   if( ($type eq "raw") || ($type eq "cmd") ) {
     my $cmd = join(" ", @a );
     $ret = Nextion_SendCommand($hash,$cmd, 1);
+  } elsif($type eq "page") {
+    if ( $numberOfArgs < 1 ) {
+      $ret = "No page number given";
+    } elsif ( $numberOfArgs > 1 ) {
+      $ret = "Too many parameters (only page number shoudl be provided)";
+    } elsif ( $a[0] !~ /^[0-9]$/ ) {
+      $ret = "Page number needs to be a single digit";
+    } else  {
+      $ret = Nextion_SendCommand($hash,"page ".$a[0], 1);
+    }  
+  } elsif($type eq "pageCmd") {
+    if ( $numberOfArgs < 2 ) {
+      $ret = "No page number(s) or no commands given";
+    } elsif ( $a[0] !~ /^[0-9](,[0-9])*$/ ) {
+      $ret = "Page numbers needs to be single digits separated with ,";
+    } elsif ( ! AttrVal($name,"hasSendMe",0) ) {
+      $ret = "Attribute hasSendMe not set (no actual page)";
+    } else  {
+      my @pages = split( /,/, shift @a);
+      my $cpage = ReadingsVal($name,"currentPage",-1);
+      my $cmd = join(" ", @a );
+      
+      foreach my $aPage (  @pages ) {
+        if ( $aPage == $cpage ) {
+          $ret = Nextion_SendCommand($hash,$cmd, 1);
+          last;
+        }
+      }
+    }  
   } elsif($type eq "reopen") {
     DevIo_CloseDev($hash);
     return DevIo_OpenDev($hash, 0, "Nextion_DoInit");
@@ -680,9 +716,14 @@ Nextion_DecodeFromIso($)
 
   This module connects remotely to a Nextion display that is connected through a ESP8266 or similar serial to network connection
   
+  <a href="http://wiki.iteadstudio.com/Nextion_HMI_Solution">Nextion</a> devices are relatively inexpensive tft touch displays, that include also a controller that can hold a user interface and communicates via serial protocol to the outside world. 
+
   <br>
   
-  <a href="http://wiki.iteadstudio.com/Nextion_HMI_Solution">Nextion</a> devices are relatively inexpensive tft touch displays, that include also a controller that can hold a user interface and communicates via serial protocol to the outside world. 
+  A description of the Hardwarelayout for connecting the ESP8266 module and the Nextion Dispaly is in the correspdong forum thread <a href="https://forum.fhem.de/index.php/topic,51267.0.html">https://forum.fhem.de/index.php/topic,51267.0.html</a>. 
+
+  <br>
+  
 
   <br><br>
   <a name="Nextiondefine"></a>
@@ -697,7 +738,7 @@ Nextion_DecodeFromIso($)
   </ul>
   <br><br>   
   
-  <a name="NextionBotset"></a>
+  <a name="Nextionset"></a>
   <b>Set</b>
   <ul>
     <code>set &lt;name&gt; &lt;what&gt; [&lt;value&gt;]</code>
@@ -715,14 +756,47 @@ Nextion_DecodeFromIso($)
           <dd> get the text for button 0 <br> </dd>
       <dl>
     </li>
+    <li><code>cmd &lt;nextion command&gt;</code><br>same as raw
+    </li>
+    <li><code>page &lt;0 - 9&gt;</code><br>set the page number given as new page on the nextion display.
+    </li>
+    <li><code>pageCmd &lt;one or multiple page numbers separated by ,&gt; &lt;cmds&gt;</code><br>Execute the given commands if the current page on the screen is in the list given as page number.
+    </li>
   </ul>
 
   <br><br>
 
-  <a name="Nextionreadings"></a>
+  <a name="Nextionattr"></a>
+  <b>Attributes</b>
+  <br><br>
+  <ul>
+    <li><code>hasSendMe &lt;0 or 1&gt;</code><br>Specify if the display definition on the Nextion display is using the "send me" checkbox to send current page on page changes. This will then change the reading currentPage accordingly
+
+    <li><code>initCommands &lt;series of commands&gt;</code><br>Display will be initialized with these commands when the connection to the device is established (or reconnected). Set logic for executing perl or getting readings can be used. Multiple commands will be separated by ;<br>
+    Example<br>
+    &nbsp;&nbsp;<code>t1.txt="Hallo";p1.val=1;</code>
+    
+    <li><code>initPage1 &lt;series of commands&gt;</code> to <code>initPage9 &lt;series of commands&gt;</code><br>When the corresponding page number will be displayed the given commands will be sent to the display. See also initCommands.<br>
+    Example<br>
+    &nbsp;&nbsp;<code>t1.txt="Hallo";p1.val=1;</code>
+    
+  </ul>
+
+  <br><br>
+
+
+    <a name="Nextionreadings"></a>
   <b>Readings</b>
   <ul>
-    <li>received &lt;Hex values of the last received message from the display&gt;<br> The message is converted in hex values (old messages are stored in the readings old1 ... old5). Example for a message is <code>H65(e) H00 H04 H00</code> </li> 
+    <li><code>received &lt;Hex values of the last received message from the display&gt;</code><br> The message is converted in hex values (old messages are stored in the readings old1 ... old5). Example for a message is <code>H65(e) H00 H04 H00</code> </li> 
+    
+    <li><code>rectext &lt;text or empty&gt;</code><br> Translating the received message into text form if possible. </li> 
+    
+    <li><code>currentPage &lt;page number on the display&gt;</code><br> Shows the number of the UI screen as configured on the Nextion display that is currently shown.<br>This is only valid if the attribute <code>hasSendMe</code> is set to 1 and used also in the display definition of the Nextion.</li> 
+    
+    <li><code>cmdSent &lt;cmd&gt;</code><br> Last cmd sent to the Nextion Display </li> 
+    <li><code>cmdResult &lt;result text&gt;</code><br> Result of the last cmd sent to the display (or empty)</li> 
+    
     
   </ul> 
 

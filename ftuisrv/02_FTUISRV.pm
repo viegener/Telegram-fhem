@@ -36,7 +36,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,43110.0.html
 #
-# $Id: 50_TelegramBot.pm 11090 2016-03-19 21:38:31Z viegener $
+# $Id: 02_FTUISRV.pm 11311 2016-04-25 18:36:16Z viegener $
 #
 ##############################################################################
 # 0.0 Initial version FTUIHTTPSRV

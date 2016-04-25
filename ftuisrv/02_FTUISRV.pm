@@ -11,7 +11,7 @@
 #   enable include und key value replacement
 #   also recursive operation
 #   show missing key definitions
-# 0.1 First working version FTUISRV
+# 0.1 - First working version FTUISRV
 #
 #   check and warn for remaining keys
 #   added header for includes also for defining default values
@@ -23,23 +23,23 @@
 #   validate a specific file only once (if unchanged)
 #   validate* 1 means only errors/warnings / 2 means also opening and closing being logged 
 #   documentation for validate* added
-# 0.2 Extended by validation of html, device data and default values (header)
+# 0.2 - Extended by validation of html, device data and default values (header)
 #
 #   add documentation for device readings (set logic)
 #   allow reading values also in inc tag
+# 0.3 - 2016-04-25 - Version for publication in SVN
 #
 ################################################################
 #TODO:
-#
-#   allow device readings also in ftui-inc
 #
 # Allow if for separate sections
 # log count of replacements
 #
 # deepcopy only if new keys found
-##############################################
-# filenames need to have .ftui. before extension to be parsed
 #
+##############################################
+#
+# ATTENTION: filenames need to have .ftui. before extension to be parsed
 #
 #
 ################################################################
@@ -691,6 +691,7 @@ sub FTUISRV_handletemplatefile( $$$$ ) {
       while ( $values =~ /$FTUISRV_ftuimatch_keysegment/s ) {
         my $skey = $1;
         my $sval = $3;
+        $sval="" if ( ! defined($sval) );
       
         Log3 $name, 4, "$name: a key :$skey: = :$sval: ";
 
@@ -822,6 +823,7 @@ sub FTUISRV_BinaryFileRead($) {
 <ul>
   Provides a mini HTTP server plugin for FHEMWEB for the specific use with FTUI. 
   It serves files from a given directory and parses them according to specific rules.
+  The goal is to be able to create reusable elements of multiple widgets and surrounding tags on multiple pages and even with different devices or other modifications. Therefore changes to the design have to be done only at one place and not at every occurence of the template (called parts in this doc).
   
   FTUISRV is an extension to <a href="FTUISRV">FHEMWEB</a> and code is based on HTTPSRV. You must install FHEMWEB to use FTUISRV.</p>
   

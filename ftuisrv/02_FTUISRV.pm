@@ -6,7 +6,39 @@
 #   written by Johannes Viegener
 #   based on 02_HTTPSRV written by Dr. Boris Neubert 2012-08-27
 #
+#     This file is part of Fhem.
+#
+#     Fhem is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 2 of the License, or
+#     (at your option) any later version.
+#
+#     Fhem is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with Fhem.  If not, see <http://www.gnu.org/licenses/>.
+#
+##############################################################################
 ################################################################
+#  
+#  FTUISRV https://github.com/viegener/Telegram-fhem/ftuisrv
+#
+# This module provides a mini HTTP server plugin for FHEMWEB for the specific use with FTUI or new FHEM tablet UI
+#
+# It serves files from a given directory and parses them according to specific rules.
+# The goal is to be able to create reusable elements of multiple widgets and 
+# surrounding tags on multiple pages and even with different devices or other 
+# modifications. Therefore changes to the design have to be done only at one place 
+# and not at every occurence of the template (called parts in this doc).
+#
+# Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,43110.0.html
+#
+# $Id: 50_TelegramBot.pm 11090 2016-03-19 21:38:31Z viegener $
+#
+##############################################################################
 # 0.0 Initial version FTUIHTTPSRV
 #   enable include und key value replacement
 #   also recursive operation

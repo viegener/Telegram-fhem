@@ -2526,6 +2526,9 @@ sub TelegramBot_BinaryFileWrite($$$) {
           <dd> to send the message "Bye" to a contact or chat with the id "1234567". Chat ids might be negative and need to be specified with a leading hyphen (-). <br></dd>
       <dl>
     </li>
+    <li><codereply &lt;msgid&gt; [ @&lt;peer1&gt; ] &lt;text&gt;</code><br>Sends the given message as a reply to the msgid (number) given to the given peer or if peer is ommitted to the defined default peer user. Only a single peer can be specified. Beside the handling handling of the message as a reply to a message received earlier, the peer and message handling is otherwise identical to the msg command. 
+    </li>
+
     <li><code>sendImage|image [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer(s) or if ommitted to the default peer. 
     File is specifying a filename and path to the image file to be send. 
     Local paths should be given local to the root directory of fhem (the directory of fhem.pl e.g. /opt/fhem).

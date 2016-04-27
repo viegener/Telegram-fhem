@@ -125,6 +125,8 @@
 # 1.6 2016-04-08 text customization for replies/messages and favorite descriptions 
 
 #   Fix: contact handling failed (/ in contact names ??)
+#   Reply keyboards also for sendVoice/sendDocument ect
+#   reply msg id in sendit - new set cmd reply
 #   
 #   
 ##############################################################################
@@ -164,7 +166,7 @@ sub TelegramBot_Set($@);
 sub TelegramBot_Get($@);
 
 sub TelegramBot_Callback($$$);
-sub TelegramBot_SendIt($$$$$;$);
+sub TelegramBot_SendIt($$$$$;$$);
 sub TelegramBot_checkAllowedPeer($$$);
 
 sub TelegramBot_SplitFavoriteDef($$);
@@ -188,6 +190,8 @@ my %sets = (
 
   "replaceContacts" => "textField",
   "reset" => undef,
+
+  "reply" => "textField",
 
   "zDebug" => "textField"
 
@@ -385,8 +389,16 @@ sub TelegramBot_Set($@)
 
   my $ret = undef;
   
-  if( ($cmd eq 'message') || ($cmd eq 'msg') || ($cmd =~ /^send.*/ ) ) {
+  if( ($cmd eq 'message') || ($cmd eq 'msg') || ($cmd eq 'reply') || ($cmd =~ /^send.*/ ) ) {
 
+    my $msgid;
+    
+    if ($cmd eq 'reply') {
+      return "TelegramBot_Set: Command $cmd, no peer, msgid and no text/file specified" if ( $numberOfArgs < 3 );
+      $msgid = shift @args; 
+      $numberOfArgs--;
+    }
+    
     return "TelegramBot_Set: Command $cmd, no peers and no text/file specified" if ( $numberOfArgs < 2 );
 
     my $sendType = 0;
@@ -394,7 +406,9 @@ sub TelegramBot_Set($@)
     my $peers;
     while ( $args[0] =~ /^@(..+)$/ ) {
       my $ppart = $1;
+      return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( ($cmd eq 'reply') && ( defined( $peers ) ) );
       $peers .= " " if ( defined( $peers ) );
+      $peers = "" if ( ! defined( $peers ) );
       $peers .= $ppart;
       
       shift @args;
@@ -435,7 +449,7 @@ sub TelegramBot_Set($@)
     }
       
     Log3 $name, 5, "TelegramBot_Set $name: start send for cmd :$cmd: and sendType :$sendType:";
-    $ret = TelegramBot_SendIt( $hash, $peers, $msg, $addPar, $sendType );
+    $ret = TelegramBot_SendIt( $hash, $peers, $msg, $addPar, $sendType, $msgid );
 
   } elsif($cmd eq 'zDebug') {
     # for internal testing only
@@ -818,22 +832,6 @@ sub TelegramBot_SentFavorites($$$$) {
       
       $ret = TelegramBot_SendIt( $hash, $mpeernorm, $ret, $jsonkb, 0 );
   
-  
-############ OLD Favorites sent as message   
-#  Log3 $name, 3, "TelegramBot_SentFavorites Favorites :".scalar(@clist).": ";
-      # my $cnt = 0;
-      # $slc = "";
-      # my $ck = AttrVal($name,'cmdKeyword',"");
-
-      # foreach my $cs (  @clist ) {
-        # $cnt += 1;
-        # $slc .= $cnt."\n  $ck ".$cs."\n";
-      # }  
-
-      # my $defpeer = AttrVal($name,'defaultPeer',undef);
-      # $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
-      # $ret = "TelegramBot fhem  : ($mpeernorm)\n Favorites \n\n".$slc;
-      # $ret = TelegramBot_SendIt( $hash, $defpeer, $ret, $mid, 0 );
   }
   return $ret;
   
@@ -1172,11 +1170,11 @@ sub TelegramBot_DoUrlCommand($$)
 #####################################
 # INTERNAL: Function to send a photo (and text message) to a peer and handle result
 # addPar is caption for images / keyboard for text
-sub TelegramBot_SendIt($$$$$;$)
+sub TelegramBot_SendIt($$$$$;$$)
 {
   my ( $hash, @args) = @_;
 
-  my ( $peers, $msg, $addPar, $isMedia, $retryCount) = @args;
+  my ( $peers, $msg, $addPar, $isMedia, $replyid, $retryCount) = @args;
   my $name = $hash->{NAME};
   
   if ( ! defined( $retryCount ) ) {
@@ -1260,10 +1258,6 @@ sub TelegramBot_SendIt($$$$$;$)
       # add msg (no file)
       $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "text", undef, $msg, 0 ) if ( ! defined( $ret ) );
       
-      if ( defined( $addPar ) ) {
-        $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "reply_markup", undef, $addPar, 0 ) if ( ! defined( $ret ) );
-      }
-
     } elsif ( abs($isMedia) == 1 ) {
       # Photo send    
       $hash->{sentMsgText} = "Image: ".TelegramBot_MsgForLog($msg, ($isMedia<0) ).
@@ -1300,6 +1294,14 @@ sub TelegramBot_SendIt($$$$$;$)
       # add msg (no file)
       Log3 $name, 4, "TelegramBot_SendIt $name: Filename for document file :$msg:";
       $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "document", undef, $msg, $isMedia ) if ( ! defined( $ret ) );
+    }
+
+    if ( defined( $replyid ) ) {
+      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "reply_to_message_id", undef, $replyid, 0 ) if ( ! defined( $ret ) );
+    }
+
+    if ( defined( $addPar ) ) {
+      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "reply_markup", undef, $addPar, 0 ) if ( ! defined( $ret ) );
     }
 
     # finalize multipart 
@@ -1494,8 +1496,8 @@ sub TelegramBot_RetrySend($)
   my $args = $param->{args};
   
   my $ref = $param->{args};
-  Log3 $name, 4, "TelegramBot_Retrysend $name: retry @$ref[4] :@$ref[0]: -:@$ref[1]: ";
-  TelegramBot_SendIt( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3], @$ref[4] );
+  Log3 $name, 4, "TelegramBot_Retrysend $name: reply @$ref[4] retry @$ref[5] :@$ref[0]: -:@$ref[1]: ";
+  TelegramBot_SendIt( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3], @$ref[4], @$ref[5] );
   
 }
   
@@ -1682,7 +1684,7 @@ sub TelegramBot_Callback($$$)
     if ( scalar( @{ $hash->{sentQueue} } ) ) {
       my $ref = shift @{ $hash->{sentQueue} };
       Log3 $name, 5, "TelegramBot_Callback $name: handle queued send with :@$ref[0]: -:@$ref[1]: ";
-      TelegramBot_SendIt( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3], @$ref[4] );
+      TelegramBot_SendIt( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3], @$ref[4], @$ref[5] );
     }
   }
   

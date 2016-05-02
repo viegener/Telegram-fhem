@@ -127,7 +127,7 @@
 #   Fix: contact handling failed (/ in contact names ??)
 #   Reply keyboards also for sendVoice/sendDocument ect
 #   reply msg id in sendit - new set cmd reply
-#   
+#   Fix: reset also removes retry timer 
 #   
 ##############################################################################
 # TASKS 
@@ -140,7 +140,6 @@
 #   
 ##############################################################################
 # Ideas / Future
-#   add replyTo
 #
 ##############################################################################
 
@@ -1182,7 +1181,7 @@ sub TelegramBot_SendIt($$$$$;$$)
   }
 
   # increase retrycount for next try
-  $args[4] = $retryCount+1;
+  $args[5] = $retryCount+1;
   
   Log3 $name, 5, "TelegramBot_SendIt $name: called ";
 
@@ -1493,8 +1492,6 @@ sub TelegramBot_RetrySend($)
   my $name = $hash->{NAME};
 
 
-  my $args = $param->{args};
-  
   my $ref = $param->{args};
   Log3 $name, 4, "TelegramBot_Retrysend $name: reply @$ref[4] retry @$ref[5] :@$ref[0]: -:@$ref[1]: ";
   TelegramBot_SendIt( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3], @$ref[4], @$ref[5] );
@@ -1651,14 +1648,14 @@ sub TelegramBot_Callback($$$)
     # handle retry
     # ret defined / args defined in params 
     if ( ( $ret ne  "SUCCESS" ) && ( defined( $param->{args} ) ) ) {
-      my $wait = $param->{args}[4];
+      my $wait = $param->{args}[5];
       
       my $maxRetries =  AttrVal($name,'maxRetries',0);
       if ( $wait <= $maxRetries ) {
         # calculate wait time 10s / 100s / 1000s ~ 17min / 10000s ~ 3h / 100000s ~ 30h
         $wait = 10**$wait;
         
-        Log3 $name, 4, "TelegramBot_Callback $name: do retry ".$param->{args}[4]." timer: $wait (ret: $ret) for msg ".
+        Log3 $name, 4, "TelegramBot_Callback $name: do retry ".$param->{args}[5]." timer: $wait (ret: $ret) for msg ".
               $param->{args}[0]." : ".$param->{args}[1];
 
         # set timer
@@ -1936,6 +1933,9 @@ sub TelegramBot_Setup($) {
   # Ensure queueing is not happening
   delete( $hash->{sentQueue} );
   delete( $hash->{sentMsgResult} );
+
+  # remove timer for retry
+  RemoveInternalTimer(\%TelegramBot_hu_do_params);
   
   $hash->{URL} = "https://api.telegram.org/bot".$hash->{Token}."/";
 

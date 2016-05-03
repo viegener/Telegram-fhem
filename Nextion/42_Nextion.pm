@@ -44,6 +44,9 @@
 #   added new set commands: page and pageCmd
 # 0.4 2016-04-24 documentation / page and pageCmds
 #   
+#   expectAnswer can be set to ignore any commands 
+#   
+#   
 ##############################################
 ##############################################
 ### TODO
@@ -142,7 +145,7 @@ Nextion_Initialize($)
   $hash->{AttrFn}     = "Nextion_Attr";
   $hash->{AttrList}   = "initPage0:textField-long initPage1:textField-long initPage2:textField-long initPage3:textField-long initPage4:textField-long ".
                         "initPage5:textField-long initPage6:textField-long initPage7:textField-long initPage8:textField-long initPage9:textField-long ".
-                        "initCommands:textField-long hasSendMe:0,1 ".$readingFnAttributes;           
+                        "initCommands:textField-long hasSendMe:0,1 expectAnswer:1,0 ".$readingFnAttributes;           
 
 # Normal devices
   $hash->{DefFn}   = "Nextion_Define";
@@ -378,6 +381,8 @@ Nextion_SendSingleCommand($$$)
 {
   my ($hash,$msg,$answer) = @_;
   my $name = $hash->{NAME};
+
+  $answer = 0 if ( ! AttrVal($name,"expectAnswer",0) ); 
 
   # ??? handle answer
   my $err;
@@ -771,15 +776,21 @@ Nextion_DecodeFromIso($)
   <br><br>
   <ul>
     <li><code>hasSendMe &lt;0 or 1&gt;</code><br>Specify if the display definition on the Nextion display is using the "send me" checkbox to send current page on page changes. This will then change the reading currentPage accordingly
+    </li> 
 
     <li><code>initCommands &lt;series of commands&gt;</code><br>Display will be initialized with these commands when the connection to the device is established (or reconnected). Set logic for executing perl or getting readings can be used. Multiple commands will be separated by ;<br>
     Example<br>
     &nbsp;&nbsp;<code>t1.txt="Hallo";p1.val=1;</code>
+    </li> 
     
     <li><code>initPage1 &lt;series of commands&gt;</code> to <code>initPage9 &lt;series of commands&gt;</code><br>When the corresponding page number will be displayed the given commands will be sent to the display. See also initCommands.<br>
     Example<br>
     &nbsp;&nbsp;<code>t1.txt="Hallo";p1.val=1;</code>
-    
+    </li> 
+
+    <li><code>expectAnswer &lt;1 or 0&gt;</code><br>Specify if an answer from display is expected. If set to zero no answer is expected at any time on a command.
+    </li> 
+
   </ul>
 
   <br><br>

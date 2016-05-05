@@ -2485,7 +2485,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <code>define &lt;name&gt; TelegramBot  &lt;token&gt; </code>
     <br><br>
     Defines a TelegramBot device using the specified token perceived from botfather
-    <br><br>
+    <br>
 
     Example:
     <ul>
@@ -2498,11 +2498,6 @@ sub TelegramBot_BinaryFileWrite($$$) {
   <a name="TelegramBotset"></a>
   <b>Set</b>
   <ul>
-    <code>set &lt;name&gt; &lt;what&gt; [&lt;value&gt;]</code>
-    <br><br>
-    where &lt;what&gt; is one of
-
-  <br><br>
     <li><code>message|msg|send [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;text&gt;</code><br>Sends the given message to the given peer or if peer(s) is ommitted currently defined default peer user. Each peer given needs to be always prefixed with a '@'. Peers can be specified as contact ids, full names (with underscore instead of space), usernames (prefixed with another @) or chat names (also known as groups in telegram groups must be prefixed with #). Multiple peers are to be separated by space<br>
     Messages do not need to be quoted if containing spaces.<br>
     Examples:<br>
@@ -2519,7 +2514,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
           <dd> to send the message "Bye" to a contact or chat with the id "1234567". Chat ids might be negative and need to be specified with a leading hyphen (-). <br></dd>
       <dl>
     </li>
-    <li><codereply &lt;msgid&gt; [ @&lt;peer1&gt; ] &lt;text&gt;</code><br>Sends the given message as a reply to the msgid (number) given to the given peer or if peer is ommitted to the defined default peer user. Only a single peer can be specified. Beside the handling handling of the message as a reply to a message received earlier, the peer and message handling is otherwise identical to the msg command. 
+    <li><code>reply &lt;msgid&gt; [ @&lt;peer1&gt; ] &lt;text&gt;</code><br>Sends the given message as a reply to the msgid (number) given to the given peer or if peer is ommitted to the defined default peer user. Only a single peer can be specified. Beside the handling handling of the message as a reply to a message received earlier, the peer and message handling is otherwise identical to the msg command. 
     </li>
 
     <li><code>sendImage|image [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer(s) or if ommitted to the default peer. 
@@ -2532,7 +2527,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     </li>
     <li><code>sendVoice [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt;</code><br>Sends a voice message for playing directly in the browser to the given peer(s) or if ommitted to the default peer. Handling for files and peers is as specified above.
     </li>
-  <br><br>
+  <br>
     <li><code>replaceContacts &lt;text&gt;</code><br>Set the contacts newly from a string. Multiple contacts can be separated by a space. 
     Each contact needs to be specified as a triple of contact id, full name and user name as explained above. </li>
     <li><code>reset</code><br>Reset the internal state of the telegram bot. This is normally not needed, but can be used to reset the used URL, 
@@ -2541,6 +2536,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     If in doubt it is recommened to temporarily deactivate (delete) the cmdKeyword attribute before resetting.</li>
 
   </ul>
+
   <br><br>
 
   <a name="TelegramBotattr"></a>
@@ -2551,8 +2547,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>defaultPeerCopy &lt;1 (default) or 0&gt;</code><br>Copy all command results also to the defined defaultPeer. If set results are sent both to the requestor and the defaultPeer if they are different. 
     </li> 
 
-
-  <br><br>
+  <br>
     <li><code>cmdKeyword &lt;keyword&gt;</code><br>Specify a specific text that needs to be sent to make the rest of the message being executed as a command. 
       So if for example cmdKeyword is set to <code>ok fhem</code> then a message starting with this string will be executed as fhem command 
         (see also cmdTriggerOnly).<br>
@@ -2569,7 +2564,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
         Please also consider cmdRestrictedPeer for restricting access to this feature!<br>
     </li> 
 
-  <br><br>
+  <br>
     <li><code>cmdFavorites &lt;keyword&gt;</code><br>Specify a specific text that will trigger sending the list of defined favorites or executes a given favorite by number (the favorites are defined in attribute <code>favorites</code>).
     <br>
         Example: If this attribute is set to a value of <code>favorite</code> a message of <code>favorite</code> to the bot will return a list of defined favorite commands and their index number. In the same case the message <code>favorite &lt;n&gt;</code> (with n being a number) would execute the command that is the n-th command in the favorites list. The result of the command will be returned as in other command executions. 
@@ -2596,27 +2591,35 @@ sub TelegramBot_BinaryFileWrite($$$) {
     Meaning the full format for a single favorite is <code>/alias[description]=command</code> where the alias can be empty or <code>/alias=command</code> or just the <code>command</code>. In any case the command can be also prefixed with a '?'.
     </li> 
 
-
-  <br><br>
+  <br>
     <li><code>cmdRestrictedPeer &lt;peername(s)&gt;</code><br>Restrict the execution of commands only to messages sent from the given peername or multiple peernames
     (specified in the form of contact id, username or full name, multiple peers to be separated by a space). 
     A message with the cmd and sender is sent to the default peer in case of another user trying to sent messages<br>
     </li> 
-    <li><code>cmdTriggerOnly &lt;0 or 1&gt;</code><br>Restrict the execution of commands only to trigger command. If this attr is set (value 1), then only the name of the trigger even has to be given (i.e. without the preceding statement trigger). 
-          So if for example cmdKeyword is set to <code>ok fhem</code> and cmdTriggerOnly is set, then a message of <code>ok fhem someMacro</code> would execute the fhem command  <code>trigger someMacro</code>.
+    <li><code>allowUnknownContacts &lt;1 or 0&gt;</code><br>Allow new contacts to be added automatically (1 - Default) or restrict message reception only to known contacts and unknwown contacts will be ignored (0).
+    </li> 
+    <li><code>saveStateOnContactChange &lt;1 or 0&gt;</code><br>Allow statefile being written on every new contact found, ensures new contacts not being lost on any loss of statefile. Default is on (1).
     </li> 
     <li><code>cmdReturnEmptyResult &lt;1 or 0&gt;</code><br>Return empty (success) message for commands (default). Otherwise return messages are only sent if a result text or error message is the result of the command execution.
     </li> 
 
+    <li><code>allowedCommands &lt;list of command&gt;</code><br>Restrict the commands that can be executed through favorites and cmdKeyword to the listed commands (separated by space). Similar to the corresponding restriction in FHEMWEB. The allowedCommands will be set on the corresponding instance of an allowed device with the name "allowed_&lt;TelegrambotDeviceName&gt; and not on the telegramBotDevice! This allowed device is created and modified automatically.<br>
+    <b>ATTENTION: This is not a hardened secure blocking of command execution, there might be ways to break the restriction!</b>
+    </li> 
 
-  <br><br>
+    <li><code>cmdTriggerOnly &lt;0 or 1&gt;</code><br>Restrict the execution of commands only to trigger command. If this attr is set (value 1), then only the name of the trigger even has to be given (i.e. without the preceding statement trigger). 
+          So if for example cmdKeyword is set to <code>ok fhem</code> and cmdTriggerOnly is set, then a message of <code>ok fhem someMacro</code> would execute the fhem command  <code>trigger someMacro</code>.<br>
+    Note: This is deprecated and will be removed in one of the next releases
+    </li> 
+
+
+  <br>
     <li><code>pollingTimeout &lt;number&gt;</code><br>Used to specify the timeout for long polling of updates. A value of 0 is switching off any long poll. 
       In this case no updates are automatically received and therefore also no messages can be received. It is recommended to set the pollingtimeout to a reasonable time between 15 (not too short) and 60 (to avoid broken connections). 
     </li> 
     <li><code>pollingVerbose &lt;0_None 1_Digest 2_Log&gt;</code><br>Used to limit the amount of logging for errors of the polling connection. These errors are happening regularly and usually are not consider critical, since the polling restarts automatically and pauses in case of excess errors. With the default setting "1_Digest" once a day the number of errors on the last day is logged (log level 3). With "2_Log" every error is logged with log level 2. With the setting "0_None" no errors are logged. In any case the count of errors during the last day and the last error is stored in the readings <code>PollingErrCount</code> and <code>PollingLastError</code> </li> 
-
     
-  <br><br>
+  <br>
     <li><code>maxFileSize &lt;number of bytes&gt;</code><br>Maximum file size in bytes for transfer of files (images). If not set the internal limit is specified as 10MB (10485760B).
     </li> 
     <li><code>maxReturnSize &lt;number of chars&gt;</code><br>Maximum size of command result returned as a text message including header (Default is unlimited). The internal shown on the device is limited to 1000 chars.
@@ -2624,18 +2627,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>maxRetries &lt;0,1,2,3,4,5&gt;</code><br>Specify the number of retries for sending a message in case of a failure. The first retry is sent after 10sec, the second after 100, then after 1000s (~16min), then after 10000s (~2.5h), then after approximately a day. Setting the value to 0 (default) will result in no retries.
     </li> 
 
-    <br><br>
-    <li><code>saveStateOnContactChange &lt;1 or 0&gt;</code><br>Allow statefile being written on every new contact found, ensures new contacts not being lost on any loss of statefile. Default is on (1).
-    </li> 
-
-    <li><code>allowUnknownContacts &lt;1 or 0&gt;</code><br>Allow new contacts to be added automatically (1 - Default) or restrict message reception only to known contacts and unknwown contacts will be ignored (0).
-    </li> 
-
-    <li><code>allowedCommands &lt;list of command&gt;</code><br>Restrict the commands that can be executed through favorites and cmdKeyword to the listed commands (separated by space). Similar to the corresponding restriction in FHEMWEB. The allowedCommands will be set on the corresponding instance of an allowed device with the name "allowed_&lt;TelegrambotDeviceName&gt; and not on the telegramBotDevice! This allowed device is created and modified automatically.<br>
-    <b>ATTENTION: This is not a hardened secure blocking of command execution, there might be ways to break the restriction!</b>
-    </li> 
-
-  <br><br>
+  <br>
     <li><code>textResponseConfirm &lt;TelegramBot FHEM : $peer\n Bestätigung \n&gt;</code><br>Text to be sent when a confirmation for a command is requested. Default is shown here and $peer will be replaced with the actual contact full name if added.
     </li> 
     <li><code>textResponseFavorites &lt;TelegramBot FHEM : $peer\n Favoriten \n&gt;</code><br>Text to be sent as starter for the list of favorites. Default is shown here and $peer will be replaced with the actual contact full name if added.
@@ -2656,35 +2648,29 @@ sub TelegramBot_BinaryFileWrite($$$) {
   <ul>
     <li>Contacts &lt;text&gt;<br>The current list of contacts known to the telegram bot. 
     Each contact is specified as a triple in the same form as described above. Multiple contacts separated by a space. </li> 
-
-  <br><br>
+  <br>
     <li>msgId &lt;text&gt;<br>The id of the last received message is stored in this reading. 
     For secret chats a value of -1 will be given, since the msgIds of secret messages are not part of the consecutive numbering</li> 
     <li>msgPeer &lt;text&gt;<br>The sender name of the last received message (either full name or if not available @username)</li> 
     <li>msgPeerId &lt;text&gt;<br>The sender id of the last received message</li> 
     <li>msgText &lt;text&gt;<br>The last received message text is stored in this reading.</li> 
     <li>msgFileId &lt;fileid&gt;<br>The last received message file_id (Audio, Photo, Video, Voice or other Document) is stored in this reading.</li> 
-
-    msgFileId
-  <br><br>
-
+  <br>
     <li>prevMsgId &lt;text&gt;<br>The id of the SECOND last received message is stored in this reading</li> 
     <li>prevMsgPeer &lt;text&gt;<br>The sender name of the SECOND last received message (either full name or if not available @username)</li> 
     <li>prevMsgPeerId &lt;text&gt;<br>The sender id of the SECOND last received message</li> 
     <li>prevMsgText &lt;text&gt;<br>The SECOND last received message text is stored in this reading</li> 
     <li>prevMsgFileId &lt;fileid&gt;<br>The SECOND last received file id is stored in this reading</li> 
-
-  <br><br>
+  <br><b>Note: All prev... Readings are not triggering events</b><br>
+  <br>
 
     <li>sentMsgId &lt;text&gt;<br>The id of the last sent message is stored in this reading, if not succesful the id is empty</li> 
     <li>sentMsgResult &lt;text&gt;<br>The result of the send process for the last message is contained in this reading - SUCCESS if succesful</li> 
 
-  <br>All prev... Readings are not triggering events<br>
-
-  <br><br>
+  <br>
     <li>StoredCommands &lt;text&gt;<br>A list of the last commands executed through TelegramBot. Maximum 10 commands are stored.</li> 
 
-  <br><br>
+  <br>
     <li>PollingErrCount &lt;number&gt;<br>Show the number of polling errors during the last day. The number is reset at the beginning of the next day.</li> 
     <li>PollingLastError &lt;number&gt;<br>Last error message that occured during a polling update call</li> 
     

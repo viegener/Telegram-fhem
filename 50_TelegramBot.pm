@@ -2629,7 +2629,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     </li> 
 
     <li><code>allowedCommands &lt;list of command&gt;</code><br>Restrict the commands that can be executed through favorites and cmdKeyword to the listed commands (separated by space). Similar to the corresponding restriction in FHEMWEB. The allowedCommands will be set on the corresponding instance of an allowed device with the name "allowed_&lt;TelegrambotDeviceName&gt;. This allowed device is created and modified automatically.<br>
-    <b>ATTENTION: This is not a secure and hardened block of commands, there might be ways to break the restriction!</b>
+    <b>ATTENTION: This is not a hardened secure blocking of command execution, there might be ways to break the restriction!</b>
     </li> 
 
   <br><br>

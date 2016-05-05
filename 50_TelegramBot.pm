@@ -131,7 +131,7 @@
 #   TEMP: SNAME in hash is needed for allowed (SNAME reflects if the TCPServer device name) 
 #   Remove unnecessary attribute setters
 #   added allowedCommands and doc (with modification of allowed_... device)
-#   
+#   allowedCommands only modified on the allowed_... device
 #   
 #   
 ##############################################################################
@@ -637,10 +637,13 @@ sub TelegramBot_Attr(@) {
 
     } elsif ($aName eq 'allowedCommands') {
       my $allowedName = "allowed_$name";
+      my $exists = ($defs{$allowedName} ? 1 : 0); 
       AnalyzeCommand(undef, "defmod $allowedName allowed");
       AnalyzeCommand(undef, "attr $allowedName validFor $name");
       AnalyzeCommand(undef, "attr $allowedName $aName ".$aVal);
-      Log3 $name, 3, "TelegramBot_Attr $name: ".(($defs{$allowedName}) ? "modified":"created")." $allowedName with commands :$aVal:";
+      Log3 $name, 3, "TelegramBot_Attr $name: ".($exists ? "modified":"created")." $allowedName with commands :$aVal:";
+      # allowedCommands only set on the corresponding allowed_device
+      return "\"TelegramBot_Attr: \" $aName ".($exists ? "modified":"created")." $allowedName with commands :$aVal:"
 
     }
 
@@ -2628,7 +2631,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>allowUnknownContacts &lt;1 or 0&gt;</code><br>Allow new contacts to be added automatically (1 - Default) or restrict message reception only to known contacts and unknwown contacts will be ignored (0).
     </li> 
 
-    <li><code>allowedCommands &lt;list of command&gt;</code><br>Restrict the commands that can be executed through favorites and cmdKeyword to the listed commands (separated by space). Similar to the corresponding restriction in FHEMWEB. The allowedCommands will be set on the corresponding instance of an allowed device with the name "allowed_&lt;TelegrambotDeviceName&gt;. This allowed device is created and modified automatically.<br>
+    <li><code>allowedCommands &lt;list of command&gt;</code><br>Restrict the commands that can be executed through favorites and cmdKeyword to the listed commands (separated by space). Similar to the corresponding restriction in FHEMWEB. The allowedCommands will be set on the corresponding instance of an allowed device with the name "allowed_&lt;TelegrambotDeviceName&gt; and not on the telegramBotDevice! This allowed device is created and modified automatically.<br>
     <b>ATTENTION: This is not a hardened secure blocking of command execution, there might be ways to break the restriction!</b>
     </li> 
 

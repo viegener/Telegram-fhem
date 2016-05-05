@@ -128,10 +128,15 @@
 #   Reply keyboards also for sendVoice/sendDocument ect
 #   reply msg id in sendit - new set cmd reply
 #   Fix: reset also removes retry timer 
+#   TEMP: SNAME in hash is needed for allowed (SNAME reflects if the TCPServer device name) 
+#   Remove unnecessary attribute setters
+#   added allowedCommands and doc (with modification of allowed_... device)
+#   
+#   
 #   
 ##############################################################################
 # TASKS 
-#
+#   
 #   Look for solution on space at beginning of line --> checked that data is sent correctly to telegram but does not end up in the message
 #
 #   allow keyboards in the device api
@@ -253,7 +258,7 @@ sub TelegramBot_Initialize($) {
   $hash->{SetFn}      = "TelegramBot_Set";
   $hash->{AttrFn}     = "TelegramBot_Attr";
   $hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer ". "cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None ".
-  "allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCommands:textField ". 
+  "allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCommands:textField allowedCommands ". 
   "textResponseFavorites:textField textResponseResult:textField textResponseUnauthorized:textField ".
   " maxRetries:0,1,2,3,4,5 ".$readingFnAttributes;           
 }
@@ -577,19 +582,7 @@ sub TelegramBot_Attr(@) {
   # $name is device name
   # aName and aVal are Attribute name and value
   if ($cmd eq "set") {
-    if ($aName eq 'defaultPeer') {
-      $attr{$name}{'defaultPeer'} = $aVal;
-
-    } elsif ($aName eq 'cmdKeyword') {
-      $attr{$name}{'cmdKeyword'} = $aVal;
-
-    } elsif ($aName eq 'cmdSentCommands') {
-      $attr{$name}{'cmdSentCommands'} = $aVal;
-
-    } elsif ($aName eq 'cmdFavorites') {
-      $attr{$name}{'cmdFavorites'} = $aVal;
-
-    } elsif ($aName eq 'favorites') {
+    if ($aName eq 'favorites') {
       $attr{$name}{'favorites'} = $aVal;
 
       # Empty current alias list in hash
@@ -617,7 +610,6 @@ sub TelegramBot_Attr(@) {
 
     } elsif ($aName eq 'cmdRestrictedPeer') {
       $aVal =~ s/^\s+|\s+$//g;
-      $attr{$name}{'cmdRestrictedPeer'} = $aVal;
       
     } elsif ( ($aName eq 'defaultPeerCopy') ||
               ($aName eq 'saveStateOnContactChange') ||
@@ -626,25 +618,13 @@ sub TelegramBot_Attr(@) {
               ($aName eq 'allowUnknownContacts') ) {
       $aVal = ($aVal eq "1")? "1": "0";
 
-    } elsif ($aName eq 'maxFileSize') {
-      if ( $aVal !~ /^[[:digit:]]+$/ ) {
-        return "\"TelegramBot_Attr: \" maxFileSize needs to be given in digits only"; 
-      }
-
-    } elsif ($aName eq 'maxReturnSize') {
-      if ( $aVal !~ /^[[:digit:]]+$/ ) {
-        return "\"TelegramBot_Attr: \" maxReturnSize needs to be given in digits only"; 
-      }
-
-    } elsif ($aName eq 'maxRetries') {
-      if ( $aVal !~ /^[[:digit:]]$/ ) {
-        return "\"TelegramBot_Attr: \" maxRetries needs to be given in digits only"; 
-      }
+    } elsif ( ($aName eq 'maxFileSize') ||
+              ($aName eq 'maxReturnSize') ||
+              ($aName eq 'maxRetries') ) {
+      return "\"TelegramBot_Attr: \" $aName needs to be given in digits only" if ( $aVal !~ /^[[:digit:]]+$/ );
 
     } elsif ($aName eq 'pollingTimeout') {
-      if ( $aVal !~ /^[[:digit:]]+$/ ) {
-        return "\"TelegramBot_Attr: \" pollingTimeout needs to be given in digits only"; 
-      }
+      return "\"TelegramBot_Attr: \" $aName needs to be given in digits only" if ( $aVal !~ /^[[:digit:]]+$/ );
       # let all existing methods run into block
       RemoveInternalTimer($hash);
       $hash->{POLLING} = -1;
@@ -654,7 +634,14 @@ sub TelegramBot_Attr(@) {
 
     } elsif ($aName eq 'pollingVerbose') {
       return "\"TelegramBot_Attr: \" Incorrect value given for pollingVerbose" if ( $aVal !~ /^((1_Digest)|(2_Log)|(0_None))$/ );
-      $attr{$name}{'pollingVerbose'} = $aVal;
+
+    } elsif ($aName eq 'allowedCommands') {
+      my $allowedName = "allowed_$name";
+      AnalyzeCommand(undef, "defmod $allowedName allowed");
+      AnalyzeCommand(undef, "attr $allowedName validFor $name");
+      AnalyzeCommand(undef, "attr $allowedName $aName ".$aVal);
+      Log3 $name, 3, "TelegramBot_Attr $name: ".(($defs{$allowedName}) ? "modified":"created")." $allowedName with commands :$aVal:";
+
     }
 
     $_[3] = $aVal;
@@ -935,7 +922,7 @@ sub TelegramBot_ExecuteCommand($$$) {
   my $isMediaStream = 0;
   
   if ( ! defined( $ret ) ) {
-    $ret = AnalyzeCommand( undef, $cmd, "" );
+    $ret = AnalyzeCommand( $hash, $cmd );
 
     # Check for image/doc/audio stream in return (-1 image
     ( $isMediaStream ) = TelegramBot_IdentifyStream( $hash, $ret ) if ( defined( $ret ) );
@@ -1929,6 +1916,9 @@ sub TelegramBot_Setup($) {
   $hash->{STATE} = "Undefined";
 
   $hash->{POLLING} = -1;
+  
+  # Temp?? SNAME is required for allowed (normally set in TCPServerUtils)
+  $hash->{SNAME} = $name;
 
   # Ensure queueing is not happening
   delete( $hash->{sentQueue} );
@@ -2307,7 +2297,7 @@ sub TelegramBot_checkAllowedPeer($$$) {
   # send unauthorized to defaultpeer
   my $defpeer = AttrVal($name,'defaultPeer',undef);
   if ( defined( $defpeer ) ) {
-    AnalyzeCommand( undef, "set $name message $ret", "" );
+    AnalyzeCommand( undef, "set $name message $ret" );
   }
  
   return 0;
@@ -2636,6 +2626,10 @@ sub TelegramBot_BinaryFileWrite($$$) {
     </li> 
 
     <li><code>allowUnknownContacts &lt;1 or 0&gt;</code><br>Allow new contacts to be added automatically (1 - Default) or restrict message reception only to known contacts and unknwown contacts will be ignored (0).
+    </li> 
+
+    <li><code>allowedCommands &lt;list of command&gt;</code><br>Restrict the commands that can be executed through favorites and cmdKeyword to the listed commands (separated by space). Similar to the corresponding restriction in FHEMWEB. The allowedCommands will be set on the corresponding instance of an allowed device with the name "allowed_&lt;TelegrambotDeviceName&gt;. This allowed device is created and modified automatically.<br>
+    <b>ATTENTION: This is not a secure and hardened block of commands, there might be ways to break the restriction!</b>
     </li> 
 
   <br><br>

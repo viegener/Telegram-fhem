@@ -132,6 +132,7 @@
 #   Remove unnecessary attribute setters
 #   added allowedCommands and doc (with modification of allowed_... device)
 #   allowedCommands only modified on the allowed_... device
+# 1.7 2016-05-05 reply set command / allowedCommands as restriction
 #   
 #   
 ##############################################################################

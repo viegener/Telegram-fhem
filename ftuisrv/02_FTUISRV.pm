@@ -36,7 +36,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,43110.0.html
 #
-# $Id: 02_FTUISRV.pm 11311 2016-04-25 18:36:16Z viegener $
+# $Id: 50_TelegramBot.pm 11090 2016-03-19 21:38:31Z viegener $
 #
 ##############################################################################
 # 0.0 Initial version FTUIHTTPSRV
@@ -60,11 +60,15 @@
 #   add documentation for device readings (set logic)
 #   allow reading values also in inc tag
 # 0.3 - 2016-04-25 - Version for publication in SVN
-#
+#   
+#   Allow replacements setp by step in headerline --> ?> must be escaped to ?\>
+#   added if else endif for segments ftui-if=( <expr> ) 
+#   
 ################################################################
 #TODO:
 #
-# Allow if for separate sections
+# add loopinc for looping include multiple times forinc=<key> ( <expr> ) "<path>" <keyvalues> 
+# 
 # log count of replacements
 #
 # deepcopy only if new keys found
@@ -99,16 +103,21 @@ my $FTUISRV_ftuimatch_keysegment = '^\s*([^=\s]+)(="([^"]*)")?\s*';
 
 my $FTUISRV_ftuimatch_keygeneric = '<\?ftui-key=([^\s]+)\s*\?>';
 
+my $FTUISRV_ftuimatch_if_het = '^(.*?)<\?ftui-if=\((.*?)\)\s*\?>(.*)$';
+
+my $FTUISRV_ftuimatch_else_ht = '^(.*?)<\?ftui-else\s*\?>(.*)$';
+my $FTUISRV_ftuimatch_endif_ht = '^(.*?)<\?ftui-endif\s*\?>(.*)$';
+
+# ???
+my $FTUISRV_ftuimatch_incloop_nefk = '<\?ftui-incloop=([^\s]+)\s+\((.*?)\)\s*"([^"\?]+)"\s+([^\?]*)\?>';
+
+
 #########################
 # FORWARD DECLARATIONS
 
 sub FTUISRV_handletemplatefile( $$$$ );
 sub FTUISRV_validateHtml( $$$$ );
-
-
-
-
-
+sub FTUISRV_handleIf( $$$ );
 
 
 #########################
@@ -606,6 +615,105 @@ sub popTag( $$ ) {
 
 ##################
 #
+# handle a ftui template string
+#   name of the current ftui device
+#   filename full fledged filename to be handled
+#   string with content to be replaced
+#   parhash reference to a hash with the current key-values
+# returns
+#   contents
+sub FTUISRV_replaceKeys( $$$$ ) {
+
+  my ($name, $filename, $content, $parhash) = @_;
+
+  # make replacements of keys from hash
+  while ( $content =~ /<\?ftui-key=([^\s]+)\s*\?>/g ) {
+    my $key = $1;
+    
+    my $value = $parhash->{$key};
+    if ( ! defined( $value ) ) {
+      Log3 $name, 4, "$name: unmatched key in file :$filename:    key :$key:";
+      $value = "";
+    }
+    Log3 $name, 4, "$name: replace key in file :$filename:    key :$key:  with :$value:";
+    $content =~ s/<\?ftui-key=$key\s*\?>/$value/sg;
+  }
+
+#    while ( $content =~ /$FTUISRV_ftuimatch_keygeneric/s ) {
+  while ( $content =~ /<\?ftui-key=([^\s]+)\s*\?>/g ) {
+    Log3 $name, 4, "$name: unmatched key in file :$filename:    key :$1:";
+  }
+  
+  return $content;
+}
+
+
+
+##################
+#
+# handle a ftui template for ifs
+#   name of the current ftui device
+#   filename full fledged filename to be handled
+#   string with content to be replaced
+# returns
+#   contents
+sub FTUISRV_handleIf( $$$ ) {
+
+  my ($name, $filename, $content) = @_;
+
+  # Look for if expression
+  my $done = "";
+
+  return $content if ( $content !~ /$FTUISRV_ftuimatch_if_het/s );
+
+  $done .= $1;
+  my $expr = $2;
+  my $rest = $3;
+
+  # handle rest to check recursively for further ifs
+  $rest = FTUISRV_handleIf( $name, $filename, $rest );
+  
+  # identify then and else parts
+  my $then;
+  my $else = "";
+  if ( $rest =~ /$FTUISRV_ftuimatch_else_ht/s ) {
+    $then = $1;
+    $rest = $2;
+  }
+
+  if ( $rest =~ /$FTUISRV_ftuimatch_endif_ht/s ) {
+    $else = $1;
+    $rest = $2;
+    if ( ! defined($then) ) {
+      $then = $else;
+      $else = "";
+    }
+  }
+  
+  # check expression
+  my %dummy;
+  my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $expr ) );
+  if ( $err ) {
+    Log3 $name, 1, "$name: FTUISRV_handleIf failed on ReplaceSetmagic with :$err: on header :$expr:";
+  } else {
+    Log3 $name, 4, "$name: FTUISRV_handleIf expr before setmagic :".$expr.":";
+    $expr = join(" ", @a);
+    # need to trim result of replacesetmagic -> multiple elements some space
+    $expr =~ s/^\s+|\s+$//g; 
+    Log3 $name, 4, "$name: FTUISRV_handleIf expr elements :".scalar(@a).":";
+    Log3 $name, 4, "$name: FTUISRV_handleIf expr after setmagic :".$expr.":";
+  }
+
+  # put then/else depending on expr
+  $done .= ( ( $expr ) ? $then : $else );
+  $done .= $rest;
+
+  return $done;
+}
+
+
+##################
+#
 # handle a ftui template file
 #   name of the current ftui device
 #   filename full fledged filename to be handled
@@ -651,14 +759,6 @@ sub FTUISRV_handletemplatefile( $$$$ ) {
       # replace [device:reading] or even perl expressions with replaceSetMagic 
       my %dummy;
       Log3 $name, 4, "$name: FTUISRV_handletemplatefile ReplaceSetmagic HEADER before :$hvalues:";
-      my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $hvalues ) );
-      
-      if ( $err ) {
-        Log3 $name, 1, "$name: FTUISRV_handletemplatefile failed on ReplaceSetmagic with :$err: on header :$hvalues:";
-      } else {
-        $hvalues = join(" ", @a);
-        Log3 $name, 4, "$name: FTUISRV_handletemplatefile ReplaceSetmagic HEADER after :".$hvalues.":";
-      }
 
       # grab keys for default values from header
       while ( $hvalues =~ /$FTUISRV_ftuimatch_keysegment/s ) {
@@ -667,6 +767,21 @@ sub FTUISRV_handletemplatefile( $$$$ ) {
       
         if ( defined($sval) ) {
           Log3 $name, 4, "$name: default value for key :$skey: = :$sval: ";
+
+          # replace escaped > (i.e. \>) by > for key replacement
+          $sval =~ s/\?\\>/\?>/g;
+          
+          $sval = FTUISRV_replaceKeys( $name, $filename." header", $sval, $parhash );
+          Log3 $name, 4, "$name: FTUISRV_handletemplatefile default value for key :$skey: after replace :".$sval.":";
+
+          my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $sval ) );
+          if ( $err ) {
+            Log3 $name, 1, "$name: FTUISRV_handletemplatefile failed on ReplaceSetmagic with :$err: on header :$sval:";
+          } else {
+            $sval = join(" ", @a);
+            Log3 $name, 4, "$name: FTUISRV_handletemplatefile default value for key :$skey: after setmagic :".$sval.":";
+          }
+
           $parhash->{$skey} = $sval if ( ! defined($parhash->{$skey} ) )
         }
         $hvalues =~ s/$FTUISRV_ftuimatch_keysegment//s;
@@ -677,23 +792,13 @@ sub FTUISRV_handletemplatefile( $$$$ ) {
       $content =~ s/$FTUISRV_ftuimatch_header//s
     }
 
-    # make replacements of keys from hash
-    while ( $content =~ /<\?ftui-key=([^\s]+)\s*\?>/g ) {
-      my $key = $1;
-      
-      my $value = $parhash->{$key};
-      if ( ! defined( $value ) ) {
-        Log3 $name, 4, "$name: unmatched key in file :$filename:    key :$1:";
-        $value = "";
-      }
-      $content =~ s/<\?ftui-key=$key\s*\?>/$value/sg;
-    }
+    # replace the keys first before loop/if
+    $content = FTUISRV_replaceKeys( $name, $filename, $content, $parhash );
 
-#    while ( $content =~ /$FTUISRV_ftuimatch_keygeneric/s ) {
-    while ( $content =~ /<\?ftui-key=([^\s]+)\s*\?>/g ) {
-      Log3 $name, 4, "$name: unmatched key in file :$filename:    key :$1:";
-    }
+    # eval if else endif expressions
+    $content = FTUISRV_handleIf( $name, $filename, $content );
 
+    # Handle includes
     Log3 $name, 4, "$name: look for includes :$filename:";
 
     while ( $content =~ /$FTUISRV_ftuimatch_inc/s ) {

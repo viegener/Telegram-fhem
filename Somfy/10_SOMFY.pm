@@ -160,6 +160,7 @@ my %translations = (
 sub SOMFY_CalcCurrentPos($$$$);
 
 
+
 ######################################################
 ######################################################
 
@@ -319,6 +320,11 @@ sub SOMFY_SendCommand($@)
 	my $name = $hash->{NAME};
 	my $numberOfArgs  = int(@args);
 
+	my $io = $hash->{IODev};
+
+	return "IODev unsupported" if (!defined($hash->{IODev}) || 
+		(my $ioType = $io->{TYPE}) !~ m/^(CUL|SIGNALduino)$/);
+
 	Log3($name,4,"SOMFY_sendCommand: $name -> cmd :$cmd: ");
 
   # custom control needs 2 digit hex code
@@ -334,43 +340,42 @@ sub SOMFY_SendCommand($@)
 		  . join( " ", sort keys %somfy_c2b );
 	}
 
-	my $io = $hash->{IODev};
-
-	## Do we need to change RFMode to SlowRF?
-	if (   defined( $attr{ $name } )
-		&& defined( $attr{ $name }{"switch_rfmode"} ) )
-	{
-		if ( $attr{ $name }{"switch_rfmode"} eq "1" )
-		{    # do we need to change RFMode of IODev
-			my $ret =
-			  CallFn( $io->{NAME}, "AttrFn", "set",
-				( $io->{NAME}, "rfmode", "SlowRF" ) );
+	# CUL specifics
+	if ($ioType eq "CUL") {
+		## Do we need to change RFMode to SlowRF?
+		if (   defined( $attr{ $name } )
+			&& defined( $attr{ $name }{"switch_rfmode"} ) )
+		{
+			if ( $attr{ $name }{"switch_rfmode"} eq "1" )
+			{    # do we need to change RFMode of IODev
+				my $ret =
+				  CallFn( $io->{NAME}, "AttrFn", "set",
+					( $io->{NAME}, "rfmode", "SlowRF" ) );
+			}
+		}
+	
+		## Do we need to change symbol length?
+		if (   defined( $attr{ $name } )
+			&& defined( $attr{ $name }{"symbol-length"} ) )
+		{
+			$message = "t" . $attr{ $name }{"symbol-length"};
+			IOWrite( $hash, "Y", $message );
+			Log GetLogLevel( $name, 4 ),
+			  "SOMFY set symbol-length: $message for $io->{NAME}";
+		}
+	
+	
+		## Do we need to change frame repetition?
+		if ( defined( $attr{ $name } )
+			&& defined( $attr{ $name }{"repetition"} ) )
+		{
+			$message = "r" . $attr{ $name }{"repetition"};
+			IOWrite( $hash, "Y", $message );
+			Log GetLogLevel( $name, 4 ),
+			  "SOMFY set repetition: $message for $io->{NAME}";
 		}
 	}
-
-	## Do we need to change symbol length?
-	if (   defined( $attr{ $name } )
-		&& defined( $attr{ $name }{"symbol-length"} ) )
-	{
-		$message = "t" . $attr{ $name }{"symbol-length"};
-		IOWrite( $hash, "Y", $message );
-		Log GetLogLevel( $name, 4 ),
-		  "SOMFY set symbol-length: $message for $io->{NAME}";
-	}
-
-
-	## Do we need to change frame repetition?
-	if ( defined( $attr{ $name } )
-		&& defined( $attr{ $name }{"repetition"} ) )
-	{
-		$message = "r" . $attr{ $name }{"repetition"};
-		IOWrite( $hash, "Y", $message );
-		Log GetLogLevel( $name, 4 ),
-		  "SOMFY set repetition: $message for $io->{NAME}";
-	}
-
-	my $value = $name ." ". join(" ", @args);
-
+	
 	# convert old attribute values to READINGs
 	my $timestamp = TimeNow();
 	if(defined($attr{$name}{"enc-key"} && defined($attr{$name}{"rolling-code"}))) {
@@ -401,12 +406,23 @@ sub SOMFY_SendCommand($@)
 	  . uc( $hash->{ADDRESS} );
 
 	## Log that we are going to switch Somfy
-	Log GetLogLevel( $name, 4 ), "SOMFY set $value: $message";
-	( undef, $value ) = split( " ", $value, 2 );    # Not interested in the name...
+	Log GetLogLevel( $name, 4 ), "SOMFY set $name " . join(" ", @args) . ": $message";
 
 	## Send Message to IODev using IOWrite
-	Log3($name,5,"SOMFY_sendCommand: $name -> message :$message: ");
-	IOWrite( $hash, "Y", $message );
+	if ($ioType eq "CUL") {
+		Log3($name,5,"SOMFY_sendCommand: $name -> message :$message: ");
+		IOWrite( $hash, "Y", $message );
+	} elsif ($ioType eq "SIGNALduino") {
+		my $SignalRepeats = AttrVal($name,'repetition', '6');
+		# swap address, remove leading s
+		my $decData = substr($message, 1, 8) . substr($message, 13, 2) . substr($message, 11, 2) . substr($message, 9, 2);
+		
+		my $check = SOMFY_RTS_Check($name, $decData);
+		my $encData = SOMFY_RTS_Crypt("e", $name, substr($decData, 0, 3) . $check . substr($decData, 4));
+		$message = 'P43#' . $encData . '#R' . $SignalRepeats;
+		#Log3 $hash, 4, "$hash->{IODev}->{NAME} SOMFY_sendCommand: $name -> message :$message: ";
+		IOWrite($hash, 'sendMsg', $message);
+	}
 
 	# increment encryption key and rolling code
 	my $enc_key_increment      = hex( $enckey );
@@ -419,38 +435,41 @@ sub SOMFY_SendCommand($@)
 	setReadingsVal($hash, "enc_key", $new_enc_key, $timestamp);
 	setReadingsVal($hash, "rolling_code", $new_rolling_code, $timestamp);
 
-	## Do we need to change symbol length back?
-	if (   defined( $attr{ $name } )
-		&& defined( $attr{ $name }{"symbol-length"} ) )
-	{
-		$message = "t" . $somfy_defsymbolwidth;
-		IOWrite( $hash, "Y", $message );
-		Log GetLogLevel( $name, 4 ),
-		  "SOMFY set symbol-length back: $message for $io->{NAME}";
-	}
-
-	## Do we need to change repetition back?
-	if (   defined( $attr{ $name } )
-		&& defined( $attr{ $name }{"repetition"} ) )
-	{
-		$message = "r" . $somfy_defrepetition;
-		IOWrite( $hash, "Y", $message );
-		Log GetLogLevel( $name, 4 ),
-		  "SOMFY set repetition back: $message for $io->{NAME}";
-	}
-
-	## Do we need to change RFMode back to HomeMatic??
-	if (   defined( $attr{ $name } )
-		&& defined( $attr{ $name }{"switch_rfmode"} ) )
-	{
-		if ( $attr{ $name }{"switch_rfmode"} eq "1" )
-		{    # do we need to change RFMode of IODev?
-			my $ret =
-			  CallFn( $io->{NAME}, "AttrFn", "set",
-				( $io->{NAME}, "rfmode", "HomeMatic" ) );
+	# CUL specifics
+	if ($ioType eq "CUL") {
+		## Do we need to change symbol length back?
+		if (   defined( $attr{ $name } )
+			&& defined( $attr{ $name }{"symbol-length"} ) )
+		{
+			$message = "t" . $somfy_defsymbolwidth;
+			IOWrite( $hash, "Y", $message );
+			Log GetLogLevel( $name, 4 ),
+			  "SOMFY set symbol-length back: $message for $io->{NAME}";
+		}
+	
+		## Do we need to change repetition back?
+		if (   defined( $attr{ $name } )
+			&& defined( $attr{ $name }{"repetition"} ) )
+		{
+			$message = "r" . $somfy_defrepetition;
+			IOWrite( $hash, "Y", $message );
+			Log GetLogLevel( $name, 4 ),
+			  "SOMFY set repetition back: $message for $io->{NAME}";
+		}
+	
+		## Do we need to change RFMode back to HomeMatic??
+		if (   defined( $attr{ $name } )
+			&& defined( $attr{ $name }{"switch_rfmode"} ) )
+		{
+			if ( $attr{ $name }{"switch_rfmode"} eq "1" )
+			{    # do we need to change RFMode of IODev?
+				my $ret =
+				  CallFn( $io->{NAME}, "AttrFn", "set",
+					( $io->{NAME}, "rfmode", "HomeMatic" ) );
+			}
 		}
 	}
-
+	
 	##########################
 	# Look for all devices with the same address, and set state, enc-key, rolling-code and timestamp
 	my $code = "$hash->{ADDRESS}";
@@ -463,6 +482,7 @@ sub SOMFY_SendCommand($@)
 		$lh->{READINGS}{rolling_code}{TIME} = $tn;
 		$lh->{READINGS}{rolling_code}{VAL}  = $new_rolling_code;
 	}
+	
 	return $ret;
 } # end sub SOMFY_SendCommand
 
@@ -495,7 +515,24 @@ sub SOMFY_Translate($) {
 #############################
 sub SOMFY_Parse($$) {
 	my ($hash, $msg) = @_;
+	my $name = $hash->{NAME};
 
+	return "IODev unsupported" if ((my $ioType = $hash->{TYPE}) !~ m/^(CUL|SIGNALduino)$/);
+
+	# preprocessing if IODev is SIGNALduino	
+	if ($ioType eq "SIGNALduino") {
+		my $encData = substr($msg, 2);
+		return "Somfy RTS message format error!" if ($encData !~ m/A[0-9A-F]{13}/);
+	
+		my $decData = SOMFY_RTS_Crypt("d", $name, $encData);
+		my $check = SOMFY_RTS_Check($name, $decData);
+		
+		return "Somfy RTS checksum error!" if ($check ne substr($decData, 3, 1));
+		
+		Log3 $name, 4, "$name: Somfy RTS preprocessing check: $check enc: $encData dec: $decData";
+		$msg = substr($msg, 0, 2) . $decData;
+	}
+	
 	# Msg format:
 	# Ys AB 2C 004B 010010
 	# address needs bytes 1 and 3 swapped
@@ -962,8 +999,46 @@ sub SOMFY_InternalSet($@) {
 ###
 ######################################################
 
+#############################
+sub SOMFY_RTS_Crypt($$$)
+{
+	my ($operation, $name, $data) = @_;
+	
+	my $res = substr($data, 0, 2);
+	my $ref = ($operation eq "e" ? \$res : \$data);
+	
+	for (my $idx=1; $idx < 7; $idx++)
+	{
+		my $high = hex(substr($data, $idx * 2, 2));
+		my $low = hex(substr(${$ref}, ($idx - 1) * 2, 2));
+		
+		my $val = $high ^ $low;
+		$res .= sprintf("%02X", $val);
+	}
 
-###################################
+	return $res;	
+}
+
+#############################
+sub SOMFY_RTS_Check($$)
+{
+	my ($name, $data) = @_;
+	
+	my $checkSum = 0;
+	for (my $idx=0; $idx < 7; $idx++)
+	{
+		my $val = hex(substr($data, $idx * 2, 2));
+		$val &= 0xF0 if ($idx == 1);
+		$checkSum = $checkSum ^ $val ^ ($val >> 4);
+		##Log3 $name, 4, "$name: Somfy RTS check: " . sprintf("%02X, %02X", $val, $checkSum); 
+	}
+
+	$checkSum &= hex("0x0F");
+	
+	return sprintf("%X", $checkSum);	
+}
+
+#############################
 sub SOMFY_RoundInternal($) {
 	my ($v) = @_;
 	return sprintf("%d", ($v + ($somfy_posAccuracy/2)) / $somfy_posAccuracy) * $somfy_posAccuracy;
@@ -1215,7 +1290,6 @@ sub SOMFY_CalcCurrentPos($$$$) {
 
 =pod
 =begin html
-
 <a name="SOMFY"></a>
 <h3>SOMFY - Somfy RTS / Simu Hz protocol</h3>
 <ul>
@@ -1226,15 +1300,12 @@ sub SOMFY_CalcCurrentPos($$$$) {
   Reception of Somfy remotes is only supported indirectly through the usage of an FHEMduino 
   <a href="http://www.fhemwiki.de/wiki/FHEMduino">http://www.fhemwiki.de/wiki/FHEMduino</a>
   which can then be used to connect to the SOMFY device.
-
   <br><br>
-
   <a name="SOMFYdefine"></a>
   <b>Define</b>
   <ul>
     <code>define &lt;name&gt; SOMFY &lt;address&gt; [&lt;encryption-key&gt;] [&lt;rolling-code&gt;] </code>
     <br><br>
-
    The address is a 6-digit hex code, that uniquely identifies a single remote control channel.
    It is used to pair the remote to the blind or dimmer it should control.
    <br>
@@ -1245,7 +1316,6 @@ sub SOMFY_CalcCurrentPos($$$$) {
    The blind will move up and down shortly to indicate completion.
    <br>
    You are now able to control this blind from FHEM, the receiver thinks it is just another remote control.
-
    <ul>
    <li><code>&lt;address&gt;</code> is a 6 digit hex number that uniquely identifies FHEM as a new remote control channel.
    <br>You should use a different one for each device definition, and group them using a structure.
@@ -1261,7 +1331,6 @@ sub SOMFY_CalcCurrentPos($$$$) {
    This is because the code is original remote's codes are out of sync.</li>
    </ul>
    <br>
-
     Examples:
     <ul>
       <code>define rollo_1 SOMFY 000001</code><br>
@@ -1270,7 +1339,6 @@ sub SOMFY_CalcCurrentPos($$$$) {
     </ul>
   </ul>
   <br>
-
   <a name="SOMFYset"></a>
   <b>Set </b>
   <ul>
@@ -1315,7 +1383,6 @@ sub SOMFY_CalcCurrentPos($$$$) {
 			drive-up-time-to-100 and drive-up-time-to-open must be set.<br>
 			</li>
 			</ul>
-
 		The position reading distinuishes between multiple cases
     <ul>
       <li>Without timing values (see attributes) set only generic values are used for status and position: <pre>open, closed, moving</pre> are used
@@ -1327,12 +1394,9 @@ sub SOMFY_CalcCurrentPos($$$$) {
 			covering the full window (position 100) and being completely closed (position 200)
       </li>
 		</ul>
-
   </ul>
   <br>
-
   <b>Get</b> <ul>N/A</ul><br>
-
   <a name="SOMFYattr"></a>
   <b>Attributes</b>
   <ul>
@@ -1343,25 +1407,21 @@ sub SOMFY_CalcCurrentPos($$$$) {
         Note: The IODev has to be set, otherwise no commands will be sent!<br>
         If you have both a CUL868 and CUL433, use the CUL433 as IODev for increased range.
 		</li><br>
-
     <a name="additionalPosReading"></a>
     <li>additionalPosReading<br>
         Position of the shutter will be stored in the reading <code>pos</code> as numeric value. 
         Additionally this attribute might specify a name for an additional reading to be updated with the same value than the pos.
 		</li><br>
-
     <a name="rolling-code"></a>
     <li>rolling-code &lt; 4 digit hex &gt; <br>
         Can be used to overwrite the rolling-code manually with a new value (rolling-code will be automatically increased with every command sent)
         This requires also setting enc-key: only with bot attributes set the value will be accepted for the internal reading
 		</li><br>
-
     <a name="enc-key"></a>
     <li>enc-key &lt; 2 digit hex &gt; <br>
         Can be used to overwrite the enc-key manually with a new value 
         This requires also setting rolling-code: only with bot attributes set the value will be accepted for the internal reading
 		</li><br>
-
     <a name="eventMap"></a>
     <li>eventMap<br>
         Replace event names and set arguments. The value of this attribute
@@ -1375,7 +1435,6 @@ sub SOMFY_CalcCurrentPos($$$$) {
         set store open
         </code></ul>
         </li><br>
-
     <li><a href="#do_not_notify">do_not_notify</a></li><br>
     <a name="attrdummy"></a>
     <li>dummy<br>
@@ -1384,11 +1443,8 @@ sub SOMFY_CalcCurrentPos($$$$) {
     the signal is received. Used e.g. to react to a code from a sender, but
     it will not emit radio signal if triggered in the web frontend.
     </li><br>
-
     <li><a href="#loglevel">loglevel</a></li><br>
-
     <li><a href="#showtime">showtime</a></li><br>
-
     <a name="model"></a>
     <li>model<br>
         The model attribute denotes the model type of the device.
@@ -1404,8 +1460,6 @@ sub SOMFY_CalcCurrentPos($$$$) {
         Here is a list of "official" devices:<br>
           <b>Receiver/Actor</b>: somfyblinds<br>
     </li><br>
-
-
     <a name="ignore"></a>
     <li>ignore<br>
         Ignore this device, e.g. if it belongs to your neighbour. The device
@@ -1417,36 +1471,28 @@ sub SOMFY_CalcCurrentPos($$$$) {
         (see <a href="#devspec">devspec</a>). You still get them with the
         "ignored=1" special devspec.
         </li><br>
-
     <a name="drive-down-time-to-100"></a>
     <li>drive-down-time-to-100<br>
         The time the blind needs to drive down from "open" (pos 0) to pos 100.<br>
 		In this position, the lower edge touches the window frame, but it is not completely shut.<br>
 		For a mid-size window this time is about 12 to 15 seconds.
         </li><br>
-
     <a name="drive-down-time-to-close"></a>
     <li>drive-down-time-to-close<br>
         The time the blind needs to drive down from "open" (pos 0) to "close", the end position of the blind.<br>
 		This is about 3 to 5 seonds more than the "drive-down-time-to-100" value.
         </li><br>
-
     <a name="drive-up-time-to-100"></a>
     <li>drive-up-time-to-100<br>
         The time the blind needs to drive up from "close" (endposition) to "pos 100".<br>
 		This usually takes about 3 to 5 seconds.
         </li><br>
-
     <a name="drive-up-time-to-open"></a>
     <li>drive-up-time-to-open<br>
         The time the blind needs drive up from "close" (endposition) to "open" (upper endposition).<br>
 		This value is usually a bit higher than "drive-down-time-to-close", due to the blind's weight.
         </li><br>
-
   </ul>
 </ul>
-
-
-
 =end html
 =cut

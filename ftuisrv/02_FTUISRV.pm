@@ -63,6 +63,7 @@
 #   
 #   Allow replacements setp by step in headerline --> ?> must be escaped to ?\>
 #   added if else endif for segments ftui-if=( <expr> ) 
+#   simplified keyvalue parsing
 #   
 ################################################################
 #TODO:
@@ -824,8 +825,7 @@ sub FTUISRV_handletemplatefile( $$$$ ) {
       my $incparhash = deepcopy( $parhash );
 
       # parse $values + add keys to inchash
-      # ??? check if this can not be handled in a real loop wthout midfying $values each time
-      while ( $values =~ /$FTUISRV_ftuimatch_keysegment/s ) {
+      while ( $values =~ s/$FTUISRV_ftuimatch_keysegment//s ) {
         my $skey = $1;
         my $sval = $3;
         $sval="" if ( ! defined($sval) );
@@ -833,8 +833,6 @@ sub FTUISRV_handletemplatefile( $$$$ ) {
         Log3 $name, 4, "$name: a key :$skey: = :$sval: ";
 
         $incparhash->{$skey} = $sval;
-
-        $values =~ s/$FTUISRV_ftuimatch_keysegment//s;
       }
      
       # build new filename (if not absolute already)

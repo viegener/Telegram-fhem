@@ -64,6 +64,7 @@
 #   Allow replacements setp by step in headerline --> ?> must be escaped to ?\>
 #   added if else endif for segments ftui-if=( <expr> ) 
 #   simplified keyvalue parsing
+#   simplified include in separate sub
 #   
 ################################################################
 #TODO:
@@ -108,6 +109,10 @@ my $FTUISRV_ftuimatch_if_het = '^(.*?)<\?ftui-if=\((.*?)\)\s*\?>(.*)$';
 
 my $FTUISRV_ftuimatch_else_ht = '^(.*?)<\?ftui-else\s*\?>(.*)$';
 my $FTUISRV_ftuimatch_endif_ht = '^(.*?)<\?ftui-endif\s*\?>(.*)$';
+
+
+my $FTUISRV_ftuimatch_inc_hfvt = '^(.*?)<\?ftui-inc="([^"\?]+)"\s+([^\?]*)\?>(.*?)$';
+
 
 # ???
 my $FTUISRV_ftuimatch_incloop_nefk = '<\?ftui-incloop=([^\s]+)\s+\((.*?)\)\s*"([^"\?]+)"\s+([^\?]*)\?>';
@@ -715,6 +720,86 @@ sub FTUISRV_handleIf( $$$ ) {
 
 ##################
 #
+# handle a ftui template for ifs
+#   name of the current ftui device
+#   filename full fledged filename to be handled
+#   curdir current directory for filename
+#   string with content to be replaced
+#   parhash reference to a hash with the current key-values
+#   validated is ref to hash with filenames
+# returns
+#   err (might be undef) 
+#   contents
+sub FTUISRV_handleInc( $$$$$$ ) {
+
+  my ($name, $filename, $curdir, $content, $parhash, $validatehash) = @_;
+
+  # Look for if expression
+  my $done = "";
+  my $rest = $content;
+  
+  while ( $rest =~ /$FTUISRV_ftuimatch_inc_hfvt/s ) {
+    $done .= $1;
+    my $incfile = $2;
+    my $values = $3;
+    $rest = $4;
+  
+    Log3 $name, 4, "$name: include found :$filename:    inc :$incfile:   vals :$values:";
+    return ("$name: Empty file name in include :$filename:", $content) if ( length($incfile) == 0 );
+      
+    # replace [device:reading] or even perl expressions with replaceSetMagic 
+    my %dummy;
+    Log3 $name, 4, "$name: FTUISRV_handletemplatefile ReplaceSetmagic INC before :$values:";
+    my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $values ) );
+      
+    if ( $err ) {
+      Log3 $name, 1, "$name: FTUISRV_handletemplatefile ($filename) failed on ReplaceSetmagic with :$err: on INC :$values:";
+    } else {
+      $values = join(" ", @a);
+      Log3 $name, 4, "$name: FTUISRV_handletemplatefile ($filename) ReplaceSetmagic INC after :".$values.":";
+    }
+
+    # deepcopy parhash here 
+    my $incparhash = deepcopy( $parhash );
+
+    # parse $values + add keys to inchash
+    while ( $values =~ s/$FTUISRV_ftuimatch_keysegment//s ) {
+      my $skey = $1;
+      my $sval = $3;
+      $sval="" if ( ! defined($sval) );
+    
+      Log3 $name, 4, "$name: a key :$skey: = :$sval: ";
+
+      $incparhash->{$skey} = $sval;
+    }
+     
+    # build new filename (if not absolute already)
+    $incfile = $curdir.$incfile if ( substr($incfile,0,1) ne "/" );
+        
+    Log3 $name, 4, "$name: start handling include (rec) :$incfile:";
+    my $inccontent;
+    my $dummy;
+    ($err, $dummy, $inccontent) = FTUISRV_handletemplatefile( $name, $incfile, $incparhash, $validatehash );
+      
+    Log3 $name, 4, "$name: done handling include (rec) :$incfile: ".(defined($err)?"Err: ".$err:"ok");
+
+    # error will always result in stopping recursion
+    return ($err." (included)", $content) if ( defined($err) );
+                    
+    $done .= $inccontent;
+#      Log3 $name, 3, "$name: done handling include new content:----------------\n$content\n--------------------";
+
+    last if ( length($rest) == 0 );
+  }
+  
+  $done .= $rest;
+  
+  return ( undef, $done );
+}
+
+
+##################
+#
 # handle a ftui template file
 #   name of the current ftui device
 #   filename full fledged filename to be handled
@@ -802,55 +887,10 @@ sub FTUISRV_handletemplatefile( $$$$ ) {
     # Handle includes
     Log3 $name, 4, "$name: look for includes :$filename:";
 
-    while ( $content =~ /$FTUISRV_ftuimatch_inc/s ) {
-      my $incfile = $1;
-      my $values = $2;
+    ( $err, $content ) = FTUISRV_handleInc( $name, $filename, $curdir, $content, $parhash, $validatehash );
+    # error will always result in stopping recursion
+    return ($err, $validated, $content) if ( defined($err) );
 
-      Log3 $name, 4, "$name: include found :$filename:    inc :$incfile:   vals :$values:";
-      return ("$name: Empty file name in include :$filename:", $validated, $content) if ( length($incfile) == 0 );
-      
-      # replace [device:reading] or even perl expressions with replaceSetMagic 
-      my %dummy;
-      Log3 $name, 4, "$name: FTUISRV_handletemplatefile ReplaceSetmagic INC before :$values:";
-      my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $values ) );
-      
-      if ( $err ) {
-        Log3 $name, 1, "$name: FTUISRV_handletemplatefile failed on ReplaceSetmagic with :$err: on INC :$values:";
-      } else {
-        $values = join(" ", @a);
-        Log3 $name, 4, "$name: FTUISRV_handletemplatefile ReplaceSetmagic INC after :".$values.":";
-      }
-
-      # deepcopy parhash here 
-      my $incparhash = deepcopy( $parhash );
-
-      # parse $values + add keys to inchash
-      while ( $values =~ s/$FTUISRV_ftuimatch_keysegment//s ) {
-        my $skey = $1;
-        my $sval = $3;
-        $sval="" if ( ! defined($sval) );
-      
-        Log3 $name, 4, "$name: a key :$skey: = :$sval: ";
-
-        $incparhash->{$skey} = $sval;
-      }
-     
-      # build new filename (if not absolute already)
-      $incfile = $curdir.$incfile if ( substr($incfile,0,1) ne "/" );
-        
-      Log3 $name, 4, "$name: start handling include (rec) :$incfile:";
-      my $inccontent;
-      my $dummy;
-      ($err, $dummy, $inccontent) = FTUISRV_handletemplatefile( $name, $incfile, $incparhash, $validatehash );
-      
-      Log3 $name, 4, "$name: done handling include (rec) :$incfile: ".(defined($err)?"Err: ".$err:"ok");
-
-      # error will always result in stopping recursion
-      return ($err." (included)", $validated, $content) if ( defined($err) );
-                    
-      $content =~ s/$FTUISRV_ftuimatch_inc/$inccontent/s;
-#      Log3 $name, 3, "$name: done handling include new content:----------------\n$content\n--------------------";
-    }
   }
     
   return ($err,$validated,$content);

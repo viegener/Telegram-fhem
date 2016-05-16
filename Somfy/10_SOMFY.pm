@@ -543,7 +543,9 @@ sub SOMFY_Parse($$) {
 		return $hash->{NAME};
 	}
 
-    # get address
+    # get encKey, rolling code and address
+	my $encKey = substr($msg, 2, 2);
+	my $rolling = substr($msg, 6, 4);
     my $address = uc(substr($msg, 14, 2).substr($msg, 12, 2).substr($msg, 10, 2));
 
     # get command and set new state
@@ -567,23 +569,22 @@ sub SOMFY_Parse($$) {
       		# update the state and log it
 					### NEEDS to be deactivated due to the state being maintained by the timer
 					# readingsSingleUpdate($lh, "state", $newstate, 1);
+					readingsSingleUpdate($lh, "enc_key", $encKey, 1);
+					readingsSingleUpdate($lh, "rolling_code", $rolling, 1);
 					readingsSingleUpdate($lh, "parsestate", $newstate, 1);
 
 			Log3 $name, 4, "SOMFY $name $newstate";
 
 			push(@list, $name);
 		}
-		# return list of affected devices
-		return @list;
 
-	} else {
-		# rolling code and enckey
-		my $rolling = substr($msg, 6, 4);
-		my $encKey = substr($msg, 2, 2);
-		
-		Log3 $hash, 1, "SOMFY Unknown device $address ($encKey $rolling), please define it";
-		return "UNDEFINED SOMFY_$address SOMFY $address $encKey $rolling";
+		# return list of affected devices
+		# otherwise goto autocreate
+		return @list if scalar(@list) > 0;
 	}
+	
+	# autocreate
+	return "UNDEFINED SOMFY_$address SOMFY $address $encKey $rolling";
 }
 ##############################
 sub SOMFY_Attr(@) {

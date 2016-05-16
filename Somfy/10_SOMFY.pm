@@ -51,6 +51,12 @@
 #  2016-05-11 viegener - Some additions to documentation (commandref)
 #  2016-05-13 habichvergessen - Extend SOMFY module to use Signalduino as iodev
 #  2016-05-13 viegener - Fix for CUL-SCC
+#  2016-05-16 habichvergessen - Fixes - on newly (autocreated entries)
+#  2016-05-16 habichvergessen - add rolling code / enckey for autocreate
+#  2016-05-16 viegener - Minor cleanup on code
+#  2016-05-16 viegener - Fix Issue#5 - autocreate preparation (code in modules pointer for address also checked for empty hash)
+#  2016-05-16 viegener - Ensure Ys message length correct before analyzing
+# 
 #  
 #  
 ###############################################################################
@@ -61,6 +67,8 @@
 ###############################################################################
 # Somfy Modul - OPEN
 ###############################################################################
+# 
+# - Autocreate 
 # - Complete shutter / blind as different model
 # - Make better distinction between different IoTypes - CUL+SCC / Signalduino
 # - 
@@ -266,8 +274,8 @@ sub SOMFY_Define($$) {
 
 		# store it as reading, so it is saved in the statefile
 		# only store it, if the reading does not exist yet
-		my $old_enc_key = uc(ReadingsVal($name, "enc_key", "invalid"));
-		if($old_enc_key eq uc("invalid")) {				# bugfix uc
+		my $old_enc_key = uc(ReadingsVal($name, "enc_key", undef));
+    if(defined($old_enc_key)) {
 			setReadingsVal($hash, "enc_key", uc($a[3]), $tn);
 		}
 
@@ -279,8 +287,8 @@ sub SOMFY_Define($$) {
 			}
 
 			# store it, if old reading does not exist yet
-			my $old_rolling_code = uc(ReadingsVal($name, "rolling_code", "invalid"));
-			if($old_rolling_code eq uc("invalid")) {	# bugfix uc
+			my $old_rolling_code = uc(ReadingsVal($name, "rolling_code", undef));
+			if(defined($old_rolling_code)) {
 				setReadingsVal($hash, "rolling_code", uc($a[4]), $tn);
 			}
 		}
@@ -543,6 +551,10 @@ sub SOMFY_Parse($$) {
 		return $hash->{NAME};
 	}
 
+  
+  # Check for correct length
+  return "SOMFY incorrect length for command (".$msg.") / length should be 16" if ( length($msg) != 16 );
+  
     # get encKey, rolling code and address
 	my $encKey = substr($msg, 2, 2);
 	my $rolling = substr($msg, 6, 4);
@@ -558,7 +570,7 @@ sub SOMFY_Parse($$) {
 
 	my $def = $modules{SOMFY}{defptr}{$address};
 
-	if($def) {
+	if ( ($def) && (keys %{ $def }) ) {   # Check also for empty hash --> issue #5
 		my @list;
 		foreach my $name (keys %{ $def }) {
       		my $lh = $def->{$name};

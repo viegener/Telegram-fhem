@@ -49,6 +49,8 @@
 #  2016-05-11 viegener - Handover SOMFY from thdankert/thomyd
 #  2016-05-11 viegener - Cleanup Todolist
 #  2016-05-11 viegener - Some additions to documentation (commandref)
+#  2016-05-13 habichvergessen - Extend SOMFY module to use Signalduino as iodev
+#  2016-05-13 viegener - Fix for CUL-SCC
 #  
 #  
 ###############################################################################
@@ -60,7 +62,7 @@
 # Somfy Modul - OPEN
 ###############################################################################
 # - Complete shutter / blind as different model
-# - 
+# - Make better distinction between different IoTypes - CUL+SCC / Signalduino
 # - 
 # - 
 # - 
@@ -265,7 +267,7 @@ sub SOMFY_Define($$) {
 		# store it as reading, so it is saved in the statefile
 		# only store it, if the reading does not exist yet
 		my $old_enc_key = uc(ReadingsVal($name, "enc_key", "invalid"));
-		if($old_enc_key eq "invalid") {
+		if($old_enc_key eq uc("invalid")) {				# bugfix uc
 			setReadingsVal($hash, "enc_key", uc($a[3]), $tn);
 		}
 
@@ -278,7 +280,7 @@ sub SOMFY_Define($$) {
 
 			# store it, if old reading does not exist yet
 			my $old_rolling_code = uc(ReadingsVal($name, "rolling_code", "invalid"));
-			if($old_rolling_code eq "invalid") {
+			if($old_rolling_code eq uc("invalid")) {	# bugfix uc
 				setReadingsVal($hash, "rolling_code", uc($a[4]), $tn);
 			}
 		}
@@ -321,9 +323,7 @@ sub SOMFY_SendCommand($@)
 	my $numberOfArgs  = int(@args);
 
 	my $io = $hash->{IODev};
-
-	return "IODev unsupported" if (!defined($hash->{IODev}) || 
-		(my $ioType = $io->{TYPE}) !~ m/^(CUL|SIGNALduino)$/);
+  my $ioType = $io->{TYPE};
 
 	Log3($name,4,"SOMFY_sendCommand: $name -> cmd :$cmd: ");
 
@@ -341,7 +341,7 @@ sub SOMFY_SendCommand($@)
 	}
 
 	# CUL specifics
-	if ($ioType eq "CUL") {
+	if ($ioType ne "SIGNALduino") {
 		## Do we need to change RFMode to SlowRF?
 		if (   defined( $attr{ $name } )
 			&& defined( $attr{ $name }{"switch_rfmode"} ) )
@@ -409,10 +409,7 @@ sub SOMFY_SendCommand($@)
 	Log GetLogLevel( $name, 4 ), "SOMFY set $name " . join(" ", @args) . ": $message";
 
 	## Send Message to IODev using IOWrite
-	if ($ioType eq "CUL") {
-		Log3($name,5,"SOMFY_sendCommand: $name -> message :$message: ");
-		IOWrite( $hash, "Y", $message );
-	} elsif ($ioType eq "SIGNALduino") {
+	if ($ioType eq "SIGNALduino") {
 		my $SignalRepeats = AttrVal($name,'repetition', '6');
 		# swap address, remove leading s
 		my $decData = substr($message, 1, 8) . substr($message, 13, 2) . substr($message, 11, 2) . substr($message, 9, 2);
@@ -422,6 +419,9 @@ sub SOMFY_SendCommand($@)
 		$message = 'P43#' . $encData . '#R' . $SignalRepeats;
 		#Log3 $hash, 4, "$hash->{IODev}->{NAME} SOMFY_sendCommand: $name -> message :$message: ";
 		IOWrite($hash, 'sendMsg', $message);
+	} else {
+		Log3($name,5,"SOMFY_sendCommand: $name -> message :$message: ");
+		IOWrite( $hash, "Y", $message );
 	}
 
 	# increment encryption key and rolling code
@@ -436,7 +436,7 @@ sub SOMFY_SendCommand($@)
 	setReadingsVal($hash, "rolling_code", $new_rolling_code, $timestamp);
 
 	# CUL specifics
-	if ($ioType eq "CUL") {
+	if ($ioType ne "SIGNALduino") {
 		## Do we need to change symbol length back?
 		if (   defined( $attr{ $name } )
 			&& defined( $attr{ $name }{"symbol-length"} ) )
@@ -517,7 +517,8 @@ sub SOMFY_Parse($$) {
 	my ($hash, $msg) = @_;
 	my $name = $hash->{NAME};
 
-	return "IODev unsupported" if ((my $ioType = $hash->{TYPE}) !~ m/^(CUL|SIGNALduino)$/);
+  my $ioType = $hash->{TYPE};
+#	return "IODev unsupported" if ((my $ioType = $hash->{TYPE}) !~ m/^(CUL|SIGNALduino)$/);
 
 	# preprocessing if IODev is SIGNALduino	
 	if ($ioType eq "SIGNALduino") {
@@ -576,8 +577,12 @@ sub SOMFY_Parse($$) {
 		return @list;
 
 	} else {
-		Log3 $hash, 1, "SOMFY Unknown device $address, please define it";
-		return "UNDEFINED SOMFY_$address SOMFY $address";
+		# rolling code and enckey
+		my $rolling = substr($msg, 6, 4);
+		my $encKey = substr($msg, 2, 2);
+		
+		Log3 $hash, 1, "SOMFY Unknown device $address ($encKey $rolling), please define it";
+		return "UNDEFINED SOMFY_$address SOMFY $address $encKey $rolling";
 	}
 }
 ##############################
@@ -738,7 +743,7 @@ sub SOMFY_InternalSet($@) {
 		if(exists($positions{$state})) {
 			$pos = $positions{$state};
 		} else {
-			$pos = $state;
+			$pos = ($state ne "???" ? $state : 0);	# fix runtime error
 		}
 		$pos = sprintf( "%d", $pos );
 	}

@@ -274,8 +274,7 @@ sub SOMFY_Define($$) {
 
 		# store it as reading, so it is saved in the statefile
 		# only store it, if the reading does not exist yet
-		my $old_enc_key = uc(ReadingsVal($name, "enc_key", undef));
-    if(defined($old_enc_key)) {
+    if(! defined( ReadingsVal($name, "enc_key", undef) )) {
 			setReadingsVal($hash, "enc_key", uc($a[3]), $tn);
 		}
 
@@ -287,8 +286,7 @@ sub SOMFY_Define($$) {
 			}
 
 			# store it, if old reading does not exist yet
-			my $old_rolling_code = uc(ReadingsVal($name, "rolling_code", undef));
-			if(defined($old_rolling_code)) {
+      if(! defined( ReadingsVal($name, "rolling_code", undef) )) {
 				setReadingsVal($hash, "rolling_code", uc($a[4]), $tn);
 			}
 		}

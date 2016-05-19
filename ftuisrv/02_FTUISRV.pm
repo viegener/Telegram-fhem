@@ -65,13 +65,12 @@
 #   added if else endif for segments ftui-if=( <expr> ) 
 #   simplified keyvalue parsing
 #   simplified include in separate sub
+#   add loopinc for looping include multiple times loopinc="<path>" <key>=( <expr> )  <keyvalues> 
 #   
 ################################################################
 #TODO:
 #
-# add loopinc for looping include multiple times forinc=<key> ( <expr> ) "<path>" <keyvalues> 
-# 
-# log count of replacements
+#   doc for if / loopinc
 #
 # deepcopy only if new keys found
 #
@@ -95,9 +94,6 @@ my $FTUISRV_matchlink = "^\/?(([^\/]*(\/[^\/]+)*)\/?)\$";
 
 my $FTUISRV_matchtemplatefile = "^.*\.ftui\.[^\.]+\$";
 
-##### <\?ftui-inc="([^"\?]+)"\s+([^\?]*)\?>
-my $FTUISRV_ftuimatch_inc = '<\?ftui-inc="([^"\?]+)"\s+([^\?]*)\?>';
-
 #my $FTUISRV_ftuimatch_header = '<\?ftui-header="([^"\?]*)"\s+([^\?]*)\?>';
 my $FTUISRV_ftuimatch_header = '<\?ftui-header="([^"\?]*)"\s+(.*?)\?>';
 
@@ -113,9 +109,8 @@ my $FTUISRV_ftuimatch_endif_ht = '^(.*?)<\?ftui-endif\s*\?>(.*)$';
 
 my $FTUISRV_ftuimatch_inc_hfvt = '^(.*?)<\?ftui-inc="([^"\?]+)"\s+([^\?]*)\?>(.*?)$';
 
-
-# ???
-my $FTUISRV_ftuimatch_incloop_nefk = '<\?ftui-incloop=([^\s]+)\s+\((.*?)\)\s*"([^"\?]+)"\s+([^\?]*)\?>';
+#my $FTUISRV_ftuimatch_loopinc_hefvt = '^(.*?)<\?ftui-loopinc=\((.*?)\)\s+"([^"\?]+)"\s+([^\?]*)\?>(.*?)$';
+my $FTUISRV_ftuimatch_loopinc_hfkevt = '^(.*?)<\?ftui-loopinc="([^"\?]+)"\s+([^=\s]+)=\s*\((.+?)\)\s+([^\?]*)\?>(.*?)$';
 
 
 #########################
@@ -720,7 +715,7 @@ sub FTUISRV_handleIf( $$$ ) {
 
 ##################
 #
-# handle a ftui template for ifs
+# handle a ftui template for incs and then this as the template
 #   name of the current ftui device
 #   filename full fledged filename to be handled
 #   curdir current directory for filename
@@ -749,14 +744,14 @@ sub FTUISRV_handleInc( $$$$$$ ) {
       
     # replace [device:reading] or even perl expressions with replaceSetMagic 
     my %dummy;
-    Log3 $name, 4, "$name: FTUISRV_handletemplatefile ReplaceSetmagic INC before :$values:";
+    Log3 $name, 4, "$name: FTUISRV_handleInc ReplaceSetmagic INC before :$values:";
     my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $values ) );
       
     if ( $err ) {
-      Log3 $name, 1, "$name: FTUISRV_handletemplatefile ($filename) failed on ReplaceSetmagic with :$err: on INC :$values:";
+      Log3 $name, 1, "$name: FTUISRV_handleInc ($filename) failed on ReplaceSetmagic with :$err: on INC :$values:";
     } else {
       $values = join(" ", @a);
-      Log3 $name, 4, "$name: FTUISRV_handletemplatefile ($filename) ReplaceSetmagic INC after :".$values.":";
+      Log3 $name, 4, "$name: FTUISRV_handleInc ($filename) ReplaceSetmagic INC after :".$values.":";
     }
 
     # deepcopy parhash here 
@@ -788,6 +783,107 @@ sub FTUISRV_handleInc( $$$$$$ ) {
                     
     $done .= $inccontent;
 #      Log3 $name, 3, "$name: done handling include new content:----------------\n$content\n--------------------";
+
+    last if ( length($rest) == 0 );
+  }
+  
+  $done .= $rest;
+  
+  return ( undef, $done );
+}
+
+
+##################
+#
+# handle a ftui template for loopInc and then the file as a template for all expression results
+#   name of the current ftui device
+#   filename full fledged filename to be handled
+#   curdir current directory for filename
+#   string with content to be replaced
+#   parhash reference to a hash with the current key-values
+#   validated is ref to hash with filenames
+# returns
+#   err (might be undef) 
+#   contents
+sub FTUISRV_handleLoopInc( $$$$$$ ) {
+
+  my ($name, $filename, $curdir, $content, $parhash, $validatehash) = @_;
+
+  # Look for if expression
+  my $done = "";
+  my $rest = $content;
+  
+  while ( $rest =~ /$FTUISRV_ftuimatch_loopinc_hfkevt/s ) {
+    $done .= $1;
+    my $incfile = $2;
+    my $key = $3;
+    my $expr = $4;
+    my $values = $5;
+    $rest = $6;
+  
+    Log3 $name, 1, "$name: include loop found :$filename:   key :$key: expr:$expr:\n   inc :$incfile:   vals :$values:";
+    return ("$name: Empty file name in loopinc :$filename:", $content) if ( length($incfile) == 0 );
+
+    # Evaluate expression as command to get list of entries for loop ???
+    my $result = AnalyzeCommand(undef, $expr);     
+    
+    # Identify split char ???
+    
+    # split at splitchar (default \n) into array ???
+    my @aResults = split( /\n/, $result );
+    
+    # replace [device:reading] or even perl expressions with replaceSetMagic 
+    my %dummy;
+    Log3 $name, 4, "$name: FTUISRV_handleLoopInc ReplaceSetmagic INC before :$values:";
+    my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $values ) );
+      
+    if ( $err ) {
+      Log3 $name, 1, "$name: FTUISRV_handleLoopInc ($filename) failed on ReplaceSetmagic with :$err: on INC :$values:";
+    } else {
+      $values = join(" ", @a);
+      Log3 $name, 4, "$name: FTUISRV_handleLoopInc ($filename) ReplaceSetmagic INC after :".$values.":";
+    }
+
+    # deepcopy parhash here 
+    my $incparhash = deepcopy( $parhash );
+
+    # parse $values + add keys to inchash
+    while ( $values =~ s/$FTUISRV_ftuimatch_keysegment//s ) {
+      my $skey = $1;
+      my $sval = $3;
+      $sval="" if ( ! defined($sval) );
+    
+      Log3 $name, 4, "$name: a key :$skey: = :$sval: ";
+
+      $incparhash->{$skey} = $sval;
+    }
+     
+    # build new filename (if not absolute already)
+    $incfile = $curdir.$incfile if ( substr($incfile,0,1) ne "/" );
+        
+    # Loop over list of values
+    foreach my $loopvariable ( @aResults ) {
+
+      # deepcopy parhash here 
+      my $loopincparhash = deepcopy( $incparhash );
+
+      # add loopvariable with current value
+      $loopincparhash->{$key} = $loopvariable;
+      
+      Log3 $name, 1, "$name: start handling include (rec) :$incfile: with value $key = :$loopvariable:";
+      my $inccontent;
+      my $dummy;
+      ($err, $dummy, $inccontent) = FTUISRV_handletemplatefile( $name, $incfile, $loopincparhash, $validatehash );
+        
+      Log3 $name, 4, "$name: done handling include (rec) :$incfile: ".(defined($err)?"Err: ".$err:"ok");
+
+      # error will always result in stopping recursion
+      return ($err." (included)", $content) if ( defined($err) );
+                      
+      $done .= $inccontent;
+#      Log3 $name, 3, "$name: done handling include new content:----------------\n$content\n--------------------";
+
+    }
 
     last if ( length($rest) == 0 );
   }
@@ -888,6 +984,10 @@ sub FTUISRV_handletemplatefile( $$$$ ) {
     Log3 $name, 4, "$name: look for includes :$filename:";
 
     ( $err, $content ) = FTUISRV_handleInc( $name, $filename, $curdir, $content, $parhash, $validatehash );
+    # error will always result in stopping recursion
+    return ($err, $validated, $content) if ( defined($err) );
+
+    ( $err, $content ) = FTUISRV_handleLoopInc( $name, $filename, $curdir, $content, $parhash, $validatehash );
     # error will always result in stopping recursion
     return ($err, $validated, $content) if ( defined($err) );
 

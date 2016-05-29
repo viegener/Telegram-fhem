@@ -56,6 +56,7 @@
 #  2016-05-16 viegener - Minor cleanup on code
 #  2016-05-16 viegener - Fix Issue#5 - autocreate preparation (code in modules pointer for address also checked for empty hash)
 #  2016-05-16 viegener - Ensure Ys message length correct before analyzing
+#  2016-05-29 viegener - Correct define for readingsval on rollingcode etc
 # 
 #  
 #  
@@ -261,8 +262,6 @@ sub SOMFY_Define($$) {
 
 	$hash->{ADDRESS} = uc($address);
 
-	my $tn = TimeNow();
-
 	# check optional arguments for device definition
 	if ( int(@a) > 3 ) {
 
@@ -272,10 +271,13 @@ sub SOMFY_Define($$) {
 			  . "specify a 2 digits hex value (first nibble = A) "
 		}
 
+    # reset reading time on def to 0 seconds (1970)
+    my $tzero = FmtDateTime(0);
+
 		# store it as reading, so it is saved in the statefile
 		# only store it, if the reading does not exist yet
     if(! defined( ReadingsVal($name, "enc_key", undef) )) {
-			setReadingsVal($hash, "enc_key", uc($a[3]), $tn);
+			setReadingsVal($hash, "enc_key", uc($a[3]), $tzero);
 		}
 
 		if ( int(@a) == 5 ) {
@@ -287,7 +289,7 @@ sub SOMFY_Define($$) {
 
 			# store it, if old reading does not exist yet
       if(! defined( ReadingsVal($name, "rolling_code", undef) )) {
-				setReadingsVal($hash, "rolling_code", uc($a[4]), $tn);
+				setReadingsVal($hash, "rolling_code", uc($a[4]), $tzero);
 			}
 		}
 	}

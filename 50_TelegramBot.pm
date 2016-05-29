@@ -135,6 +135,7 @@
 # 1.7 2016-05-05 reply set command / allowedCommands as restriction
 
 #   fix for addPar (Caption) on photos in SendIt
+#   fix for contact list UTF8 encoding on restart
 #   
 #   
 ##############################################################################
@@ -355,6 +356,7 @@ sub TelegramBot_State($$$$) {
 #  Log3 $hash->{NAME}, 4, "TelegramBot_State called with :$name: value :$value:";
 
   if ($name eq 'Contacts')  {
+    $value = TelegramBot_PutToUTF8( $value );
     TelegramBot_CalcContactsHash( $hash, $value );
     Log3 $hash->{NAME}, 4, "TelegramBot_State Contacts hash has now :".scalar(keys %{$hash->{Contacts}}).":";
   }

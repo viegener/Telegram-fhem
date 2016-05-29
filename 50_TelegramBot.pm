@@ -27,7 +27,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,38328.0.html
 #
-# $Id: 50_TelegramBot.pm 11090 2016-03-19 21:38:31Z viegener $
+# $Id: 50_TelegramBot.pm 11395 2016-05-05 16:22:14Z viegener $
 #
 ##############################################################################
 # 0.0 2015-09-16 Started
@@ -133,6 +133,8 @@
 #   added allowedCommands and doc (with modification of allowed_... device)
 #   allowedCommands only modified on the allowed_... device
 # 1.7 2016-05-05 reply set command / allowedCommands as restriction
+
+#   fix for addPar (Caption) on photos in SendIt
 #   
 #   
 ##############################################################################
@@ -1258,6 +1260,7 @@ sub TelegramBot_SendIt($$$$$;$$)
       # add caption
       if ( defined( $addPar ) ) {
         $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "caption", undef, $addPar, 0 ) if ( ! defined( $ret ) );
+        $addPar = undef;
       }
       
       # add msg or file or stream

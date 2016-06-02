@@ -136,7 +136,7 @@
 
 #   fix for addPar (Caption) on photos in SendIt
 #   fix for contact list UTF8 encoding on restart
-#   
+#   fix: encoding problem in some environments leading to wrong length calc in httputils (msg457443)
 #   
 ##############################################################################
 # TASKS 
@@ -1241,6 +1241,9 @@ sub TelegramBot_SendIt($$$$$;$$)
       
 #      $TelegramBot_hu_do_params{url} = "http://requestb.in";
 
+      ## JVI
+#      Debug "send  org msg  :".$msg.":";
+  
       if ( length($msg) > 1000 ) {
         $hash->{sentMsgText} = substr($msg,0, 1000)."...";
        } else {
@@ -1249,6 +1252,9 @@ sub TelegramBot_SendIt($$$$$;$$)
       my $c = chr(10);
       $msg =~ s/([^\\])\\n/$1$c/g;
 
+      ## JVI
+#      Debug "send conv msg  :".$msg.":";
+  
       # add msg (no file)
       $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "text", undef, $msg, 0 ) if ( ! defined( $ret ) );
       
@@ -1304,12 +1310,20 @@ sub TelegramBot_SendIt($$$$$;$$)
 
   }
   
+  ## JVI
+#  Debug "send command  :".$TelegramBot_hu_do_params{data}.":";
+  
   if ( defined( $ret ) ) {
     Log3 $name, 3, "TelegramBot_SendIt $name: Failed with :$ret:";
     TelegramBot_Callback( \%TelegramBot_hu_do_params, $ret, "");
 
   } else {
     $TelegramBot_hu_do_params{args} = \@args;
+    # reset UTF8 flag for ensuring length in httputils is correctly handling lenght (as bytes)
+#  Debug "send a command  :".$TelegramBot_hu_do_params{data}.":";
+    $TelegramBot_hu_do_params{data} = encode_utf8(decode_utf8($TelegramBot_hu_do_params{data}));
+# Debug "send b command  :".$TelegramBot_hu_do_params{data}.":";
+    
     HttpUtils_NonblockingGet( \%TelegramBot_hu_do_params);
 
   }

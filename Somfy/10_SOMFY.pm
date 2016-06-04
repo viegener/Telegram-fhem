@@ -397,18 +397,27 @@ sub SOMFY_SendCommand($@)
 	# Ys_key_ctrl_cks_rollcode_a0_a1_a2
 	# Ys ad 20 0ae3 a2 98 42
 
-	my $enckey = uc(ReadingsVal($name, "enc_key", "A0"));
-	my $rollingcode = uc(ReadingsVal($name, "rolling_code", "0000"));
-
+	my $rollingcode = uc(ReadingsVal($name, "rolling_code", "FFFF"));	# get 0000 by increment 
+	
 	if($command eq "XX") {
 		# use user-supplied custom command
 		$command = $args[1];
 	}
 
+	# increment before sending
+	# increment rolling code and derive encryption key
+	my $rolling_code_increment = hex( $rollingcode );
+	my $new_rolling_code = sprintf( "%04X", ( ++$rolling_code_increment ) );
+	my $new_enc_key = "A" . substr($new_rolling_code, 3, 1);
+
+	# update the readings, but do not generate an event
+	setReadingsVal($hash, "enc_key", $new_enc_key, $timestamp);
+	setReadingsVal($hash, "rolling_code", $new_rolling_code, $timestamp);
+
 	$message = "s"
-	  . $enckey
+	  . $new_enc_key
 	  . $command
-	  . $rollingcode
+	  . $new_rolling_code
 	  . uc( $hash->{ADDRESS} );
 
 	## Log that we are going to switch Somfy
@@ -429,17 +438,6 @@ sub SOMFY_SendCommand($@)
 		Log3($name,5,"SOMFY_sendCommand: $name -> message :$message: ");
 		IOWrite( $hash, "Y", $message );
 	}
-
-	# increment encryption key and rolling code
-	my $enc_key_increment      = hex( $enckey );
-	my $rolling_code_increment = hex( $rollingcode );
-
-	my $new_enc_key = sprintf( "%02X", ( ++$enc_key_increment & hex("0xAF") ) );
-	my $new_rolling_code = sprintf( "%04X", ( ++$rolling_code_increment ) );
-
-	# update the readings, but do not generate an event
-	setReadingsVal($hash, "enc_key", $new_enc_key, $timestamp);
-	setReadingsVal($hash, "rolling_code", $new_rolling_code, $timestamp);
 
 	# CUL specifics
 	if ($ioType ne "SIGNALduino") {
@@ -530,6 +528,7 @@ sub SOMFY_Parse($$) {
 	if ($ioType eq "SIGNALduino") {
 		my $encData = substr($msg, 2);
 		return "Somfy RTS message format error!" if ($encData !~ m/A[0-9A-F]{13}/);
+		return "Somfy RTS message format error (length)!" if (length($encData) != 14);
 	
 		my $decData = SOMFY_RTS_Crypt("d", $name, $encData);
 		my $check = SOMFY_RTS_Check($name, $decData);

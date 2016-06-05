@@ -137,6 +137,9 @@
 #   fix for addPar (Caption) on photos in SendIt
 #   fix for contact list UTF8 encoding on restart
 #   fix: encoding problem in some environments leading to wrong length calc in httputils (msg457443)
+#
+#   fix: Favorite description without alias name was not parsed correctly
+#   fix: Favorite alias only handled if really contains more than the /
 #   
 ##############################################################################
 # TASKS 
@@ -158,6 +161,8 @@ use strict;
 use warnings;
 
 #use HttpUtils;
+use utf8;
+
 use Encode;
 use JSON; 
 
@@ -722,8 +727,9 @@ sub TelegramBot_SplitFavoriteDef($$) {
   
   my ( $alias, $desc, $parsecmd, $confirm );
 
-  if ( $cmd =~ /^\s*((\/[^\[=]+)?(\[([^\]]+)\])?=)?(\??)(.*)$/ ) {
+  if ( $cmd =~ /^\s*((\/[^\[=]*)?(\[([^\]]+)\])?=)?(\??)(.*?)$/ ) {
     $alias = $2;
+    $alias = undef if ( $alias && ( $alias eq "/" ) );
     $desc = $4;
     $confirm = $5;
     $parsecmd = $6;
@@ -766,9 +772,11 @@ sub TelegramBot_SentFavorites($$$$) {
       my $ecmd = $clist[$cmdId];
       
       my ( $alias, $desc, $parsecmd, $needsConfirm ) = TelegramBot_SplitFavoriteDef( $hash, $ecmd );
-      $ecmd = $parsecmd;
+      return "Alias could not be parsed :$ecmd:" if ( ! $parsecmd );
 
-      # Debug "Needsconfirm: ". $needsConfirm;
+      $ecmd = $parsecmd;
+      
+      Debug "Needsconfirm: ". $needsConfirm;
       
       if ( ( ! $isConfirm ) && ( $needsConfirm ) ) {
         # ask first for confirmation
@@ -776,7 +784,13 @@ sub TelegramBot_SentFavorites($$$$) {
         
         my @tmparr;
         my @keys = ();
-        my @tmparr1 = ( TelegramBot_PutToUTF8( $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd)." ausführen?" ) );
+#        my @tmparr1 = ( TelegramBot_PutToUTF8( $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd)." ausführen?" ) );
+#        my @tmparr1 = ( $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd)." ausführen?" );
+        my $tmptxt = $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd)." ausführen?";
+#        utf8::upgrade($tmptxt);
+#        $tmptxt = TelegramBot_PutToUTF8($tmptxt);
+        $tmptxt = decode_utf8($tmptxt);
+        my @tmparr1 = ( $tmptxt );
         push( @keys, \@tmparr1 );
         my @tmparr2 = ( "Abbruch" );
         push( @keys, \@tmparr2 );
@@ -809,8 +823,10 @@ sub TelegramBot_SentFavorites($$$$) {
       foreach my $cs (  @clist ) {
         $cnt += 1;
         my ( $alias, $desc, $parsecmd, $needsConfirm ) = TelegramBot_SplitFavoriteDef( $hash, $cs );
-        my @tmparr = ( TelegramBot_PutToUTF8( $fcmd.$cnt." = ".($alias?$alias." = ":"").(($desc)?$desc:$parsecmd) ) );
-        push( @keys, \@tmparr );
+        if ( defined($parsecmd) ) { 
+          my @tmparr = ( TelegramBot_PutToUTF8( $fcmd.$cnt." = ".($alias?$alias." = ":"").(($desc)?$desc:$parsecmd) ) );
+          push( @keys, \@tmparr );
+        }
       }
 #      my @tmparr = ( TelegramBot_PutToUTF8( $fcmd."0 = Abbruch" ) );
 #     push( @keys, \@tmparr );

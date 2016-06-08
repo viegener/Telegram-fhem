@@ -56,6 +56,10 @@
 #  2016-05-16 viegener - Minor cleanup on code
 #  2016-05-16 viegener - Fix Issue#5 - autocreate preparation (code in modules pointer for address also checked for empty hash)
 #  2016-05-16 viegener - Ensure Ys message length correct before analyzing
+#  2016-05-29 viegener - Correct define for readingsval on rollingcode etc
+#  2016-05-29 viegener - Some cleanup - translations reduced
+#  2016-05-29 viegener - remove internals exact/position use only readings
+#  2016-05-29 viegener - Fix value in exact not being numeric (Forum449583)
 # 
 #  
 #  
@@ -71,7 +75,6 @@
 # - Autocreate 
 # - Complete shutter / blind as different model
 # - Make better distinction between different IoTypes - CUL+SCC / Signalduino
-# - 
 # - 
 # - 
 #
@@ -149,16 +152,6 @@ my %positions = (
 
 my %translations = (
 	"0" => "open",  
-	"10" => "10",  
-	"20" => "20",  
-	"30" => "30",  
-	"40" => "40",  
-	"50" => "50",  
-	"60" => "60",  
-	"70" => "70",  
-	"80" => "80",  
-	"90" => "90",  
-	"100" => "100",  
 	"150" => "down",  
 	"200" => "closed" 
 );
@@ -261,8 +254,6 @@ sub SOMFY_Define($$) {
 
 	$hash->{ADDRESS} = uc($address);
 
-	my $tn = TimeNow();
-
 	# check optional arguments for device definition
 	if ( int(@a) > 3 ) {
 
@@ -272,10 +263,13 @@ sub SOMFY_Define($$) {
 			  . "specify a 2 digits hex value (first nibble = A) "
 		}
 
+    # reset reading time on def to 0 seconds (1970)
+    my $tzero = FmtDateTime(0);
+
 		# store it as reading, so it is saved in the statefile
 		# only store it, if the reading does not exist yet
     if(! defined( ReadingsVal($name, "enc_key", undef) )) {
-			setReadingsVal($hash, "enc_key", uc($a[3]), $tn);
+			setReadingsVal($hash, "enc_key", uc($a[3]), $tzero);
 		}
 
 		if ( int(@a) == 5 ) {
@@ -287,7 +281,7 @@ sub SOMFY_Define($$) {
 
 			# store it, if old reading does not exist yet
       if(! defined( ReadingsVal($name, "rolling_code", undef) )) {
-				setReadingsVal($hash, "rolling_code", uc($a[4]), $tn);
+				setReadingsVal($hash, "rolling_code", uc($a[4]), $tzero);
 			}
 		}
 	}
@@ -1133,16 +1127,19 @@ sub SOMFY_UpdateState($$$$$) {
     $addtlPosReading = undef if ( ( $addtlPosReading eq "" ) or ( $addtlPosReading eq "state" ) or ( $addtlPosReading eq "position" ) or ( $addtlPosReading eq "exact" ) );
   }
 
+  my $newExact = $newState;
+  
 	readingsBeginUpdate($hash);
 
 	if(exists($positions{$newState})) {
 		readingsBulkUpdate($hash,"state",$newState);
 		$hash->{STATE} = $newState;
-
-		readingsBulkUpdate($hash,"position",$positions{$newState});
-		$hash->{position} = $positions{$newState};
     
-    readingsBulkUpdate($hash,$addtlPosReading,$positions{$newState}) if ( defined($addtlPosReading) );
+    $newExact = $positions{$newState};
+
+		readingsBulkUpdate($hash,"position",$newExact);
+
+    readingsBulkUpdate($hash,$addtlPosReading,$newExact) if ( defined($addtlPosReading) );
 
   } else {
 		my $rounded = SOMFY_Runden( $newState );
@@ -1151,15 +1148,12 @@ sub SOMFY_UpdateState($$$$$) {
 		$hash->{STATE} = $stateTrans;
 
 		readingsBulkUpdate($hash,"position",$rounded);
-		$hash->{position} = $rounded;
 
     readingsBulkUpdate($hash,$addtlPosReading,$rounded) if ( defined($addtlPosReading) );
-      
 
   }
 
-		readingsBulkUpdate($hash,"exact",$newState);
-	$hash->{exact} = $newState;
+  readingsBulkUpdate($hash,"exact",$newExact);
 
 	if ( defined( $updateState ) ) {
 		$hash->{updateState} = $updateState;

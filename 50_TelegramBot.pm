@@ -141,8 +141,12 @@
 #   fix: Favorite description without alias name was not parsed correctly
 #   fix: Favorite alias only handled if really contains more than the /
 #   
+#   Complete rework of JSON/UTF8 code to solve timeout and encoding issues
+#   
 ##############################################################################
 # TASKS 
+#   
+#   allow literals in msges: U+27F2 - \xe2\x9f\xb2 / Forum msg458794
 #   
 #   Look for solution on space at beginning of line --> checked that data is sent correctly to telegram but does not end up in the message
 #
@@ -164,6 +168,8 @@ use warnings;
 use utf8;
 
 use Encode;
+
+# JSON:XS is used here normally
 use JSON; 
 
 use File::Basename;
@@ -361,7 +367,6 @@ sub TelegramBot_State($$$$) {
 #  Log3 $hash->{NAME}, 4, "TelegramBot_State called with :$name: value :$value:";
 
   if ($name eq 'Contacts')  {
-    $value = TelegramBot_PutToUTF8( $value );
     TelegramBot_CalcContactsHash( $hash, $value );
     Log3 $hash->{NAME}, 4, "TelegramBot_State Contacts hash has now :".scalar(keys %{$hash->{Contacts}}).":";
   }
@@ -483,7 +488,6 @@ sub TelegramBot_Set($@)
     my $arg = join(" ", @args );
     Log3 $name, 3, "TelegramBot_Set $name: set new contacts to :$arg: ";
     # first set the hash accordingly
-    $arg = TelegramBot_PutToUTF8( $arg );
     TelegramBot_CalcContactsHash($hash, $arg);
 
     # then calculate correct string reading and put this into the reading
@@ -553,7 +557,7 @@ sub TelegramBot_Get($@)
     if ( ( defined($guret) ) && ( ref($guret) eq "HASH" ) ) {
       if ( defined($guret->{file_path} ) ) {
         # URL is https://api.telegram.org/file/bot<token>/<file_path>
-        my $filePath = TelegramBot_GetUTF8Back( $guret->{file_path} );
+        my $filePath = $guret->{file_path};
         $hash->{fileUrl} = "https://api.telegram.org/file/bot".$hash->{Token}."/".$filePath;
         $ret = $hash->{fileUrl};
       } else {
@@ -776,7 +780,7 @@ sub TelegramBot_SentFavorites($$$$) {
 
       $ecmd = $parsecmd;
       
-      Debug "Needsconfirm: ". $needsConfirm;
+#      Debug "Needsconfirm: ". $needsConfirm;
       
       if ( ( ! $isConfirm ) && ( $needsConfirm ) ) {
         # ask first for confirmation
@@ -786,10 +790,13 @@ sub TelegramBot_SentFavorites($$$$) {
         my @keys = ();
 #        my @tmparr1 = ( TelegramBot_PutToUTF8( $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd)." ausführen?" ) );
 #        my @tmparr1 = ( $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd)." ausführen?" );
-        my $tmptxt = $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd)." ausführen?";
-#        utf8::upgrade($tmptxt);
+#        my $tmptxt = encode_utf8( $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd)." ausführen?" );
+        my $tmptxt = $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd).encode_utf8( " ausführen?" );
+#        my $tmptxt = $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd);
+#        Debug "tmptxt :$tmptxt:";
+        #        utf8::upgrade($tmptxt);
 #        $tmptxt = TelegramBot_PutToUTF8($tmptxt);
-        $tmptxt = decode_utf8($tmptxt);
+#        $tmptxt = decode_utf8($tmptxt);
         my @tmparr1 = ( $tmptxt );
         push( @keys, \@tmparr1 );
         my @tmparr2 = ( "Abbruch" );
@@ -798,7 +805,7 @@ sub TelegramBot_SentFavorites($$$$) {
         my $jsonkb = TelegramBot_MakeKeyboard( $hash, 1, @keys );
 
         # LOCAL: External message
-        $ret = AttrVal( $name, 'textResponseConfirm', 'TelegramBot FHEM : $peer\n Bestätigung \n');
+        $ret = encode_utf8( AttrVal( $name, 'textResponseConfirm', 'TelegramBot FHEM : $peer\n Bestätigung \n') );
         $ret =~ s/\$peer/$mpeernorm/g;
 #        $ret = "TelegramBot FHEM : ($mpeernorm)\n Bestätigung \n";
         
@@ -824,11 +831,11 @@ sub TelegramBot_SentFavorites($$$$) {
         $cnt += 1;
         my ( $alias, $desc, $parsecmd, $needsConfirm ) = TelegramBot_SplitFavoriteDef( $hash, $cs );
         if ( defined($parsecmd) ) { 
-          my @tmparr = ( TelegramBot_PutToUTF8( $fcmd.$cnt." = ".($alias?$alias." = ":"").(($desc)?$desc:$parsecmd) ) );
+          my @tmparr = ( $fcmd.$cnt." = ".($alias?$alias." = ":"").(($desc)?$desc:$parsecmd) );
           push( @keys, \@tmparr );
         }
       }
-#      my @tmparr = ( TelegramBot_PutToUTF8( $fcmd."0 = Abbruch" ) );
+#      my @tmparr = ( $fcmd."0 = Abbruch" );
 #     push( @keys, \@tmparr );
 
       my $jsonkb = TelegramBot_MakeKeyboard( $hash, 1, @keys );
@@ -867,7 +874,7 @@ sub TelegramBot_SentLastCommand($$$) {
   my @keys = ();
 
   foreach my $cs (  @cmds ) {
-    my @tmparr = ( TelegramBot_PutToUTF8( $cs ) );
+    my @tmparr = ( $cs );
     push( @keys, \@tmparr );
   }
 #  my @tmparr = ( $fcmd."0 = Abbruch" );
@@ -1337,7 +1344,7 @@ sub TelegramBot_SendIt($$$$$;$$)
     $TelegramBot_hu_do_params{args} = \@args;
     # reset UTF8 flag for ensuring length in httputils is correctly handling lenght (as bytes)
 #  Debug "send a command  :".$TelegramBot_hu_do_params{data}.":";
-    $TelegramBot_hu_do_params{data} = encode_utf8(decode_utf8($TelegramBot_hu_do_params{data}));
+#    $TelegramBot_hu_do_params{data} = encode_utf8(decode_utf8($TelegramBot_hu_do_params{data}));
 # Debug "send b command  :".$TelegramBot_hu_do_params{data}.":";
     
     HttpUtils_NonblockingGet( \%TelegramBot_hu_do_params);
@@ -1443,7 +1450,19 @@ sub TelegramBot_MakeKeyboard($$@)
   
   my $refkb = \%par;
   
-  $ret = encode_json( $refkb );
+#  $refkb = TelegramBot_Deepencode( $name, $refkb );
+
+#  $ret = encode_json( $refkb );
+  my $json        = JSON->new->utf8;
+  $ret = $json->utf8(0)->encode( $refkb );
+  Log3 $name, 4, "TelegramBot_MakeKeyboard $name: json :$ret: is utf8? ".(utf8::is_utf8($ret)?"yes":"no");
+
+  if ( utf8::is_utf8($ret) ) {
+    utf8::downgrade($ret); 
+    Log3 $name, 4, "TelegramBot_MakeKeyboard $name: json downgraded :$ret: is utf8? ".(utf8::is_utf8($ret)?"yes":"no");
+  }
+  
+#  Debug "json_keyboard :$ret:";
 
   return $ret;
 }
@@ -1519,11 +1538,46 @@ sub TelegramBot_RetrySend($)
 
 
   my $ref = $param->{args};
-  Log3 $name, 4, "TelegramBot_Retrysend $name: reply @$ref[4] retry @$ref[5] :@$ref[0]: -:@$ref[1]: ";
+  Log3 $name, 4, "TelegramBot_Retrysend $name: reply ".(defined( @$ref[4] )?@$ref[4]:"<undef>")." retry @$ref[5] :@$ref[0]: -:@$ref[1]: ";
   TelegramBot_SendIt( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3], @$ref[4], @$ref[5] );
   
 }
-  
+
+
+
+sub TelegramBot_Deepencode
+{
+    my @result;
+
+    my $name = shift( @_ );
+
+#    Debug "TelegramBot_Deepencode with :".(@_).":";
+
+    for (@_) {
+        my $reftype= ref $_;
+        if( $reftype eq "ARRAY" ) {
+            Log3 $name, 4, "TelegramBot_Deepencode $name: found an ARRAY";
+            push @result, [ TelegramBot_Deepencode($name, @$_) ];
+        }
+        elsif( $reftype eq "HASH" ) {
+            my %h;
+            @h{keys %$_}= TelegramBot_Deepencode($name, values %$_);
+            Log3 $name, 4, "TelegramBot_Deepencode $name: found a HASH";
+            push @result, \%h;
+        }
+        else {
+            my $us = $_ ;
+            if ( utf8::is_utf8($us) ) {
+              $us = encode_utf8( $_ );
+            }
+            Log3 $name, 4, "TelegramBot_Deepencode $name: encoded a String from :".$_.": to :".$us.":";
+            push @result, $us;
+        }
+    }
+    return @_ == 1 ? $result[0] : @result; 
+
+}
+      
   
 #####################################
 #  INTERNAL: Callback is the callback for any nonblocking call to the bot api (e.g. the long poll on update call)
@@ -1565,9 +1619,12 @@ sub TelegramBot_Callback($$$)
 
 ### mark as latin1 to ensure no conversion is happening (this works surprisingly)
     eval {
-       $data = encode( 'latin1', $data );
+#       $data = encode( 'latin1', $data );
+       $data = encode_utf8( $data );
+#       $data = decode_utf8( $data );
 # Debug "-----AFTER------\n".$data."\n-------UC=".${^UNICODE} ."-----\n";
        $jo = decode_json( $data );
+       $jo = TelegramBot_Deepencode( $name, $jo );
     };
  
 
@@ -1579,7 +1636,7 @@ sub TelegramBot_Callback($$$)
       $ret = "Callback returned no valid JSON !";
     } elsif ( ! $jo->{ok} ) {
       if ( defined( $jo->{description} ) ) {
-        $ret = "Callback returned error:".TelegramBot_GetUTF8Back( $jo->{description} ).":";
+        $ret = "Callback returned error:".$jo->{description}.":";
       } else {
         $ret = "Callback returned error without description";
       }
@@ -1832,8 +1889,6 @@ sub TelegramBot_ParseMsg($$$)
 
 
   if ( defined( $mtext ) ) {
-    my $mtext = TelegramBot_GetUTF8Back( $mtext );
-
     Log3 $name, 4, "TelegramBot_ParseMsg $name: text   :$mtext:";
 
     my $mpeernorm = $mpeer;
@@ -2298,8 +2353,7 @@ sub TelegramBot_encodeContactString($) {
     $str =~ s/^\s+|\s+$//g;
     $str =~ s/ /_/g;
 
-  return TelegramBot_GetUTF8Back( $str );
-#  return $str;
+  return $str;
 }
 
 #####################################
@@ -2358,7 +2412,9 @@ sub TelegramBot_checkAllowedPeer($$$) {
 sub TelegramBot_GetUTF8Back( $ ) {
   my ( $data ) = @_;
   
-  return encode('utf8', $data);
+  return $data;
+#JVI
+#  return encode('utf8', $data);
 }
   
 
@@ -2368,7 +2424,9 @@ sub TelegramBot_GetUTF8Back( $ ) {
 sub TelegramBot_PutToUTF8( $ ) {
   my ( $data ) = @_;
   
-  return decode('utf8', $data);
+  return $data;
+#JVI
+#  return decode('utf8', $data);
 }
   
 

@@ -142,6 +142,7 @@
 #   fix: Favorite alias only handled if really contains more than the /
 #   
 #   Complete rework of JSON/UTF8 code to solve timeout and encoding issues
+#   Add \t for messages texts - will be a single space in the message
 #   
 ##############################################################################
 # TASKS 
@@ -474,6 +475,7 @@ sub TelegramBot_Set($@)
     # for internal testing only
     Log3 $name, 5, "TelegramBot_Set $name: start debug option ";
 #    delete $hash->{sentMsgPeer};
+    $ret = TelegramBot_SendIt( $hash, AttrVal($name,'defaultPeer',undef), "abc     def\n   def    ghi", undef, 0, undef );
 
     
   # BOTONLY
@@ -1272,8 +1274,8 @@ sub TelegramBot_SendIt($$$$$;$$)
        } else {
         $hash->{sentMsgText} = $msg;
        }
-      my $c = chr(10);
-      $msg =~ s/([^\\])\\n/$1$c/g;
+      $msg =~ s/(?<![\\])\\n/\x0A/g;
+      $msg =~ s/(?<![\\])\\t/\x09/g;
 
       ## JVI
 #      Debug "send conv msg  :".$msg.":";

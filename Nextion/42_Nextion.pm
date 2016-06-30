@@ -47,7 +47,7 @@
 #   expectAnswer can be set to ignore any commands 
 #   reduce log level for normal operation
 #   fix disconnect
-# 0.5 2016-06-30 small enhancements
+# 0.5 2016-06-30 disconnect-fix / log reduced / expectAnswer
 #   
 ##############################################
 ##############################################

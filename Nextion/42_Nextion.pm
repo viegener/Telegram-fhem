@@ -45,7 +45,7 @@
 # 0.4 2016-04-24 documentation / page and pageCmds
 #   
 #   expectAnswer can be set to ignore any commands 
-#   
+#   reduce log level for normal operation
 #   
 ##############################################
 ##############################################
@@ -234,8 +234,10 @@ Nextion_Set($@)
     DevIo_CloseDev($hash);
     return DevIo_OpenDev($hash, 0, "Nextion_DoInit");
   } elsif($type eq "disconnect") {
-    DevIo_Disconnected($hash);
-    delete $hash->{DevIoJustClosed} if($hash->{DevIoJustClosed});
+    DevIo_CloseDev($hash);
+    DevIo_setStates($hash, "disconnected"); 
+      #    DevIo_Disconnected($hash);
+#    delete $hash->{DevIoJustClosed} if($hash->{DevIoJustClosed});
   }
 
   if ( ! defined( $ret ) ) {
@@ -390,14 +392,14 @@ Nextion_SendSingleCommand($$$)
   # trim the msg
   $msg =~ s/^\s+|\s+$//g;
 
-  Log3 $name, 1, "Nextion_SendCommand $name: send command :".$msg.": ";
+  Log3 $name, 4, "Nextion_SendCommand $name: send command :".$msg.": ";
   
   my $isoMsg = Nextion_EncodeToIso($msg);
 
   DevIo_SimpleWrite($hash, $isoMsg."\xff\xff\xff", 0);
   $err =  Nextion_ReadAnswer($hash, $isoMsg) if ( $answer );
   Log3 $name, 1, "Nextion_SendCommand Error :".$err.": " if ( defined($err) );
-  Log3 $name, 3, "Nextion_SendCommand Success " if ( ! defined($err) );
+  Log3 $name, 4, "Nextion_SendCommand Success " if ( ! defined($err) );
   
    # Also set sentMsg Id and result in Readings
   readingsBeginUpdate($hash);
@@ -450,7 +452,7 @@ Nextion_Read($@)
           }
         }
 
-        Log3 $name, 1, "Nextion: Received message :$msg:";
+        Log3 $name, 4, "Nextion: Received message :$msg:";
 
         if ( defined( ReadingsVal($name,"received",undef) ) ) {
           if ( defined( ReadingsVal($name,"old1",undef) ) ) {
@@ -497,7 +499,7 @@ Nextion_Read($@)
     
     my $initCmds = AttrVal( $name, "initPage".sprintf("%d",$newPageId), undef ); 
     
-    Log3 $name, 3, "Nextion_InitPage $name: page  :".$newPageId.": with commands :".(defined($initCmds)?$initCmds:"<undef>").":";
+    Log3 $name, 4, "Nextion_InitPage $name: page  :".$newPageId.": with commands :".(defined($initCmds)?$initCmds:"<undef>").":";
     return if ( ! defined( $initCmds ) );
 
     # Send command handles replaceSetMagic and splitting
@@ -517,7 +519,7 @@ Nextion_ReadAnswer($$)
   my ($hash, $arg) = @_;
   my $name = $hash->{NAME};
 
-  Log3 $name, 1, "Nextion_ReadAnswer $name: for send commands :".$arg.": ";
+  Log3 $name, 4, "Nextion_ReadAnswer $name: for send commands :".$arg.": ";
 
   return "No FD (dummy device?)" if(!$hash || ($^O !~ /Win/ && !defined($hash->{FD})));
 

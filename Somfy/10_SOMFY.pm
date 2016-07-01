@@ -397,18 +397,19 @@ sub SOMFY_SendCommand($@)
 	# Ys_key_ctrl_cks_rollcode_a0_a1_a2
 	# Ys ad 20 0ae3 a2 98 42
 
-	my $rollingcode = uc(ReadingsVal($name, "rolling_code", "FFFF"));	# get 0000 by increment 
-	
 	if($command eq "XX") {
 		# use user-supplied custom command
 		$command = $args[1];
 	}
 
 	# increment before sending
-	# increment rolling code and derive encryption key
+	my $enckey = uc(ReadingsVal($name, "enc_key", "F"));	# get 0 by increment 
+	my $rollingcode = uc(ReadingsVal($name, "rolling_code", "FFFF"));	# get 0000 by increment 
+	
+	my $enc_key_increment = hex( substr($enckey, 1, 1) );
+	my $new_enc_key = sprintf( "A%1X", ( ++$enc_key_increment ) );
 	my $rolling_code_increment = hex( $rollingcode );
 	my $new_rolling_code = sprintf( "%04X", ( ++$rolling_code_increment ) );
-	my $new_enc_key = "A" . substr($new_rolling_code, 3, 1);
 
 	# update the readings, but do not generate an event
 	setReadingsVal($hash, "enc_key", $new_enc_key, $timestamp);

@@ -27,7 +27,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,38328.0.html
 #
-# $Id: 50_TelegramBot.pm 11090 2016-03-19 21:38:31Z viegener $
+# $Id: 50_TelegramBot.pm 11395 2016-05-05 16:22:14Z viegener $
 #
 ##############################################################################
 # 0.0 2015-09-16 Started
@@ -133,7 +133,10 @@
 #   added allowedCommands and doc (with modification of allowed_... device)
 #   allowedCommands only modified on the allowed_... device
 # 1.7 2016-05-05 reply set command / allowedCommands as restriction
-#   
+
+#   fix for addPar (Caption) on photos in SendIt
+#   fix for contact list UTF8 encoding on restart
+#   fix: encoding problem in some environments leading to wrong length calc in httputils (msg457443)
 #   
 ##############################################################################
 # TASKS 
@@ -353,6 +356,7 @@ sub TelegramBot_State($$$$) {
 #  Log3 $hash->{NAME}, 4, "TelegramBot_State called with :$name: value :$value:";
 
   if ($name eq 'Contacts')  {
+    $value = TelegramBot_PutToUTF8( $value );
     TelegramBot_CalcContactsHash( $hash, $value );
     Log3 $hash->{NAME}, 4, "TelegramBot_State Contacts hash has now :".scalar(keys %{$hash->{Contacts}}).":";
   }
@@ -1237,6 +1241,9 @@ sub TelegramBot_SendIt($$$$$;$$)
       
 #      $TelegramBot_hu_do_params{url} = "http://requestb.in";
 
+      ## JVI
+#      Debug "send  org msg  :".$msg.":";
+  
       if ( length($msg) > 1000 ) {
         $hash->{sentMsgText} = substr($msg,0, 1000)."...";
        } else {
@@ -1245,6 +1252,9 @@ sub TelegramBot_SendIt($$$$$;$$)
       my $c = chr(10);
       $msg =~ s/([^\\])\\n/$1$c/g;
 
+      ## JVI
+#      Debug "send conv msg  :".$msg.":";
+  
       # add msg (no file)
       $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "text", undef, $msg, 0 ) if ( ! defined( $ret ) );
       
@@ -1258,6 +1268,7 @@ sub TelegramBot_SendIt($$$$$;$$)
       # add caption
       if ( defined( $addPar ) ) {
         $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "caption", undef, $addPar, 0 ) if ( ! defined( $ret ) );
+        $addPar = undef;
       }
       
       # add msg or file or stream
@@ -1299,12 +1310,20 @@ sub TelegramBot_SendIt($$$$$;$$)
 
   }
   
+  ## JVI
+#  Debug "send command  :".$TelegramBot_hu_do_params{data}.":";
+  
   if ( defined( $ret ) ) {
     Log3 $name, 3, "TelegramBot_SendIt $name: Failed with :$ret:";
     TelegramBot_Callback( \%TelegramBot_hu_do_params, $ret, "");
 
   } else {
     $TelegramBot_hu_do_params{args} = \@args;
+    # reset UTF8 flag for ensuring length in httputils is correctly handling lenght (as bytes)
+#  Debug "send a command  :".$TelegramBot_hu_do_params{data}.":";
+    $TelegramBot_hu_do_params{data} = encode_utf8(decode_utf8($TelegramBot_hu_do_params{data}));
+# Debug "send b command  :".$TelegramBot_hu_do_params{data}.":";
+    
     HttpUtils_NonblockingGet( \%TelegramBot_hu_do_params);
 
   }

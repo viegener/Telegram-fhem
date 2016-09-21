@@ -145,11 +145,17 @@
 #   Add \t for messages texts - will be a single space in the message
 # 1.8 2016-05-05 UNicode / Umlaute handling changed, \t added 
 
-#   
+#   Add unescaping of filenames for send - this allows also spaces (%20)
+#   Attribut filenameUrlEscape allows switching on urlescaping for filenames
 #   
 ##############################################################################
 # TASKS 
 #   
+#   Allow receiving locations
+#   Allow sending locations as new sndLocation long lat [message]
+#   
+#   add attribute for timeout on do execution (similar to polling) --> sendTimeout - timeout in do_params
+#
 #   allow literals in msges: U+27F2 - \xe2\x9f\xb2 / Forum msg458794
 #   
 #   Look for solution on space at beginning of line --> checked that data is sent correctly to telegram but does not end up in the message
@@ -177,6 +183,8 @@ use Encode;
 use JSON; 
 
 use File::Basename;
+
+use URI::Escape;
 
 use Scalar::Util qw(reftype looks_like_number);
 
@@ -277,7 +285,7 @@ sub TelegramBot_Initialize($) {
   $hash->{SetFn}      = "TelegramBot_Set";
   $hash->{AttrFn}     = "TelegramBot_Attr";
   $hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer ". "cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None ".
-  "allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCommands:textField allowedCommands ". 
+  "allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCommands:textField allowedCommands filenameUrlEscape:1,0 ". 
   "textResponseFavorites:textField textResponseResult:textField textResponseUnauthorized:textField ".
   " maxRetries:0,1,2,3,4,5 ".$readingFnAttributes;           
 }
@@ -1394,6 +1402,9 @@ sub TelegramBot_AddMultipart($$$$$$)
   if ( defined( $parname ) ) {
     $params->{data} .= "--".$params->{boundary}."\r\n";
     if ( $isMedia > 0) {
+      # url decode filename
+      $parcontent = uri_unescape($parcontent) if ( AttrVal($name,'filenameUrlEscape',0) );
+
       my $baseFilename =  basename($parcontent);
       $parheader = "Content-Disposition: form-data; name=\"".$parname."\"; filename=\"".$baseFilename."\"\r\n".$parheader."\r\n";
 
@@ -2721,6 +2732,9 @@ sub TelegramBot_BinaryFileWrite($$$) {
   <br>
     <li><code>maxFileSize &lt;number of bytes&gt;</code><br>Maximum file size in bytes for transfer of files (images). If not set the internal limit is specified as 10MB (10485760B).
     </li> 
+    <li><code>filenameUrlEscape &lt;0 or 1&gt;</code><br>Specify if filenames can be specified using url escaping, so that special chanarcters as in URLs. This specifically allows to specify spaces in filenames as <code>%20</code>. Default is off (0).
+    </li> 
+
     <li><code>maxReturnSize &lt;number of chars&gt;</code><br>Maximum size of command result returned as a text message including header (Default is unlimited). The internal shown on the device is limited to 1000 chars.
     </li> 
     <li><code>maxRetries &lt;0,1,2,3,4,5&gt;</code><br>Specify the number of retries for sending a message in case of a failure. The first retry is sent after 10sec, the second after 100, then after 1000s (~16min), then after 10000s (~2.5h), then after approximately a day. Setting the value to 0 (default) will result in no retries.

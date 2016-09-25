@@ -151,6 +151,8 @@
 #   Location and venue received as message type
 #   sendLocation command
 #   add attribute for timeout on do execution (similar to polling) --> cmdTimeout - timeout in do_params / Forum msg480844
+# 1.9 2016-09-25 urlescaped filenames / location send-receive / timeout for send 
+
 #
 #   
 ##############################################################################

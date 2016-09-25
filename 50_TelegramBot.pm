@@ -150,20 +150,20 @@
 #   Caption also for documents
 #   Location and venue received as message type
 #   sendLocation command
+#   add attribute for timeout on do execution (similar to polling) --> cmdTimeout - timeout in do_params / Forum msg480844
+#
 #   
 ##############################################################################
 # TASKS 
 #   
-#   add attribute for timeout on do execution (similar to polling) --> sendTimeout - timeout in do_params
-#
-#   allow literals in msges: U+27F2 - \xe2\x9f\xb2 / Forum msg458794
-#   
-#   Look for solution on space at beginning of line --> checked that data is sent correctly to telegram but does not end up in the message
-#
 #   allow keyboards in the device api
 #   
+#   Wait: Look for solution on space at beginning of line --> checked that data is sent correctly to telegram but does not end up in the message
+#
 ##############################################################################
 # Ideas / Future
+#   
+#   Idea: allow literals in msges: U+27F2 - \xe2\x9f\xb2 / Forum msg458794
 #
 ##############################################################################
 
@@ -284,7 +284,8 @@ sub TelegramBot_Initialize($) {
   $hash->{GetFn}      = "TelegramBot_Get";
   $hash->{SetFn}      = "TelegramBot_Set";
   $hash->{AttrFn}     = "TelegramBot_Attr";
-  $hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 pollingTimeout cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer ". "cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None ".
+  $hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer ". "cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None ".
+  "cmdTimeout pollingTimeout ".
   "allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCommands:textField allowedCommands filenameUrlEscape:1,0 ". 
   "textResponseFavorites:textField textResponseResult:textField textResponseUnauthorized:textField ".
   " maxRetries:0,1,2,3,4,5 ".$readingFnAttributes;           
@@ -1276,6 +1277,12 @@ sub TelegramBot_SendIt($$$$$;$$)
   $TelegramBot_hu_do_params{header} = $TelegramBot_header;
   delete( $TelegramBot_hu_do_params{args} );
   delete( $TelegramBot_hu_do_params{boundary} );
+
+  
+  my $timeout =   AttrVal($name,'cmdTimeout',30);
+  $TelegramBot_hu_upd_params{timeout} = $timeout;
+
+
   # only for test / debug               
 #  $TelegramBot_hu_do_params{loglevel} = 3;
 
@@ -2787,6 +2794,10 @@ sub TelegramBot_BinaryFileWrite($$$) {
     </li> 
     <li><code>pollingVerbose &lt;0_None 1_Digest 2_Log&gt;</code><br>Used to limit the amount of logging for errors of the polling connection. These errors are happening regularly and usually are not consider critical, since the polling restarts automatically and pauses in case of excess errors. With the default setting "1_Digest" once a day the number of errors on the last day is logged (log level 3). With "2_Log" every error is logged with log level 2. With the setting "0_None" no errors are logged. In any case the count of errors during the last day and the last error is stored in the readings <code>PollingErrCount</code> and <code>PollingLastError</code> </li> 
     
+  <br>
+    <li><code>cmdTimeout &lt;number&gt;</code><br>Used to specify the timeout for sending commands. The default is a value of 30 seconds, which should be normally fine for most environments. In the case of slow or on-demand connections to the internet this parameter can be used to specify a longer time until a connection failure is considered.
+    </li> 
+
   <br>
     <li><code>maxFileSize &lt;number of bytes&gt;</code><br>Maximum file size in bytes for transfer of files (images). If not set the internal limit is specified as 10MB (10485760B).
     </li> 

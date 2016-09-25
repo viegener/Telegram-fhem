@@ -149,12 +149,10 @@
 #   Attribut filenameUrlEscape allows switching on urlescaping for filenames
 #   Caption also for documents
 #   Location and venue received as message type
+#   sendLocation command
 #   
 ##############################################################################
 # TASKS 
-#   
-#   Allow receiving locations
-#   Allow sending locations as new sndLocation long lat [message]
 #   
 #   add attribute for timeout on do execution (similar to polling) --> sendTimeout - timeout in do_params
 #
@@ -163,8 +161,6 @@
 #   Look for solution on space at beginning of line --> checked that data is sent correctly to telegram but does not end up in the message
 #
 #   allow keyboards in the device api
-#   
-#   dialog function
 #   
 ##############################################################################
 # Ideas / Future
@@ -220,6 +216,8 @@ my %sets = (
   "sendDocument" => "textField",
   "sendMedia" => "textField",
   "sendVoice" => "textField",
+
+  "sendLocation" => "textField",
 
   "replaceContacts" => "textField",
   "reset" => undef,
@@ -461,12 +459,25 @@ sub TelegramBot_Set($@)
       $sendType = 2;
     } elsif ( ($cmd eq 'sendDocument') || ($cmd eq 'sendMedia') ) {
       $sendType = 3;
+    } elsif ($cmd eq 'sendLocation')  {
+      $sendType = 10;
     }
 
     my $msg;
     my $addPar;
     
-    if ( $sendType > 0 ) {
+    if ( $sendType >= 10 ) {
+      # location
+      
+      return "TelegramBot_Set: Command $cmd, 2 parameters latitude / longitude need to be specified" if ( int(@args) != 2 );      
+
+      # first latitude
+      $msg = shift @args;
+
+      # first latitude
+      $addPar = shift @args;
+      
+    } elsif ( $sendType > 0 ) {
       # should return undef if succesful
       $msg = shift @args;
       $msg = $1 if ( $msg =~ /^\"(.*)\"$/ );
@@ -1201,7 +1212,7 @@ sub TelegramBot_DoUrlCommand($$)
 
 #####################################
 # INTERNAL: Function to send a photo (and text message) to a peer and handle result
-# addPar is caption for images / keyboard for text
+# addPar is caption for images / keyboard for text / longituted for location (isMedia 10)
 sub TelegramBot_SendIt($$$$$;$$)
 {
   my ( $hash, @args) = @_;
@@ -1295,6 +1306,18 @@ sub TelegramBot_SendIt($$$$$;$$)
   
       # add msg (no file)
       $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "text", undef, $msg, 0 ) if ( ! defined( $ret ) );
+      
+    } elsif ( $isMedia == 10 ) {
+      # Location send    
+      $hash->{sentMsgText} = "Location: ".TelegramBot_MsgForLog($msg, ($isMedia<0) ).
+          (( defined( $addPar ) )?" - ".$addPar:"");
+
+      $TelegramBot_hu_do_params{url} = $hash->{URL}."sendLocation";
+
+      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "latitude", undef, $msg, 0 ) if ( ! defined( $ret ) );
+
+      $ret = TelegramBot_AddMultipart($hash, \%TelegramBot_hu_do_params, "longitude", undef, $addPar, 0 ) if ( ! defined( $ret ) );
+      $addPar = undef;
       
     } elsif ( abs($isMedia) == 1 ) {
       # Photo send    
@@ -2666,6 +2689,12 @@ sub TelegramBot_BinaryFileWrite($$$) {
     </li>
     <li><code>sendVoice [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt;</code><br>Sends a voice message for playing directly in the browser to the given peer(s) or if ommitted to the default peer. Handling for files and peers is as specified above.
     </li>
+
+  <br>
+    <li><code>sendLocation [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;latitude&gt; &lt;longitude&gt;</code><br>Sends a location as pair of coordinates latitude and longitude as floating point numbers 
+    <br>Example: <code>set aTelegramBotDevice sendLocation @@someusername 51.163375 10.447683</code> will send the coordinates of the geographical center of Germany as location.
+    </li>
+
   <br>
     <li><code>replaceContacts &lt;text&gt;</code><br>Set the contacts newly from a string. Multiple contacts can be separated by a space. 
     Each contact needs to be specified as a triple of contact id, full name and user name as explained above. </li>

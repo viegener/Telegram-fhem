@@ -147,6 +147,8 @@
 
 #   Add unescaping of filenames for send - this allows also spaces (%20)
 #   Attribut filenameUrlEscape allows switching on urlescaping for filenames
+#   Caption also for documents
+#   Location and venue received as message type
 #   
 ##############################################################################
 # TASKS 
@@ -1857,6 +1859,7 @@ sub TelegramBot_ParseMsg($$$)
 
     $mfileid = $subtype->{file_id};
 
+    $mtext .= " # Caption: ".$message->{caption} if ( defined( $message->{caption} ) );
     $mtext .= " # Name: ".$subtype->{file_name} if ( defined( $subtype->{file_name} ) );
     $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
     $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
@@ -1901,6 +1904,30 @@ sub TelegramBot_ParseMsg($$$)
       $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
       Log3 $name, 4, "TelegramBot_ParseMsg $name: photo fileid: $mfileid";
     }
+  } elsif ( defined( $message->{venue} ) ) {
+    # handle location type message
+    my $ven = $message->{venue};
+    my $loc = $ven->{location};
+    
+    $mtext = "received venue ";
+
+    $mtext .= " # latitude: ".$loc->{latitude}." # longitude: ".$loc->{longitude};
+    $mtext .= " # title: ".$ven->{title}." # address: ".$ven->{address};
+    
+# urls will be discarded in fhemweb    $mtext .= "\n# url: <a href=\"http://maps.google.com/?q=loc:".$loc->{latitude}.",".$loc->{longitude}."\">maplink</a>";
+    
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: location received: latitude: ".$loc->{latitude}." longitude: ".$loc->{longitude};;
+  } elsif ( defined( $message->{location} ) ) {
+    # handle location type message
+    my $loc = $message->{location};
+    
+    $mtext = "received location ";
+
+    $mtext .= " # latitude: ".$loc->{latitude}." # longitude: ".$loc->{longitude};
+    
+# urls will be discarded in fhemweb    $mtext .= "\n# url: <a href=\"http://maps.google.com/?q=loc:".$loc->{latitude}.",".$loc->{longitude}."\">maplink</a>";
+    
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: location received: latitude: ".$loc->{latitude}." longitude: ".$loc->{longitude};;
   }
 
 
@@ -2577,7 +2604,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
   </ul>   
   <br><br>
 
-  The TelegramBot module allows receiving of (text) messages from any peer (telegram user) and can send text messages to known users.
+  The TelegramBot module allows receiving of messages from any peer (telegram user) and can send messages to known users.
   The contacts/peers, that are known to the bot are stored in a reading (named <code>Contacts</code>) and also internally in the module in a hashed list to allow the usage 
   of contact ids and also full names and usernames. Contact ids are made up from only digits, user names are prefixed with a @, group names are prefixed with a #. 
   All other names will be considered as full names of contacts. Here any spaces in the name need to be replaced by underscores (_).
@@ -2588,6 +2615,8 @@ sub TelegramBot_BinaryFileWrite($$$) {
   <br><br>
   Updates and messages are received via long poll of the GetUpdates message. This message currently supports a maximum of 20 sec long poll. 
   In case of failures delays are taken between new calls of GetUpdates. In this case there might be increasing delays between sending and receiving messages! 
+  <br>
+  Beside pure text messages also media messages can be sent and received. This includes audio, video, images, documents, locations and venues.
   <br><br>
   <a name="TelegramBotdefine"></a>
   <b>Define</b>
@@ -2766,7 +2795,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     For secret chats a value of -1 will be given, since the msgIds of secret messages are not part of the consecutive numbering</li> 
     <li>msgPeer &lt;text&gt;<br>The sender name of the last received message (either full name or if not available @username)</li> 
     <li>msgPeerId &lt;text&gt;<br>The sender id of the last received message</li> 
-    <li>msgText &lt;text&gt;<br>The last received message text is stored in this reading.</li> 
+    <li>msgText &lt;text&gt;<br>The last received message text is stored in this reading. Information about special messages like documents, audio, video, locations or venues will be also stored in this reading</li> 
     <li>msgFileId &lt;fileid&gt;<br>The last received message file_id (Audio, Photo, Video, Voice or other Document) is stored in this reading.</li> 
   <br>
     <li>prevMsgId &lt;text&gt;<br>The id of the SECOND last received message is stored in this reading</li> 

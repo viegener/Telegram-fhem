@@ -152,6 +152,7 @@
 #   sendLocation command
 #   add attribute for timeout on do execution (similar to polling) --> cmdTimeout - timeout in do_params / Forum msg480844
 #   fix for timeout on sent and addtl log - forum msg497239
+#   change log levels for deep encoding
 # 1.9 2016-10-03 urlescaped filenames / location send-receive / timeout for send 
 
 #
@@ -1608,13 +1609,13 @@ sub TelegramBot_Deepencode
     for (@_) {
         my $reftype= ref $_;
         if( $reftype eq "ARRAY" ) {
-            Log3 $name, 4, "TelegramBot_Deepencode $name: found an ARRAY";
+            Log3 $name, 5, "TelegramBot_Deepencode $name: found an ARRAY";
             push @result, [ TelegramBot_Deepencode($name, @$_) ];
         }
         elsif( $reftype eq "HASH" ) {
             my %h;
             @h{keys %$_}= TelegramBot_Deepencode($name, values %$_);
-            Log3 $name, 4, "TelegramBot_Deepencode $name: found a HASH";
+            Log3 $name, 5, "TelegramBot_Deepencode $name: found a HASH";
             push @result, \%h;
         }
         else {
@@ -1622,7 +1623,7 @@ sub TelegramBot_Deepencode
             if ( utf8::is_utf8($us) ) {
               $us = encode_utf8( $_ );
             }
-            Log3 $name, 4, "TelegramBot_Deepencode $name: encoded a String from :".$_.": to :".$us.":";
+            Log3 $name, 5, "TelegramBot_Deepencode $name: encoded a String from :".$_.": to :".$us.":";
             push @result, $us;
         }
     }

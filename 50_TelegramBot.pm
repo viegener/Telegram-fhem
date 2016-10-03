@@ -1285,8 +1285,6 @@ sub TelegramBot_SendIt($$$$$;$$)
   
   my $timeout =   AttrVal($name,'cmdTimeout',30);
   $TelegramBot_hu_do_params{timeout} = $timeout;
-  Log3 $name, 4, "TelegramBot_SendIt $name: timeout for sent :$timeout: ";
-
 
   # only for test / debug               
 #  $TelegramBot_hu_do_params{loglevel} = 3;
@@ -1397,6 +1395,7 @@ sub TelegramBot_SendIt($$$$$;$$)
 #    $TelegramBot_hu_do_params{data} = encode_utf8(decode_utf8($TelegramBot_hu_do_params{data}));
 # Debug "send b command  :".$TelegramBot_hu_do_params{data}.":";
     
+    Log3 $name, 4, "TelegramBot_SendIt $name: timeout for sent :".$TelegramBot_hu_do_params{timeout}.": ";
     HttpUtils_NonblockingGet( \%TelegramBot_hu_do_params);
 
   }

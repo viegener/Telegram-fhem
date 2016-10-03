@@ -151,7 +151,8 @@
 #   Location and venue received as message type
 #   sendLocation command
 #   add attribute for timeout on do execution (similar to polling) --> cmdTimeout - timeout in do_params / Forum msg480844
-# 1.9 2016-09-25 urlescaped filenames / location send-receive / timeout for send 
+#   fix for timeout on sent and addtl log - forum msg497239
+# 1.9 2016-10-03 urlescaped filenames / location send-receive / timeout for send 
 
 #
 #   
@@ -1282,7 +1283,8 @@ sub TelegramBot_SendIt($$$$$;$$)
 
   
   my $timeout =   AttrVal($name,'cmdTimeout',30);
-  $TelegramBot_hu_upd_params{timeout} = $timeout;
+  $TelegramBot_hu_do_params{timeout} = $timeout;
+  Log3 $name, 4, "TelegramBot_SendIt $name: timeout for sent :$timeout: ";
 
 
   # only for test / debug               

@@ -2608,9 +2608,9 @@ sub TelegramBot_BinaryFileWrite($$$) {
 1;
 
 =pod
-=item summary    sending and receiving of messages through telegram instant messaging
-=item summary_DE senden und empfangen von Nachrichten durch telegram Instant Messaging
-=begin html 
+=item summary    send and receive of messages through telegram instant messaging
+=item summary_DE senden und empfangen von Nachrichten durch telegram IM
+=begin html
 
 <a name="TelegramBot"></a>
 <h3>TelegramBot</h3>

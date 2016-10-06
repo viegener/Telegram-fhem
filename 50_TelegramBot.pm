@@ -153,7 +153,8 @@
 #   add attribute for timeout on do execution (similar to polling) --> cmdTimeout - timeout in do_params / Forum msg480844
 #   fix for timeout on sent and addtl log - forum msg497239
 #   change log levels for deep encoding
-# 1.9 2016-10-03 urlescaped filenames / location send-receive / timeout for send 
+#   add summary for fhem commandref
+# 1.9 2016-10-06 urlescaped filenames / location send-receive / timeout for send 
 
 #
 #   
@@ -2607,7 +2608,9 @@ sub TelegramBot_BinaryFileWrite($$$) {
 1;
 
 =pod
-=begin html
+=item summary    sending and receiving of messages through telegram instant messaging
+=item summary_DE senden und empfangen von Nachrichten durch telegram Instant Messaging
+=begin html 
 
 <a name="TelegramBot"></a>
 <h3>TelegramBot</h3>

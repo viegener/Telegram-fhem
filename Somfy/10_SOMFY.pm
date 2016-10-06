@@ -60,6 +60,7 @@
 #  2016-05-29 viegener - Some cleanup - translations reduced
 #  2016-05-29 viegener - remove internals exact/position use only readings
 #  2016-05-29 viegener - Fix value in exact not being numeric (Forum449583)
+#  2016-10-06 viegener - add summary for fhem commandref
 # 
 #  
 #  
@@ -72,6 +73,7 @@
 # Somfy Modul - OPEN
 ###############################################################################
 # 
+# - 
 # - Autocreate 
 # - Complete shutter / blind as different model
 # - Make better distinction between different IoTypes - CUL+SCC / Signalduino
@@ -1298,6 +1300,8 @@ sub SOMFY_CalcCurrentPos($$$$) {
 
 
 =pod
+=item summary    supporting devices using the SOMFY RTS protocol - window shades 
+=item summary_DE unterstützt Geräte, die über das SOMFY RTS protocol angebunden sind - Rolläden 
 =begin html
 
 <a name="SOMFY"></a>

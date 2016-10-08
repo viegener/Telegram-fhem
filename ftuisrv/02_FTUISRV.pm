@@ -36,7 +36,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,43110.0.html
 #
-# $Id: 50_TelegramBot.pm 11090 2016-03-19 21:38:31Z viegener $
+# $Id: 02_FTUISRV.pm 12299 2016-10-08 23:33:10Z viegener $
 #
 ##############################################################################
 # 0.0 Initial version FTUIHTTPSRV
@@ -1091,8 +1091,8 @@ sub FTUISRV_BinaryFileRead($) {
 
 
 =pod
-=item summary    HTTP Server for FHEM tablet UI with server side templates, replacements and others
-=item summary_DE HTTP-Server für das FHEM tablet UI mit server-seitigen templates, Ersetzungen und mehr
+=item summary    HTTP Server for tablet UI with server side includes, loops, ifs
+=item summary_DE HTTP-Server für das tablet UI mit server-seitigen includes, loop, if
 =begin html
 
 <a name="FTUISRV"></a>

@@ -66,11 +66,11 @@
 #   simplified keyvalue parsing
 #   simplified include in separate sub
 #   add loopinc for looping include multiple times loopinc="<path>" <key>=( <expr> )  <keyvalues> 
+#   summary for commandref
+#   added if and loopinc to commandref
 #   
 ################################################################
 #TODO:
-#
-#   doc for if / loopinc
 #
 # deepcopy only if new keys found
 #
@@ -1091,6 +1091,8 @@ sub FTUISRV_BinaryFileRead($) {
 
 
 =pod
+=item summary    HTTP Server for FHEM tablet UI with server side templates, replacements and others
+=item summary_DE HTTP-Server für das FHEM tablet UI mit server-seitigen templates, Ersetzungen und mehr
 =begin html
 
 <a name="FTUISRV"></a>
@@ -1118,6 +1120,19 @@ sub FTUISRV_BinaryFileRead($) {
       <br>Example: <code>&lt;?ftui-inc="temphum-inline.ftui.part" thdev="sensorWZ" thformat="top-space-2x" thtemp="measured-temp" ?&gt;</code>
     </li><br>
 
+    <li><code>&lt;?ftui-if=( expression ) ?&gt; ... [ &lt;?ftui-else ?&gt; ... ] &lt;?ftui-endif ?&gt; </code> <br>
+      IF statement: Allow the inclusion of a block depending on an expression that might again include also variables and expressions in fhem. The else block is optional and can contain a block that is included if the expression is not evaluated to true.
+      <br>
+      Example: <code>&lt;?ftui-if=( [tempdevice:batteryok] ) ?&gt; ... &lt;?ftui-else ?&gt; ... &lt;?ftui-endif ?&gt; </code>
+    </li><br>
+
+    <li><code>&lt;?ftui-loopinc="name" loopvariable=( loop-expression ) varname1="content1" ... varnameN="contentN" ?&gt;</code> <br>
+      LOOP-INCLUDE statement: Including other files that will be embedded in the result at the place of the include statement. The include will be executed once for every entry (line) that is returned when evaluating the loop-expression as an fhem command. So the loop expression could be a list command returning multiple devices
+      <br>
+      The quotation marks and the spaces between the variable replacements and before the final ? are significant and can not be ommitted.
+      <br>Example: <code>&lt;?ftui-loopinc="temphum-inline.ftui.part" thdev=( list TYPE=CUL_TX ) thformat="top-space-2x" thtemp="measured-temp" ?&gt;</code>
+    </li><br>
+    
     <li><code>&lt;?ftui-key=varname ?&gt;</code> <br>
       VARIABLE specification: Replacement of variables with given parameters in the include statement (or the include header).
       The text specified for the corresponding variable will be inserted at the place of the FTUI-Statement in parentheses.

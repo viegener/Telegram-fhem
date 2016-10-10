@@ -1150,6 +1150,9 @@ sub FTUISRV_BinaryFileRead($) {
       <br>Example: <code>&lt;?ftui-header="TempHum inline" thdev thformat thtemp="temperature" ?&gt;</code>
       Headers can also use device readings in for setting default values in the form of <code>[device:reading]</code>(according to the syntax and logic used in the set command)
       <br>Example: <code>&lt;?ftui-header="TempHum inline" thdev thformat thbattery=[temphm:batteryok] thtemp="temperature" ?&gt;</code>
+      <br>
+      In the special case, where also variable content shall be used in the header part a special escaping for the closing tags for the ftui-key needs to be used. That means for the example above:
+      Example: <code>&lt;?ftui-header="TempHum inline" thdev thformat thbattery=[<ftui-key=thdev ?\>:batteryok] thtemp="temperature" ?&gt;</code>
     </li><br>
   </ul>
  

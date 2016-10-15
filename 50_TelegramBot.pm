@@ -156,12 +156,10 @@
 #   add summary for fhem commandref
 # 1.9 2016-10-06 urlescaped filenames / location send-receive / timeout for send 
 
-#
+#   fix: multibot environment - localize global hashes
 #   
 ##############################################################################
 # TASKS 
-#   
-#   fix: multibot environment
 #   
 #   diable command
 #   

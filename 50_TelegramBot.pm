@@ -157,9 +157,11 @@
 # 1.9 2016-10-06 urlescaped filenames / location send-receive / timeout for send 
 
 #   fix: multibot environment - localize global hashes
+#   markup - per Attribute "parseModeSend" - None / InMsg / Markdown / HTML 
 #   
 ##############################################################################
 # TASKS 
+#   
 #   
 #   diable command
 #   
@@ -209,6 +211,9 @@ sub TelegramBot_SplitFavoriteDef($$);
 
 sub TelegramBot_GetUTF8Back( $ );
 sub TelegramBot_PutToUTF8( $ );
+
+sub TelegramBot_AttrNum($$$);
+
 
 #########################
 # Globals
@@ -277,6 +282,7 @@ sub TelegramBot_Initialize($) {
   "cmdTimeout pollingTimeout ".
   "allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCommands:textField allowedCommands filenameUrlEscape:1,0 ". 
   "textResponseFavorites:textField textResponseResult:textField textResponseUnauthorized:textField ".
+  "parseModeSend:0_None,1_Markdown,2_HTML,3_InMsg ".
   " maxRetries:0,1,2,3,4,5 ".$readingFnAttributes;           
 }
 
@@ -321,7 +327,7 @@ sub TelegramBot_Define($$) {
   $hash->{UPDATER} = 0;
   $hash->{POLLING} = -1;
   
-my %hu_upd_params = (
+  my %hu_upd_params = (
                   url        => "",
                   timeout    => 5,
                   method     => "GET",
@@ -329,16 +335,16 @@ my %hu_upd_params = (
                   isPolling  => "update",
                   hideurl    => 1,
                   callback   => \&TelegramBot_Callback
-);
+  );
 
-my %hu_do_params = (
+  my %hu_do_params = (
                   url        => "",
                   timeout    => 30,
                   method     => "GET",
                   header     => $TelegramBot_header,
                   hideurl    => 1,
                   callback   => \&TelegramBot_Callback
-);
+  );
 
   $hash->{HU_UPD_PARAMS} = \%hu_upd_params;
   $hash->{HU_DO_PARAMS} = \%hu_do_params;
@@ -1307,6 +1313,25 @@ sub TelegramBot_SendIt($$$$$;$$)
       ## JVI
 #      Debug "send  org msg  :".$msg.":";
   
+      my $parseMode = TelegramBot_AttrNum($name,"parseModeSend","0" );
+      if ( $parseMode == 1 ) {
+        $parseMode = "Markdown";
+      } elsif ( $parseMode == 2 ) {
+        $parseMode = "HTML";
+      } elsif ( $parseMode == 3 ) {
+        $parseMode = 0;
+        if ( $msg =~ /^markdown(.*)$/i ) {
+          $msg = $1;
+          $parseMode = "Markdown";
+        } elsif ( $msg =~ /^HTML(.*)$/i ) {
+          $msg = $1;
+          $parseMode = "HTML";
+        }
+      } else {
+        $parseMode = 0;
+      }
+      Log3 $name, 4, "TelegramBot_SendIt parseMode $parseMode";
+    
       if ( length($msg) > 1000 ) {
         $hash->{sentMsgText} = substr($msg,0, 1000)."...";
        } else {
@@ -1320,6 +1345,10 @@ sub TelegramBot_SendIt($$$$$;$$)
   
       # add msg (no file)
       $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "text", undef, $msg, 0 ) if ( ! defined( $ret ) );
+
+      # add parseMode
+      $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "parse_mode", undef, $parseMode, 0 ) if ( ( ! defined( $ret ) ) && ( $parseMode ) );
+
       
     } elsif ( $isMedia == 10 ) {
       # Location send    
@@ -2493,6 +2522,17 @@ sub TelegramBot_checkAllowedPeer($$$) {
 
 
 #####################################
+#  INTERNAL: get only numeric part of a value (simple)
+sub TelegramBot_AttrNum($$$)
+{
+  my ($d,$n,$default) = @_;
+  my $val = AttrVal($d,$n,$default);
+  $val =~ s/[^-\.\d]//g;
+  return $val;
+} 
+
+
+#####################################
 #  INTERNAL: Convert (Mark) a scalar as UTF8 - coming from telegram
 sub TelegramBot_GetUTF8Back( $ ) {
   my ( $data ) = @_;
@@ -2736,6 +2776,8 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>defaultPeerCopy &lt;1 (default) or 0&gt;</code><br>Copy all command results also to the defined defaultPeer. If set results are sent both to the requestor and the defaultPeer if they are different. 
     </li> 
 
+    <li><code>parseModeSend &lt;0_None or 1_Markdown or 2_HTML or 3_Inmsg &gt;</code><br>Specify the parse_mode (allowing formatting of text messages) for sent text messages. 0_None is the default where no formatting is used and plain text is sent. The different formatting options for markdown or HTML are described here <a href="https://core.telegram.org/bots/api/#formatting-options">https://core.telegram.org/bots/api/#formatting-options</a>. The option 3_Inmsg allows to specify the correct parse_mode at the beginning of the message (e.g. "Markdown*bold text*..." as message).
+    </li> 
   <br>
     <li><code>cmdKeyword &lt;keyword&gt;</code><br>Specify a specific text that needs to be sent to make the rest of the message being executed as a command. 
       So if for example cmdKeyword is set to <code>ok fhem</code> then a message starting with this string will be executed as fhem command 

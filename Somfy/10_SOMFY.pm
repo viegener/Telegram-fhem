@@ -61,6 +61,7 @@
 #  2016-05-29 viegener - remove internals exact/position use only readings
 #  2016-05-29 viegener - Fix value in exact not being numeric (Forum449583)
 #  2016-10-06 viegener - add summary for fhem commandref
+#  2016-10-06 viegener - positionInverse for inverse operation 100 open 10 down 0 closed 
 # 
 #  
 #  
@@ -159,6 +160,13 @@ my %translations = (
 );
 
 
+my %translations100To0 = (
+	"100" => "open",  
+	"10" => "down",  
+	"0" => "closed" 
+);
+
+
 ##################################################
 # Forward declarations
 #
@@ -202,6 +210,7 @@ sub SOMFY_Initialize($) {
 	  . " drive-up-time-to-100"
 	  . " drive-up-time-to-open "
 	  . " additionalPosReading  "
+    . " positionInverse:1,0  "
 	  . " IODev"
 	  . " symbol-length"
 	  . " enc-key"
@@ -511,7 +520,19 @@ sub SOMFY_Translate($) {
 	}
 
 	return $v
-} # end sub SOMFY_Runden
+} 
+
+
+###################################
+sub SOMFY_Translate100To0($) {
+	my ($v) = @_;
+
+	if(exists($translations100To0{$v})) {
+		$v = $translations100To0{$v}
+	}
+
+	return $v
+}
 
 
 #############################
@@ -601,7 +622,48 @@ sub SOMFY_Attr(@) {
 	# $cmd can be "del" or "set"
 	# $name is device name
 	# aName and aVal are Attribute name and value
-	if ($cmd eq "set") {
+  
+  # Convert in case of change to 
+  if($aName eq 'positionInverse') {
+    my $rounded;
+    my $stateTrans;
+    my $pos = ReadingsVal($name,'exact',undef);
+    if ( !defined($pos) ) {
+      $pos = ReadingsVal($name,'position',undef);
+    } 
+    if ($cmd eq "set") {
+      if ( ( $aVal ) && ( ! AttrVal( $name, "positionInverse", 0 ) ) ) {
+        # set to 1 and was 0 before - convert To100To10
+        # first exact then round to pos
+        $pos = SOMFY_ConvertTo100To0( $pos );
+        $rounded = SOMFY_Runden( $pos ); 
+        $stateTrans = SOMFY_Translate100To0( $rounded );
+      } elsif ( ( ! $aVal ) && ( AttrVal( $name, "positionInverse", 0 ) ) ) {
+        # set to 0 and was 1 before - convert From100To10
+        # first exact then round to pos
+        $pos = SOMFY_ConvertFrom100To0( $pos );
+        $rounded = SOMFY_Runden( $pos ); 
+        $stateTrans = SOMFY_Translate( $rounded );
+      }
+    } elsif ($cmd eq "del") {
+      if ( AttrVal( $name, "positionInverse", 0 ) ) {
+        # delete and was 1 before - convert From100To10
+        # first exact then round to pos
+        $pos = SOMFY_ConvertFrom100To0( $pos );
+        $rounded = SOMFY_Runden( $pos ); 
+        $stateTrans = SOMFY_Translate( $rounded );
+      }
+    }
+    if ( defined( $rounded ) ) {
+        readingsBeginUpdate($hash);         
+        readingsBulkUpdate($hash,"position",$rounded);         
+        readingsBulkUpdate($hash,"exact",$pos); 
+        readingsBulkUpdate($hash,"state",$stateTrans);
+        $hash->{STATE} = $stateTrans;
+        readingsEndUpdate($hash,1);  
+    }
+  
+  } elsif ($cmd eq "set") {
 		if($aName eq 'drive-up-time-to-100') {
 			return "SOMFY_attr: value must be >=0 and <= 100" if($aVal < 0 || $aVal > 100);
 		} elsif ($aName =~/drive-(down|up)-time-to.*/) {
@@ -725,7 +787,7 @@ sub SOMFY_InternalSet($@) {
 	
 	if($cmd eq 'pos') {
 		return "SOMFY_set: No pos specification"  if(!defined($arg1));
-		return  "SOMFY_set: $arg1 must be > 0 and < 100 for pos" if($arg1 < 0 || $arg1 > 100);
+		return  "SOMFY_set: $arg1 must be between 0 and 100 for pos" if($arg1 < 0 || $arg1 > 100);
 		return "SOMFY_set: Please set attr drive-down-time-to-100, drive-down-time-to-close, etc" 
 				if(!defined($t1downclose) || !defined($t1down100) || !defined($t1upopen) || !defined($t1up100));
 	}
@@ -744,6 +806,12 @@ sub SOMFY_InternalSet($@) {
 		$pos = ReadingsVal($name,'position',undef);
 	}
 
+  # do conversions
+  if ( AttrVal( $name, "positionInverse", 0 ) ) {
+    $arg1 = SOMFY_ConvertFrom100To0( $arg1 );
+    $pos = SOMFY_ConvertFrom100To0( $arg1 );
+  }
+  
 	# translate state info to numbers - closed = 200 , open = 0    (correct missing values)
 	if ( !defined($pos) ) {
 		if(exists($positions{$state})) {
@@ -1011,6 +1079,25 @@ sub SOMFY_InternalSet($@) {
 ######################################################
 
 #############################
+sub SOMFY_ConvertFrom100To0($) {
+	my ($v) = @_;
+  
+  return ( $v < 10 ) ? ( 200-($v*10) ) : ( (100-$v)*10/9 ); 
+} 
+
+#############################
+sub SOMFY_ConvertTo100To0($) {
+	my ($v) = @_;
+  
+  return ( $v > 100 ) ? ( (200-$v)/10 ) : ( 100-(9*$v/10) ); 
+} 
+
+
+
+
+
+
+#############################
 sub SOMFY_RTS_Crypt($$$)
 {
 	my ($operation, $name, $data) = @_;
@@ -1123,6 +1210,7 @@ sub SOMFY_TimedUpdate($) {
 #	SOMFY_UpdateState( $hash, $newState, $move, $updateState );
 sub SOMFY_UpdateState($$$$$) {
 	my ($hash, $newState, $move, $updateState, $doTrigger) = @_;
+	my $name = $hash->{NAME};
 
   my $addtlPosReading = AttrVal($hash->{NAME},'additionalPosReading',undef);
   if ( defined($addtlPosReading )) {
@@ -1144,8 +1232,22 @@ sub SOMFY_UpdateState($$$$$) {
     readingsBulkUpdate($hash,$addtlPosReading,$newExact) if ( defined($addtlPosReading) );
 
   } else {
-		my $rounded = SOMFY_Runden( $newState );
-		my $stateTrans = SOMFY_Translate( $rounded );
+
+    my $rounded;
+    my $stateTrans;
+  
+    # do conversions
+    if ( AttrVal( $name, "positionInverse", 0 ) ) {
+      $newState = SOMFY_ConvertTo100To0( $newState );
+      $newExact = $newState;
+      $rounded = SOMFY_Runden( $newState );
+      $stateTrans = SOMFY_Translate100To0( $rounded );
+
+    } else {
+      $rounded = SOMFY_Runden( $newState );
+      $stateTrans = SOMFY_Translate( $rounded );
+    }
+  
 		readingsBulkUpdate($hash,"state",$stateTrans);
 		$hash->{STATE} = $stateTrans;
 
@@ -1430,6 +1532,11 @@ sub SOMFY_CalcCurrentPos($$$$) {
         for this "logical" device. An example for the physical device is a CUL.<br>
         Note: The IODev has to be set, otherwise no commands will be sent!<br>
         If you have both a CUL868 and CUL433, use the CUL433 as IODev for increased range.
+		</li><br>
+
+    <a name="positionInverse"></a>
+    <li>positionInverse<br>
+        Inverse operation for positions instead of 0 to 100-200 the positions are ranging from 100 to 10 (down) and then to 0 (closed).
 		</li><br>
 
     <a name="additionalPosReading"></a>

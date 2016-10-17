@@ -62,6 +62,7 @@
 #  2016-05-29 viegener - Fix value in exact not being numeric (Forum449583)
 #  2016-10-06 viegener - add summary for fhem commandref
 #  2016-10-06 viegener - positionInverse for inverse operation 100 open 10 down 0 closed 
+#  2016-10-17 viegener - positionInverse test and fixes
 # 
 #  
 #  
@@ -808,8 +809,10 @@ sub SOMFY_InternalSet($@) {
 
   # do conversions
   if ( AttrVal( $name, "positionInverse", 0 ) ) {
+    Log3($name,4,"SOMFY_set: $name Inverse before arg1:$arg1: pos:$pos:");
     $arg1 = SOMFY_ConvertFrom100To0( $arg1 );
-    $pos = SOMFY_ConvertFrom100To0( $arg1 );
+    $pos = SOMFY_ConvertFrom100To0( $pos );
+    Log3($name,4,"SOMFY_set: $name Inverse after arg1:$arg1: pos:$pos:");
   }
   
 	# translate state info to numbers - closed = 200 , open = 0    (correct missing values)
@@ -1001,9 +1004,9 @@ sub SOMFY_InternalSet($@) {
 		## special case close is at 100 ("markisen")
 		if( ( $t1downclose == $t1down100) && ( $t1up100 == 0 ) ) {
 			if ( defined( $updateState )) {
-				$updateState = min( 100, $updateState );
+				$updateState = minNum( 100, $updateState );
 			}
-			$newState = min( 100, $posRounded );
+			$newState = minNum( 100, $posRounded );
 		}
 	}
 
@@ -1082,14 +1085,24 @@ sub SOMFY_InternalSet($@) {
 sub SOMFY_ConvertFrom100To0($) {
 	my ($v) = @_;
   
-  return ( $v < 10 ) ? ( 200-($v*10) ) : ( (100-$v)*10/9 ); 
+  return $v if ( ! defined($v) );
+  return $v if ( length($v) == 0 );
+  
+  $v = minNum( 100, maxNum( 0, $v ) );
+  
+  return (( $v < 10 ) ? ( 200-($v*10.0) ) : ( (100-$v)*10.0/9 )); 
 } 
 
 #############################
 sub SOMFY_ConvertTo100To0($) {
 	my ($v) = @_;
   
-  return ( $v > 100 ) ? ( (200-$v)/10 ) : ( 100-(9*$v/10) ); 
+  return $v if ( ! defined($v) );
+  return $v if ( length($v) == 0 );
+  
+  $v = minNum( 200, maxNum( 0, $v ) );
+
+  return ( $v > 100 ) ? ( (200-$v)/10.0 ) : ( 100-(9*$v/10.0) ); 
 } 
 
 
@@ -1166,8 +1179,13 @@ sub SOMFY_TimedUpdate($) {
 	
 	# get current infos 
 	my $pos = ReadingsVal($hash->{NAME},'exact',undef);
+
+  if ( AttrVal( $hash->{NAME}, "positionInverse", 0 ) ) {
+    Log3($hash->{NAME},5,"SOMFY_TimedUpdate : pos before convert so far : $pos");
+    $pos = SOMFY_ConvertFrom100To0( $pos );
+  }
 	Log3($hash->{NAME},5,"SOMFY_TimedUpdate : pos so far : $pos");
-	
+  
 	my $dt = SOMFY_UpdateStartTime($hash);
   my $nowt = gettimeofday();
   
@@ -1197,7 +1215,7 @@ sub SOMFY_TimedUpdate($) {
 		} else {
 			Log3($hash->{NAME},4,"SOMFY_TimedUpdate: $hash->{NAME} -> update state in $hash->{runningtime} sec");
 		}
-    my $nstt = max($nowt+$utime-0.01, gettimeofday()+.1 );
+    my $nstt = maxNum($nowt+$utime-0.01, gettimeofday()+.1 );
     Log3($hash->{NAME},5,"SOMFY_TimedUpdate: $hash->{NAME} -> next time to stop: $nstt");
 		InternalTimer($nstt,"SOMFY_TimedUpdate",$hash,0);
 	}
@@ -1236,6 +1254,8 @@ sub SOMFY_UpdateState($$$$$) {
     my $rounded;
     my $stateTrans;
   
+    Log3($name,4,"SOMFY_UpdateState: $name enter with  newState:$newState:   updatestate:$updateState:   move:$move:");
+
     # do conversions
     if ( AttrVal( $name, "positionInverse", 0 ) ) {
       $newState = SOMFY_ConvertTo100To0( $newState );
@@ -1248,6 +1268,8 @@ sub SOMFY_UpdateState($$$$$) {
       $stateTrans = SOMFY_Translate( $rounded );
     }
   
+    Log3($name,4,"SOMFY_UpdateState: $name after conversions  newState:$newState:  rounded:$rounded:  stateTrans:$stateTrans:");
+
 		readingsBulkUpdate($hash,"state",$stateTrans);
 		$hash->{STATE} = $stateTrans;
 
@@ -1331,9 +1353,9 @@ sub SOMFY_CalcCurrentPos($$$$) {
 
 	if(defined($t1down100) && defined($t1downclose) && defined($t1up100) && defined($t1upopen)) {
 		if( ( $t1downclose == $t1down100) && ( $t1up100 == 0 ) ) {
-			$pos = min( 100, $pos );
+			$pos = minNum( 100, $pos );
 			if($move eq 'on') {
-				$newPos = min( 100, $pos );
+				$newPos = minNum( 100, $pos );
 				if ( $pos < 100 ) {
 					# calc remaining time to 100% 
 					my $remTime = ( 100 - $pos ) * $t1down100 / 100;
@@ -1343,10 +1365,10 @@ sub SOMFY_CalcCurrentPos($$$$) {
 				}
 
 			} elsif($move eq 'off') {
-				$newPos = max( 0, $pos );
+				$newPos = maxNum( 0, $pos );
 				if ( $pos > 0 ) {
 					$newPos = $dt * 100 / ( $t1upopen );
-					$newPos = max( 0, ($pos - $newPos) );
+					$newPos = maxNum( 0, ($pos - $newPos) );
 				}
 			} else {
 				Log3($name,1,"SOMFY_CalcCurrentPos: $name move wrong $move");
@@ -1355,7 +1377,7 @@ sub SOMFY_CalcCurrentPos($$$$) {
 			if($move eq 'on') {
 				if ( $pos >= 100 ) {
 					$newPos = $dt * 100 / ( $t1downclose - $t1down100 );
-					$newPos = min( 200, $pos + $newPos );
+					$newPos = minNum( 200, $pos + $newPos );
 				} else {
 					# calc remaining time to 100% 
 					my $remTime = ( 100 - $pos ) * $t1down100 / 100;
@@ -1371,7 +1393,7 @@ sub SOMFY_CalcCurrentPos($$$$) {
 
 				if ( $pos <= 100 ) {
 					$newPos = $dt * 100 / ( $t1upopen - $t1up100 );
-					$newPos = max( 0, $pos - $newPos );
+					$newPos = maxNum( 0, $pos - $newPos );
 				} else {
 					# calc remaining time to 100% 
 					my $remTime = ( $pos - 100 ) * $t1up100 / 100;

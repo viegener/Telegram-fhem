@@ -1,13 +1,33 @@
-######################################################
-# $Id: 10_SOMFY.pm 11433 2016-05-12 19:15:18Z viegener $
+##############################################################################
 #
+#     10_SOMFY.pm
+#
+#     This file is part of Fhem.
+#
+#     Fhem is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 2 of the License, or
+#     (at your option) any later version.
+#
+#     Fhem is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with Fhem.  If not, see <http://www.gnu.org/licenses/>.
+#
+##############################################################################
+#
+# $Id: 10_SOMFY.pm 11433 2016-05-12 19:15:18Z viegener $
+#  
 # SOMFY RTS / Simu Hz protocol module for FHEM
 # (c) Thomas Dankert <post@thomyd.de>
+# (c) Johannes Viegener / https://github.com/viegener/Telegram-fhem/tree/master/Somfy
 #
-# Needs CULFW V 1.59 or higher (support for "Y" command).
+# Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,53319.msg450080.html#msg450080
 #
-# Published under GNU GPL License, v2
-#
+##############################################################################
 # History:
 #	1.0		thomyd			initial implementation
 #
@@ -63,6 +83,7 @@
 #  2016-10-06 viegener - add summary for fhem commandref
 #  2016-10-06 viegener - positionInverse for inverse operation 100 open 10 down 0 closed 
 #  2016-10-17 viegener - positionInverse test and fixes
+#  2016-10-18 viegener - positionInverse documentation and complettion (no change to set on/off logic)
 # 
 #  
 #  
@@ -121,6 +142,13 @@ my %sendCommands = (
 	"close" => "on",
 	"prog" => "prog",
 	"stop" => "stop"
+);
+
+my %inverseCommands = (
+	"off" => "on",
+	"on" => "off",
+	"on-for-timer" => "off-for-timer",
+	"off-for-timer" => "on-for-timer"
 );
 
 my %somfy_c2b;
@@ -624,8 +652,8 @@ sub SOMFY_Attr(@) {
 	# $name is device name
 	# aName and aVal are Attribute name and value
   
-  # Convert in case of change to 
-  if($aName eq 'positionInverse') {
+  # Convert in case of change to positionINverse --> but only after init is done on restart this should not be recalculated
+  if ( ($aName eq 'positionInverse') && ( $init_done ) ) {
     my $rounded;
     my $stateTrans;
     my $pos = ReadingsVal($name,'exact',undef);
@@ -793,13 +821,6 @@ sub SOMFY_InternalSet($@) {
 				if(!defined($t1downclose) || !defined($t1down100) || !defined($t1upopen) || !defined($t1up100));
 	}
 
-		### initialize locals
-	my $drivetime = 0; # timings until halt command to be sent for on/off-for-timer and pos <value> -> move by time
-	my $updatetime = 0; # timing until update of pos to be done for any unlimited move move to endpos or go-my / stop
-	my $move = $cmd;
-	my $newState;
-	my $updateState;
-	
 	# get current infos 
 	my $state = $hash->{STATE}; 
 	my $pos = ReadingsVal($name,'exact',undef);
@@ -809,12 +830,23 @@ sub SOMFY_InternalSet($@) {
 
   # do conversions
   if ( AttrVal( $name, "positionInverse", 0 ) ) {
-    Log3($name,4,"SOMFY_set: $name Inverse before arg1:$arg1: pos:$pos:");
-    $arg1 = SOMFY_ConvertFrom100To0( $arg1 );
-    $pos = SOMFY_ConvertFrom100To0( $pos );
-    Log3($name,4,"SOMFY_set: $name Inverse after arg1:$arg1: pos:$pos:");
+    Log3($name,4,"SOMFY_set: $name Inverse before cmd:$cmd: arg1:$arg1: pos:$pos:");
+    $arg1 = SOMFY_ConvertFrom100To0( $arg1 ) if($cmd eq 'pos');
+    $pos = SOMFY_ConvertFrom100To0( $pos ); 	
+    
+    # $cmd = $inverseCommands{$cmd} if(exists($inverseCommands{$cmd}));
+    
+    Log3($name,4,"SOMFY_set: $name Inverse after  cmd:$cmd: arg1:$arg1: pos:$pos:");
   }
   
+  
+		### initialize locals
+	my $drivetime = 0; # timings until halt command to be sent for on/off-for-timer and pos <value> -> move by time
+	my $updatetime = 0; # timing until update of pos to be done for any unlimited move move to endpos or go-my / stop
+	my $move = $cmd;
+	my $newState;
+	my $updateState;
+	
 	# translate state info to numbers - closed = 200 , open = 0    (correct missing values)
 	if ( !defined($pos) ) {
 		if(exists($positions{$state})) {
@@ -1524,7 +1556,7 @@ sub SOMFY_CalcCurrentPos($$$$) {
 			The position is variying between 0 completely open and 100 for covering the full window.
 			The position must be between 0 and 100 and the appropriate
 			attributes drive-down-time-to-100, drive-down-time-to-close,
-			drive-up-time-to-100 and drive-up-time-to-open must be set.<br>
+			drive-up-time-to-100 and drive-up-time-to-open must be set. See also positionInverse attribute.<br>
 			</li>
 			</ul>
 
@@ -1558,7 +1590,7 @@ sub SOMFY_CalcCurrentPos($$$$) {
 
     <a name="positionInverse"></a>
     <li>positionInverse<br>
-        Inverse operation for positions instead of 0 to 100-200 the positions are ranging from 100 to 10 (down) and then to 0 (closed).
+        Inverse operation for positions instead of 0 to 100-200 the positions are ranging from 100 to 10 (down) and then to 0 (closed). The pos set command will point in this case to the reversed pos values. This does NOT reverse the operation of the on/off command, meaning that on always will move the shade down and off will move it up towards the initial position.
 		</li><br>
 
     <a name="additionalPosReading"></a>

@@ -792,6 +792,7 @@ sub SOMFY_InternalSet($@) {
 			$opts = $sets{$k};
 
       if (defined($opts)) {
+        $opts = "100,90,80,70,60,50,40,30,20,10,0" if ( $k eq "pos" );
 				push(@cList,$k . ':' . $opts);
 			} else {
 				push (@cList,$k);

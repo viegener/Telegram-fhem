@@ -158,10 +158,24 @@
 
 #   fix: multibot environment - localize global hashes
 #   markup - per Attribute "parseModeSend" - None / InMsg / Markdown / HTML 
+#   Log unnknown contacts and messages - msg505210
+#   
+#   
+#   
+#   
+# 2.0 2016-10-16 multibot support / markup on send text
+
 #   
 ##############################################################################
 # TASKS 
 #   
+#   
+#   
+#   replykeyboardhide - test - msg505012
+#   
+#   check inlinekeyboards for confirmation - msg505012
+#   
+#   edit_message - msg504659
 #   
 #   diable command
 #   
@@ -214,6 +228,7 @@ sub TelegramBot_PutToUTF8( $ );
 
 sub TelegramBot_AttrNum($$$);
 
+sub TelegramBot_MakeKeyboard($$$@);
 
 #########################
 # Globals
@@ -843,7 +858,7 @@ sub TelegramBot_SentFavorites($$$$) {
         my @tmparr2 = ( "Abbruch" );
         push( @keys, \@tmparr2 );
 
-        my $jsonkb = TelegramBot_MakeKeyboard( $hash, 1, @keys );
+        my $jsonkb = TelegramBot_MakeKeyboard( $hash, 1, 0, @keys );
 
         # LOCAL: External message
         $ret = encode_utf8( AttrVal( $name, 'textResponseConfirm', 'TelegramBot FHEM : $peer\n Bestätigung \n') );
@@ -879,7 +894,7 @@ sub TelegramBot_SentFavorites($$$$) {
 #      my @tmparr = ( $fcmd."0 = Abbruch" );
 #     push( @keys, \@tmparr );
 
-      my $jsonkb = TelegramBot_MakeKeyboard( $hash, 1, @keys );
+      my $jsonkb = TelegramBot_MakeKeyboard( $hash, 1, 0, @keys );
 
       Log3 $name, 5, "TelegramBot_SentFavorites keyboard:".$jsonkb.": ";
       
@@ -921,7 +936,7 @@ sub TelegramBot_SentLastCommand($$$) {
 #  my @tmparr = ( $fcmd."0 = Abbruch" );
 #  push( @keys, \@tmparr );
 
-  my $jsonkb = TelegramBot_MakeKeyboard( $hash, 1, @keys );
+  my $jsonkb = TelegramBot_MakeKeyboard( $hash, 1, 0, @keys );
 
   # LOCAL: External message
   $ret = AttrVal( $name, 'textResponseCommands', 'TelegramBot FHEM : $peer\n Letzte Befehle \n');
@@ -1514,18 +1529,33 @@ sub TelegramBot_AddMultipart($$$$$$)
 # Parameter
 #   hash (device hash)
 #   onetime/hide --> true means onetime / false means hide / undef means nothing
+#   inline --> true/false
 #   keys array of arrays for keyboard
 #   > returns string in case of error or undef
-sub TelegramBot_MakeKeyboard($$@)
+sub TelegramBot_MakeKeyboard($$$@)
 {
-  my ( $hash, $onetime_hide, @keys ) = @_;
+  my ( $hash, $onetime_hide, $inlinekb, @keys ) = @_;
   my $name = $hash->{NAME};
 
   my $ret;
   
   my %par;
   
-  if ( ( defined( $onetime_hide ) ) && ( ! $onetime_hide ) ) {
+  if ( ( defined( $inlinekb ) ) && ( $inlinekb ) ) {
+    # inline kb
+    my @parKeys = ( );
+    
+    foreach my $aKeyRow (  @keys ) {
+      my @parRow = ();
+      foreach my $aKey (  @$aKeyRow ) {
+        my %oneKey = ( "text" => $aKey, "switch_inline_query_current_chat" => $aKey );
+        push( @parRow, \%oneKey );
+      }
+      push( @parKeys, \@parRow );
+    }
+    %par = ( "inline_keyboard" => \@parKeys  );
+    
+  } elsif ( ( defined( $onetime_hide ) ) && ( ! $onetime_hide ) ) {
     %par = ( "hide_keyboard" => JSON::true );
   } else {
     return $ret if ( ! @keys );
@@ -1877,9 +1907,12 @@ sub TelegramBot_ParseMsg($$$)
   my $mpeer = $from->{id};
 
   # ignore if unknown contacts shall be accepter
-  if ( AttrVal($name,'allowUnknownContacts',1) == 0 ) {
-#    Debug "test if known :$mpeer";
-    return $ret if ( ! TelegramBot_IsKnownContact( $hash, $mpeer ) ) ;
+  if ( ( AttrVal($name,'allowUnknownContacts',1) == 0 ) && ( ! TelegramBot_IsKnownContact( $hash, $mpeer ) ) ) {
+    my $mName = $from->{first_name};
+    $mName .= " ".$from->{last_name} if ( defined($from->{last_name}) );
+    Log3 $name, 3, "TelegramBot $name: Message from unknown Contact (id:$mpeer: name:$mName:) blocked";
+    
+    return $ret;
   }
 
   # check peers beside from only contact (shared contact) and new_chat_participant are checked

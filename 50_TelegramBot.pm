@@ -161,10 +161,8 @@
 #   Log unnknown contacts and messages - msg505210
 #   replykeyboardhide - test - msg505012 - not possible to remove keyboard
 #   edit_message - msg504659 - new command msgEdit
-#   
-#   
-#   
-# 2.0 2016-10-16 multibot support / markup on send text
+#   msgEdit documented
+# 2.0 2016-10-19 multibot support / markup on send text / msgEdit 
 
 #   
 ##############################################################################

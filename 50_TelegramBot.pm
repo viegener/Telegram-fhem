@@ -159,7 +159,8 @@
 #   fix: multibot environment - localize global hashes
 #   markup - per Attribute "parseModeSend" - None / InMsg / Markdown / HTML 
 #   Log unnknown contacts and messages - msg505210
-#   
+#   replykeyboardhide - test - msg505012 - not possible to remove keyboard
+#   edit_message - msg504659 - new command msgEdit
 #   
 #   
 #   
@@ -170,12 +171,7 @@
 # TASKS 
 #   
 #   
-#   
-#   replykeyboardhide - test - msg505012
-#   
 #   check inlinekeyboards for confirmation - msg505012
-#   
-#   edit_message - msg504659
 #   
 #   diable command
 #   
@@ -236,6 +232,8 @@ my %sets = (
   "message" => "textField",
   "msg" => "textField",
   "send" => "textField",
+
+  "msgEdit" => "textField",
 
   "sendImage" => "textField",
   "sendPhoto" => "textField",
@@ -450,11 +448,11 @@ sub TelegramBot_Set($@)
 
   my $ret = undef;
   
-  if( ($cmd eq 'message') || ($cmd eq 'msg') || ($cmd eq 'reply') || ($cmd =~ /^send.*/ ) ) {
+  if( ($cmd eq 'message') || ($cmd eq 'msg') || ($cmd eq 'reply') || ($cmd eq 'msgEdit') || ($cmd =~ /^send.*/ ) ) {
 
     my $msgid;
     
-    if ($cmd eq 'reply') {
+    if ( ($cmd eq 'reply') || ($cmd eq 'msgEdit' ) ) {
       return "TelegramBot_Set: Command $cmd, no peer, msgid and no text/file specified" if ( $numberOfArgs < 3 );
       $msgid = shift @args; 
       $numberOfArgs--;
@@ -489,14 +487,16 @@ sub TelegramBot_Set($@)
       $sendType = 2;
     } elsif ( ($cmd eq 'sendDocument') || ($cmd eq 'sendMedia') ) {
       $sendType = 3;
-    } elsif ($cmd eq 'sendLocation')  {
+    } elsif ($cmd eq 'msgEdit')  {
       $sendType = 10;
+    } elsif ($cmd eq 'sendLocation')  {
+      $sendType = 11;
     }
 
     my $msg;
     my $addPar;
     
-    if ( $sendType >= 10 ) {
+    if ( $sendType > 10 ) {
       # location
       
       return "TelegramBot_Set: Command $cmd, 2 parameters latitude / longitude need to be specified" if ( int(@args) != 2 );      
@@ -507,7 +507,7 @@ sub TelegramBot_Set($@)
       # first latitude
       $addPar = shift @args;
       
-    } elsif ( $sendType > 0 ) {
+    } elsif ( ( $sendType > 0 ) && ( $sendType < 10 ) ) {
       # should return undef if succesful
       $msg = shift @args;
       $msg = $1 if ( $msg =~ /^\"(.*)\"$/ );
@@ -1243,6 +1243,7 @@ sub TelegramBot_DoUrlCommand($$)
 #####################################
 # INTERNAL: Function to send a photo (and text message) to a peer and handle result
 # addPar is caption for images / keyboard for text / longituted for location (isMedia 10)
+# isMedia - 0 (text) 
 sub TelegramBot_SendIt($$$$$;$$)
 {
   my ( $hash, @args) = @_;
@@ -1320,8 +1321,14 @@ sub TelegramBot_SendIt($$$$$;$$)
     # add chat / user id (no file) --> this will also do init
     $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "chat_id", undef, $peer2, 0 );
 
-    if ( ! $isMedia ) {
-      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."sendMessage";
+    if ( ( $isMedia == 0 ) || ( $isMedia == 10 ) ) {
+      if ( $isMedia == 0 ) {
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."sendMessage";
+      } else {
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."editMessageText";
+        $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "message_id", undef, $replyid, 0 ) if ( ! defined( $ret ) );
+        $replyid = undef;
+      }
       
 #      $hash->{HU_DO_PARAMS}->{url} = "http://requestb.in";
 
@@ -1365,7 +1372,7 @@ sub TelegramBot_SendIt($$$$$;$$)
       $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "parse_mode", undef, $parseMode, 0 ) if ( ( ! defined( $ret ) ) && ( $parseMode ) );
 
       
-    } elsif ( $isMedia == 10 ) {
+    } elsif ( $isMedia == 11 ) {
       # Location send    
       $hash->{sentMsgText} = "Location: ".TelegramBot_MsgForLog($msg, ($isMedia<0) ).
           (( defined( $addPar ) )?" - ".$addPar:"");

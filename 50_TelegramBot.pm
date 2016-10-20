@@ -27,7 +27,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,38328.0.html
 #
-# $Id: 50_TelegramBot.pm 11714 2016-06-25 14:45:00Z viegener $
+# $Id: 50_TelegramBot.pm 12383 2016-10-19 21:24:53Z viegener $
 #
 ##############################################################################
 # 0.0 2015-09-16 Started
@@ -164,6 +164,7 @@
 #   msgEdit documented
 # 2.0 2016-10-19 multibot support / markup on send text / msgEdit 
 
+#   disable_web_page_preview - attribut webPagePreview - msg506924
 #   
 ##############################################################################
 # TASKS 
@@ -293,7 +294,7 @@ sub TelegramBot_Initialize($) {
   "cmdTimeout pollingTimeout ".
   "allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCommands:textField allowedCommands filenameUrlEscape:1,0 ". 
   "textResponseFavorites:textField textResponseResult:textField textResponseUnauthorized:textField ".
-  "parseModeSend:0_None,1_Markdown,2_HTML,3_InMsg ".
+  "parseModeSend:0_None,1_Markdown,2_HTML,3_InMsg webPagePreview:1,0 ".
   " maxRetries:0,1,2,3,4,5 ".$readingFnAttributes;           
 }
 
@@ -1368,6 +1369,10 @@ sub TelegramBot_SendIt($$$$$;$$)
 
       # add parseMode
       $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "parse_mode", undef, $parseMode, 0 ) if ( ( ! defined( $ret ) ) && ( $parseMode ) );
+
+      # add disable_web_page_preview 	
+      $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "disable_web_page_preview", undef, JSON::true, 0 ) 
+            if ( ( ! defined( $ret ) ) && ( ! AttrVal($name,'webPagePreview',1) ) );
 
       
     } elsif ( $isMedia == 11 ) {
@@ -2819,6 +2824,12 @@ sub TelegramBot_BinaryFileWrite($$$) {
 
     <li><code>parseModeSend &lt;0_None or 1_Markdown or 2_HTML or 3_Inmsg &gt;</code><br>Specify the parse_mode (allowing formatting of text messages) for sent text messages. 0_None is the default where no formatting is used and plain text is sent. The different formatting options for markdown or HTML are described here <a href="https://core.telegram.org/bots/api/#formatting-options">https://core.telegram.org/bots/api/#formatting-options</a>. The option 3_Inmsg allows to specify the correct parse_mode at the beginning of the message (e.g. "Markdown*bold text*..." as message).
     </li> 
+    
+    <li><code>webPagePreview &lt;1 or 0&gt;</code><br>Disable / Enable (Default = 1) web page preview on links in messages. See parameter https://core.telegram.org/bots/api/#sendmessage as described here: https://core.telegram.org/bots/api/#sendmessage
+    </li> 
+    
+    
+    
   <br>
     <li><code>cmdKeyword &lt;keyword&gt;</code><br>Specify a specific text that needs to be sent to make the rest of the message being executed as a command. 
       So if for example cmdKeyword is set to <code>ok fhem</code> then a message starting with this string will be executed as fhem command 

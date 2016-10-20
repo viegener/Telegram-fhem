@@ -165,6 +165,7 @@
 # 2.0 2016-10-19 multibot support / markup on send text / msgEdit 
 
 #   disable_web_page_preview - attribut webPagePreview - msg506924
+#   log other messages in getupdate
 #   
 ##############################################################################
 # TASKS 
@@ -1558,7 +1559,7 @@ sub TelegramBot_MakeKeyboard($$$@)
     foreach my $aKeyRow (  @keys ) {
       my @parRow = ();
       foreach my $aKey (  @$aKeyRow ) {
-        my %oneKey = ( "text" => $aKey, "switch_inline_query_current_chat" => $aKey );
+        my %oneKey = ( "text" => $aKey, "callback_data" => $aKey );
         push( @parRow, \%oneKey );
       }
       push( @parKeys, \@parRow );
@@ -1789,6 +1790,17 @@ sub TelegramBot_Callback($$$)
         if ( defined( $update->{message} ) ) {
           
           $ret = TelegramBot_ParseMsg( $hash, $update->{update_id}, $update->{message} );
+        } else {
+          Log3 $name, 3, "UpdatePoll $name: inline_query  id:".$update->{inline_query}->{id}.
+                ":  query:".$update->{inline_query}->{query}.":" if ( defined( $update->{inline_query} ) );
+          Log3 $name, 3, "UpdatePoll $name: chosen_inline_result  id:".$update->{chosen_inline_result}->{result_id}.":".
+                "   inline id:".$update->{chosen_inline_result}->{inline_message_id}.":". 
+                "   query:".$update->{chosen_inline_result}->{query}.":" 
+              if ( defined( $update->{chosen_inline_result} ) );
+          Log3 $name, 3, "UpdatePoll $name: callback_query  id:".$update->{callback_query}->{id}.":".
+                "   inline id:".$update->{callback_query}->{inline_message_id}.":". 
+                "   data:".$update->{callback_query}->{data}.":" 
+              if ( defined( $update->{callback_query} ) );
         }
         if ( defined( $ret ) ) {
           last;

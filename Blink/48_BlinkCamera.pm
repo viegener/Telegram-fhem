@@ -37,6 +37,7 @@
 #   add JSON from commands to internals 
 #   add specific client identifier
 #   get networks from authentication
+#   Arm /disarm
 #   
 #
 #   
@@ -44,14 +45,12 @@
 # TASKS 
 #   
 #   
+#   get information from homescreen into readings
+#   poll for status info - homescreen
 #   
-#   Arm /disarm
-#   
-#   parse return data
+#   parse return data - cmd Id - also not yet used
 #   
 #   if not verbose > 3 - remove also results and data from httprequests
-#   
-#   get information from homescreen into readings
 #   
 #   test unauthorized
 #   
@@ -333,7 +332,7 @@ sub BlinkCamera_Get($@)
   
   if($cmd eq 'getInfo') {
 
-    # TODO
+  $ret = BlinkCamera_DoCmd( $hash, "info" );
   
   }
   
@@ -528,6 +527,12 @@ sub BlinkCamera_DoCmd($$;$$$)
       } else {
         $ret = "BlinkCamera_DoCmd $name: no network identifier found for disarm - set attribute";
       }
+
+    } elsif ( $cmd eq "info" ) {
+
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      
+      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."homescreen";
     } else {
       # TODO 
     }

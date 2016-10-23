@@ -38,6 +38,8 @@
 #   add specific client identifier
 #   get networks from authentication
 #   Arm /disarm
+#   get information from homescreen into readings
+#   parse return data - cmd Id - also not yet used
 #   
 #
 #   
@@ -45,10 +47,12 @@
 # TASKS 
 #   
 #   
-#   get information from homescreen into readings
 #   poll for status info - homescreen
 #   
-#   parse return data - cmd Id - also not yet used
+#   check status for commands
+#   
+#   show thumbnail for cameras
+#   show notifications 
 #   
 #   if not verbose > 3 - remove also results and data from httprequests
 #   
@@ -105,6 +109,7 @@ sub BlinkCamera_Get($@);
 
 sub BlinkCamera_Callback($$$);
 sub BlinkCamera_DoCmd($$;$$$);
+sub BlinkCamera_DoCmdInt($$;$$$);
 
 #########################
 # Globals
@@ -286,11 +291,7 @@ sub BlinkCamera_Set($@)
 
   }
 
-  if ( ! defined( $ret ) ) {
-    Log3 $name, 5, "BlinkCamera_Set $name: $cmd done succesful: ";
-  } else {
-    Log3 $name, 5, "BlinkCamera_Set $name: $cmd failed with :$ret: ";
-  }
+  Log3 $name, 5, "BlinkCamera_Set $name: $cmd ".((defined( $ret ))?"failed with :$ret: ":"done succesful ");
   return $ret
 }
 
@@ -332,11 +333,11 @@ sub BlinkCamera_Get($@)
   
   if($cmd eq 'getInfo') {
 
-  $ret = BlinkCamera_DoCmd( $hash, "info" );
+  $ret = BlinkCamera_DoCmd( $hash, "homescreen" );
   
   }
   
-  Log3 $name, 5, "BlinkCamera_Get $name: done with $ret: ";
+  Log3 $name, 5, "BlinkCamera_Get $name: $cmd ".((defined( $ret ))?"failed with :$ret: ":"done succesful ");
 
   return $ret
 }
@@ -404,6 +405,16 @@ sub BlinkCamera_Attr(@) {
 # par1/par2 are placeholder for addtl params
 sub BlinkCamera_DoCmd($$;$$$)
 {
+  my ( $p0, $p1, $p2, $p3, $p4) = @_;
+  return BlinkCamera_DoCmdInt( $p0, $p1, $p2, $p3, $p4 );
+}
+
+#####################################
+# INTERNAL: Function to send a command to the blink server
+# cmd is login / arm / homescreen 
+# par1/par2 are placeholder for addtl params
+sub BlinkCamera_DoCmdInt($$;$$$)
+{
   my ( $hash, @args) = @_;
 
   my ( $cmd, $par1, $par2, $retryCount) = @args;
@@ -416,17 +427,19 @@ sub BlinkCamera_DoCmd($$;$$$)
   # increase retrycount for next try
   $args[3] = $retryCount+1;
   
+  my $cmdString = "cmd :$cmd: ".(defined($par1)?"  par1:".$par1.":":"").(defined($par2)?"  par2:".$par2.":":"");
+  
   Log3 $name, 4, "BlinkCamera_DoCmd $name: called  for cmd :$cmd:";
 
+  
+  
   # ensure cmdQueue exists
   $hash->{cmdQueue} = [] if ( ! defined( $hash->{cmdQueue} ) );
 
   # Queue if not yet retried and currently waiting
   if ( ( defined( $hash->{cmdResult} ) ) && ( $hash->{cmdResult} =~ /^WAITING/ ) && (  $retryCount == 0 ) ){
     # add to queue
-    Log3 $name, 4, "BlinkCamera_DoCmd $name: add send to queue cmd :$cmd: ".
-        (defined($par1)?"  par1:".$par1.":":"").
-        (defined($par2)?"  par2:".$par2.":":"");
+    Log3 $name, 4, "BlinkCamera_DoCmd $name: add send to queue ".$cmdString;
     push( @{ $hash->{cmdQueue} }, \@args );
     return;
   }  
@@ -434,21 +447,19 @@ sub BlinkCamera_DoCmd($$;$$$)
   # check authentication otherwise queue the current cmd and do authenticate first
   if ( ($cmd ne "login") && ( ! defined( $hash->{AuthToken} ) ) ) {
     # add to queue
-    Log3 $name, 4, "BlinkCamera_DoCmd $name: add send to queue cmd :$cmd: ".
-        (defined($par1)?"  par1:".$par1.":":"").
-        (defined($par2)?"  par2:".$par2.":":"");
+    Log3 $name, 4, "BlinkCamera_DoCmd $name: add send to queue ".$cmdString;
     push( @{ $hash->{cmdQueue} }, \@args );
     $cmd = "login";
     $par1 = undef;
     $par2 = undef;
+    # update cmdstring
+    $cmdString = "cmd :$cmd: ".(defined($par1)?"  par1:".$par1.":":"").(defined($par2)?"  par2:".$par2.":":"");
   }
   
   # Check for invalid auth token and just remove cmds
   if ( ($cmd ne "login") && ( $hash->{AuthToken} eq "INVALID" ) ) {
     # add to queue
-    Log3 $name, 2, "BlinkCamera_DoCmd $name: failed due to invalid auth token  cmd:$cmd: ".
-        (defined($par1)?"  par1:".$par1.":":"").
-        (defined($par2)?"  par2:".$par2.":":"");
+    Log3 $name, 2, "BlinkCamera_DoCmd $name: failed due to invalid auth token ".$cmdString;
     return;
   } 
   
@@ -461,13 +472,9 @@ sub BlinkCamera_DoCmd($$;$$$)
   
   $hash->{AuthToken} = "INVALID" if ($cmd eq "login");
 
-  Log3 $name, 4, "BlinkCamera_DoCmd $name: try to send cmd :$cmd: ".
-        (defined($par1)?"  par1:".$par1.":":"").
-        (defined($par2)?"  par2:".$par2.":":"");
+  Log3 $name, 4, "BlinkCamera_DoCmd $name: try to send cmd ".$cmdString;
 
-  $hash->{cmd} = $cmd.
-        (defined($par1)?"  par1:".$par1.":":"").
-        (defined($par2)?"  par2:".$par2.":":"");
+  $hash->{cmd} = $cmdString;
   
   # init param hash
   $hash->{HU_DO_PARAMS}->{hash} = $hash;
@@ -497,7 +504,6 @@ sub BlinkCamera_DoCmd($$;$$$)
       $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."login";
 #      $hash->{HU_DO_PARAMS}->{url} = "http://requestb.in";
       
-      $hash->{HU_DO_PARAMS}->{method} = "POST";
       $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_loginjson;
 #      $hash->{HU_DO_PARAMS}->{compress} = 1;
       
@@ -517,22 +523,19 @@ sub BlinkCamera_DoCmd($$;$$$)
 
       }
     
-    } elsif ( ($cmd eq "arm") || ($cmd eq "disarm" ) ) {
+    } elsif ( ($cmd eq "arm") || ($cmd eq "disarm" ) || ($cmd eq "homescreen" ) ) {
 
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
       
+      $hash->{HU_DO_PARAMS}->{method} = "GET" if ($cmd eq "homescreen" );
+
       my $net =  BlinkCamera_GetNetwork( $hash );
       if ( defined( $net ) ) {
         $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."network/".$net."/".$cmd;
       } else {
-        $ret = "BlinkCamera_DoCmd $name: no network identifier found for disarm - set attribute";
+        $ret = "BlinkCamera_DoCmd $name: no network identifier found for arm/disarm - set attribute";
       }
 
-    } elsif ( $cmd eq "info" ) {
-
-      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
-      
-      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."homescreen";
     } else {
       # TODO 
     }
@@ -549,7 +552,8 @@ sub BlinkCamera_DoCmd($$;$$$)
   } else {
     $hash->{HU_DO_PARAMS}->{args} = \@args;
     
-    Log3 $name, 4, "BlinkCamera_DoCmd $name: timeout for sent :".$hash->{HU_DO_PARAMS}->{timeout}.": ";
+    Log3 $name, 4, "BlinkCamera_DoCmd $name: timeout for cmd :".$hash->{HU_DO_PARAMS}->{timeout}.": ";
+    Log3 $name, 4, "BlinkCamera_DoCmd $name: call url :".$hash->{HU_DO_PARAMS}->{url}.": ";
     HttpUtils_NonblockingGet( $hash->{HU_DO_PARAMS} );
 
   }
@@ -666,8 +670,62 @@ sub BlinkCamera_Deepencode
     return @_ == 1 ? $result[0] : @result; 
 
 }
-      
+
+#####################################
+#  INTERNAL: Parse the homescreen results
+sub BlinkCamera_ParseHomescreen($$$)
+{
+  my ( $hash, $result, $readUpdates ) = @_;
+  my $name = $hash->{NAME};
+
+  my $ret;
+
+  my $network = $result->{network};
+
+  Log3 $name, 4, "BlinkCamera_ParseHomescreen $name:  ";
+
+  # Get overall status
+  $readUpdates->{networkName} = "";
+  $readUpdates->{networkStatus} = "";
+  $readUpdates->{networkArmed} = "";
+  $readUpdates->{networkNotifications} = "";
+  if ( defined( $network ) ) {
+    $readUpdates->{networkName} = $network->{name} if ( defined( $network->{name} ) );
+    $readUpdates->{networkStatus} = $network->{status} if ( defined( $network->{status} ) );
+    $readUpdates->{networkArmed} = $network->{armed} if ( defined( $network->{armed} ) );
+    $readUpdates->{networkNotifications} = $network->{notifications} if ( defined( $network->{notifications} ) );
+    Log3 $name, 4, "BlinkCamera_ParseHomescreen $name:  foudn network info for network ";
+  }
+
+  # devices
+  my $devList = $result->{devices};
   
+  
+  # loop through readings to reset all existing Cameras
+  foreach my $cam ( keys  $hash->{READINGS} ) {
+    $readUpdates->{$cam} = "" if ( $cam =~ /^deviceCamera/ );
+  }
+  
+  # loop through devices and build a reading for cameras and a reading for the 
+  if ( defined( $devList ) ) {
+    foreach my $device ( @$devList ) {
+      if ( $device->{device_type} eq "camera" ) {
+        $readUpdates->{"deviceCamera".$device->{device_id}} .= $device->{name}.":".$device->{active};
+      } elsif ( $device->{device_type} eq "sync_module" ) {
+        if ( length( $readUpdates->{deviceSyncModule} ) > 0 ) {
+          Log3 $name, 1, "BlinkCamera_ParseHomescreen $name: found multiple syncModules ";
+        } else {
+          $readUpdates->{deviceSyncModule} .= $device->{device_id}.":".$device->{status};
+        }
+      } else {
+        Log3 $name, 1, "BlinkCamera_ParseHomescreen $name: unknown device type found ".$device->{device_type};
+      }
+    }
+  }
+
+  return $ret;
+}
+      
 #####################################
 #  INTERNAL: Callback is the callback for any nonblocking call to the bot api (e.g. the long poll on update call)
 #   3 params are defined for callbacks
@@ -800,6 +858,7 @@ sub BlinkCamera_Callback($$$)
       
       my $cmd = $hash->{HU_DO_PARAMS}->{cmd};
       $readUpdates{cmd} = $cmd;
+      $readUpdates{cmdId} = "";
 
         Log3 $name, 4, "BlinkCamera_Callback $name: analyze result for cmd:$cmd:";
       
@@ -826,6 +885,12 @@ sub BlinkCamera_Callback($$$)
         }
         $readUpdates{networks} = $netlist;
 
+      } elsif ( ($cmd eq "arm") || ($cmd eq "disarm" ) ) {
+        $readUpdates{cmdId} = $result->{id} if ( defined( $result->{id} ) );
+
+      } elsif ($cmd eq "homescreen" ) {
+        $ret = BlinkCamera_ParseHomescreen( $hash, $result, \%readUpdates );
+      
       } else {
         
       }

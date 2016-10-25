@@ -19,7 +19,7 @@
 #
 ##############################################################################
 #
-# $Id: 10_SOMFY.pm 11433 2016-05-12 19:15:18Z viegener $
+# $Id: 10_SOMFY.pm 12388 2016-10-20 18:39:04Z viegener $
 #  
 # SOMFY RTS / Simu Hz protocol module for FHEM
 # (c) Thomas Dankert <post@thomyd.de>
@@ -84,6 +84,7 @@
 #  2016-10-06 viegener - positionInverse for inverse operation 100 open 10 down 0 closed 
 #  2016-10-17 viegener - positionInverse test and fixes
 #  2016-10-18 viegener - positionInverse documentation and complettion (no change to set on/off logic)
+#  2016-10-25 viegener - drive-Attribute - correct syntax check - add note in commandref
 # 
 #  
 #  
@@ -710,6 +711,7 @@ sub SOMFY_Attr(@) {
 
 		} elsif($aName eq 'drive-up-time-to-100') {
 			$attr{$name}{'drive-up-time-to-100'} = $aVal;
+			$attr{$name}{'drive-up-time-to-close'} = $aVal if(!defined($attr{$name}{'drive-up-time-to-open'}) || ($attr{$name}{'drive-up-time-to-open'} < $aVal));
 
 		} elsif($aName eq 'drive-up-time-to-open') {
 			$attr{$name}{'drive-up-time-to-open'} = $aVal;
@@ -1458,7 +1460,7 @@ sub SOMFY_CalcCurrentPos($$$$) {
 
 =pod
 =item summary    supporting devices using the SOMFY RTS protocol - window shades 
-=item summary_DE unterstützt Geräte, die über das SOMFY RTS protocol angebunden sind - Rolläden 
+=item summary_DE für Geräte, die das SOMFY RTS protocol unterstützen - Rolläden 
 =begin html
 
 <a name="SOMFY"></a>
@@ -1678,6 +1680,7 @@ sub SOMFY_CalcCurrentPos($$$$) {
     <a name="drive-down-time-to-close"></a>
     <li>drive-down-time-to-close<br>
         The time the blind needs to drive down from "open" (pos 0) to "close", the end position of the blind.<br>
+        Note: If set, this value always needs to be higher than drive-down-time-to-100
 		This is about 3 to 5 seonds more than the "drive-down-time-to-100" value.
         </li><br>
 
@@ -1690,6 +1693,7 @@ sub SOMFY_CalcCurrentPos($$$$) {
     <a name="drive-up-time-to-open"></a>
     <li>drive-up-time-to-open<br>
         The time the blind needs drive up from "close" (endposition) to "open" (upper endposition).<br>
+        Note: If set, this value always needs to be higher than drive-down-time-to-100
 		This value is usually a bit higher than "drive-down-time-to-close", due to the blind's weight.
         </li><br>
 

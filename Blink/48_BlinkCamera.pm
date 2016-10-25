@@ -40,23 +40,24 @@
 #   Arm /disarm
 #   get information from homescreen into readings
 #   parse return data - cmd Id - also not yet used
+#   poll for status info - homescreen
+#   check status for commands
 #   
 #
 #   
 ##############################################################################
 # TASKS 
 #   
-#   
-#   poll for status info - homescreen
-#   
-#   check status for commands
-#   
 #   show thumbnail for cameras
-#   show notifications 
+#   show notifications and send event
+#   
+#   show camera config
+#   
+#   enable/disable cam
 #   
 #   if not verbose > 3 - remove also results and data from httprequests
 #   
-#   test unauthorized
+#   make a test with unauthorized
 #   
 #   redo only once if authtoken invalid
 #   
@@ -536,6 +537,19 @@ sub BlinkCamera_DoCmdInt($$;$$$)
         $ret = "BlinkCamera_DoCmd $name: no network identifier found for arm/disarm - set attribute";
       }
 
+    } elsif ($cmd eq "command" ) {
+
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      
+      $hash->{HU_DO_PARAMS}->{method} = "GET";
+
+      my $net =  BlinkCamera_GetNetwork( $hash );
+      if ( defined( $net ) ) {
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."network/".$net."/command/".$par1;
+      } else {
+        $ret = "BlinkCamera_DoCmd $name: no network identifier found for command - set attribute";
+      }
+
     } else {
       # TODO 
     }
@@ -623,7 +637,7 @@ sub BlinkCamera_UpdatePoll($)
 #####################################
 #  INTERNAL: Called to retry a send operation after wait time
 #   Gets the do params
-sub BlinkCamera_RetrySend($)
+sub BlinkCamera_RetryDo($)
 {
   my ( $param ) = @_;
   my $hash= $param->{hash};
@@ -631,13 +645,16 @@ sub BlinkCamera_RetrySend($)
 
 
   my $ref = $param->{args};
-  Log3 $name, 4, "BlinkCamera_Retrysend $name: call retry @$ref[3]  cmd:@$ref[0]: par1:".(defined(@$ref[1])?@$ref[1]:"<undef>").": par2:".(defined(@$ref[2])?@$ref[2]:"<undef>").": ";
+  Log3 $name, 4, "BlinkCamera_RetryDo $name: call retry @$ref[3]  cmd:@$ref[0]: par1:".(defined(@$ref[1])?@$ref[1]:"<undef>").": par2:".(defined(@$ref[2])?@$ref[2]:"<undef>").": ";
   BlinkCamera_DoCmd( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3] );
   
 }
 
 
 
+#####################################
+#  INTERNAL: Encode a deep structure
+#   name <elements to be encoded>
 sub BlinkCamera_Deepencode
 {
     my @result;
@@ -705,6 +722,7 @@ sub BlinkCamera_ParseHomescreen($$$)
   foreach my $cam ( keys  $hash->{READINGS} ) {
     $readUpdates->{$cam} = "" if ( $cam =~ /^deviceCamera/ );
   }
+  $readUpdates->{deviceSyncModule} = "";
   
   # loop through devices and build a reading for cameras and a reading for the 
   if ( defined( $devList ) ) {
@@ -740,9 +758,12 @@ sub BlinkCamera_Callback($$$)
   my $name = $hash->{NAME};
 
   my $ret;
+  my $cmdId;
   my $result;
   my $ll = 5;
-
+  my $maxRetries;
+  
+  
   if ( defined( $param->{isPolling} ) ) {
     $hash->{OLD_POLLING} = ( ( defined( $hash->{POLLING} ) )?$hash->{POLLING}:0 ) + 1;
     $hash->{OLD_POLLING} = 1 if ( $hash->{OLD_POLLING} > 255 );
@@ -886,14 +907,26 @@ sub BlinkCamera_Callback($$$)
         $readUpdates{networks} = $netlist;
 
       } elsif ( ($cmd eq "arm") || ($cmd eq "disarm" ) ) {
-        $readUpdates{cmdId} = $result->{id} if ( defined( $result->{id} ) );
+        $cmdId = $result->{id} if ( defined( $result->{id} ) );
+        Log3 $name, 4, "BlinkCamera_Callback $name: cmd :$cmd: sent resulting in id : ".(defined($cmdId)?$cmdId:"<undef>");
 
       } elsif ($cmd eq "homescreen" ) {
         $ret = BlinkCamera_ParseHomescreen( $hash, $result, \%readUpdates );
       
+      } elsif ($cmd eq "command" ) {
+        if ( defined( $result->{complete} ) ) {
+          if ( $result->{complete} ) {
+            BlinkCamera_DoCmd( $hash, "homescreen" );
+          } else {
+            $ret = "waiting for command to be finished";
+            $maxRetries = 3;
+          }
+        }
       } else {
         
       }
+      
+      $readUpdates{cmdId} = $cmdId if ( defined($cmdId) );
       
     }
     
@@ -905,7 +938,7 @@ sub BlinkCamera_Callback($$$)
     if ( ( $ret ne  "SUCCESS" ) && ( defined( $param->{args} ) ) ) {
       my $wait = $param->{args}[3];
       
-      my $maxRetries =  AttrVal($name,'maxRetries',0);
+      $maxRetries =  AttrVal($name,'maxRetries',0) if ( ! defined( $maxRetries ) );
       if ( $wait <= $maxRetries ) {
         # calculate wait time 10s / 100s / 1000s ~ 17min / 10000s ~ 3h / 100000s ~ 30h
         $wait = 10**$wait;
@@ -914,7 +947,7 @@ sub BlinkCamera_Callback($$$)
               $param->{args}[0];
 
         # set timer
-        InternalTimer(gettimeofday()+$wait, "BlinkCamera_RetrySend", $param,0); 
+        InternalTimer(gettimeofday()+$wait, "BlinkCamera_RetryDo", $param,0); 
         
         # finish
         return;
@@ -922,7 +955,7 @@ sub BlinkCamera_Callback($$$)
 
       Log3 $name, 3, "BlinkCamera_Callback $name: Reached max retries (ret: $ret) for cmd ".$param->{args}[0];
       
-    } 
+    }
     
     $hash->{cmdResult} = $ret;
     $hash->{cmdJson} = (defined($data)?$data:"<undef>");
@@ -935,9 +968,17 @@ sub BlinkCamera_Callback($$$)
     }
     readingsEndUpdate($hash, 1);
 
+    if ( ( $ret eq  "SUCCESS" ) && ( defined( $cmdId ) ) )  {
+      # cmd sent / waiting for completion (so add command check) / completion reached add homescreen
+      Log3 $name, 4, "BlinkCamera_Callback $name: start polling for cmd result";
+      BlinkCamera_DoCmd( $hash, "command", $cmdId );
+      return ;
+    }
+
+
     if ( scalar( @{ $hash->{cmdQueue} } ) ) {
       my $ref = shift @{ $hash->{cmdQueue} };
-      Log3 $name, 5, "BlinkCamera_Callback $name: handle queued cmd with :@$ref[0]: ";
+      Log3 $name, 4, "BlinkCamera_Callback $name: handle queued cmd with :@$ref[0]: ";
       BlinkCamera_DoCmd( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3] );
     }
 

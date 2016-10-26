@@ -42,11 +42,13 @@
 #   parse return data - cmd Id - also not yet used
 #   poll for status info - homescreen
 #   check status for commands
-#   
+#   regular polling 
 #
 #   
 ##############################################################################
 # TASKS 
+#   
+#   test polling of homescreen
 #   
 #   show thumbnail for cameras
 #   show notifications and send event
@@ -111,6 +113,7 @@ sub BlinkCamera_Get($@);
 sub BlinkCamera_Callback($$$);
 sub BlinkCamera_DoCmd($$;$$$);
 sub BlinkCamera_DoCmdInt($$;$$$);
+sub BlinkCamera_PollInfo($);
 
 #########################
 # Globals
@@ -163,6 +166,7 @@ sub BlinkCamera_Initialize($) {
   $hash->{AttrFn}     = "BlinkCamera_Attr";
   $hash->{AttrList}   = " maxRetries:0,1,2,3,4,5 ".
           "network ".
+          "pollingTimeout ".
           $readingFnAttributes;           
 }
 
@@ -219,8 +223,6 @@ sub BlinkCamera_Undef($$)
 
   Log3 $name, 3, "BlinkCamera_Undef $name: called ";
 
-  HttpUtils_Close($hash->{HU_UPD_PARAMS}); 
-  
   HttpUtils_Close($hash->{HU_DO_PARAMS}); 
 
   RemoveInternalTimer($hash);
@@ -362,11 +364,7 @@ sub BlinkCamera_Attr(@) {
   # $name is device name
   # aName and aVal are Attribute name and value
   if ($cmd eq "set") {
-    if ( ($aName eq 'defaultPeerCopy') ||
-              ($aName eq 'saveStateOnContactChange') ||
-              ($aName eq 'cmdReturnEmptyResult') ||
-              ($aName eq 'cmdTriggerOnly') ||
-              ($aName eq 'allowUnknownContacts') ) {
+    if ( ($aName eq 'boolValue') ) {
       $aVal = ($aVal eq "1")? "1": "0";
 
     } elsif ($aName eq 'pollingTimeout') {
@@ -376,7 +374,7 @@ sub BlinkCamera_Attr(@) {
       $hash->{POLLING} = -1;
       
       # wait some time before next polling is starting
-#TODO      BlinkCamera_ResetPolling( $hash );
+      BlinkCamera_ResetPolling( $hash );
 
     } elsif ($aName eq 'pollingVerbose') {
       return "\"BlinkCamera_Attr: \" Incorrect value given for pollingVerbose" if ( $aVal !~ /^((1_Digest)|(2_Log)|(0_None))$/ );
@@ -431,8 +429,6 @@ sub BlinkCamera_DoCmdInt($$;$$$)
   my $cmdString = "cmd :$cmd: ".(defined($par1)?"  par1:".$par1.":":"").(defined($par2)?"  par2:".$par2.":":"");
   
   Log3 $name, 4, "BlinkCamera_DoCmd $name: called  for cmd :$cmd:";
-
-  
   
   # ensure cmdQueue exists
   $hash->{cmdQueue} = [] if ( ! defined( $hash->{cmdQueue} ) );
@@ -484,6 +480,7 @@ sub BlinkCamera_DoCmdInt($$;$$$)
   delete( $hash->{HU_DO_PARAMS}->{compress} );
 
   $hash->{HU_DO_PARAMS}->{cmd} = $cmd;
+  $hash->{HU_DO_PARAMS}->{par2} = $par2;
   
   my $timeout =   AttrVal($name,'cmdTimeout',30);
   $hash->{HU_DO_PARAMS}->{timeout} = $timeout;
@@ -575,63 +572,6 @@ sub BlinkCamera_DoCmdInt($$;$$$)
   return $ret;
 }
 
-#####################################
-#  INTERNAL: _PollUpdate is called to set out a nonblocking http call for updates
-#  if still polling return
-#  if more than one fails happened --> wait instead of poll
-#
-sub BlinkCamera_UpdatePoll($) 
-{
-  my ($hash) = @_;
-  my $name = $hash->{NAME};
-    
-  Log3 $name, 5, "BlinkCamera_UpdatePoll $name: called ";
-
-  if ( $hash->{POLLING} ) {
-    Log3 $name, 4, "BlinkCamera_UpdatePoll $name: polling still running ";
-    return;
-  }
-
-  # Get timeout from attribute 
-  my $timeout =   AttrVal($name,'pollingTimeout',0);
-  if ( $timeout == 0 ) {
-    $hash->{STATE} = "Static";
-    Log3 $name, 4, "BlinkCamera_UpdatePoll $name: Polling timeout 0 - no polling ";
-    return;
-  }
-  
-  if ( $hash->{FAILS} > 1 ) {
-    # more than one fail in a row wait until next poll
-    $hash->{OLDFAILS} = $hash->{FAILS};
-    $hash->{FAILS} = 0;
-    my $wait = $hash->{OLDFAILS}+2;
-    Log3 $name, 5, "BlinkCamera_UpdatePoll $name: got fails :".$hash->{OLDFAILS}.": wait ".$wait." seconds";
-    InternalTimer(gettimeofday()+$wait, "BlinkCamera_UpdatePoll", $hash,0); 
-    return;
-  } elsif ( defined($hash->{OLDFAILS}) ) {
-    # oldfails defined means 
-    $hash->{FAILS} = $hash->{OLDFAILS};
-    delete $hash->{OLDFAILS};
-  }
-
-  # get next offset id
-  my $offset = $hash->{offset_id};
-  $offset = 0 if ( ! defined($offset) );
-  
-  # build url 
-  my $url =  $hash->{URL}."getUpdates?offset=".$offset."&limit=5&timeout=".$timeout;
-
-  $hash->{HU_UPD_PARAMS}->{url} = $url;
-  $hash->{HU_UPD_PARAMS}->{timeout} = $timeout+$timeout+5;
-  $hash->{HU_UPD_PARAMS}->{hash} = $hash;
-  $hash->{HU_UPD_PARAMS}->{offset} = $offset;
-
-  $hash->{STATE} = "Polling";
-
-  $hash->{POLLING} = ( ( defined( $hash->{OLD_POLLING} ) )?$hash->{OLD_POLLING}:1 );
-  Log3 $name, 4, "BlinkCamera_UpdatePoll $name: initiate polling with nonblockingGet with ".$timeout."s";
-  HttpUtils_NonblockingGet( $hash->{HU_UPD_PARAMS} ); 
-}
 
 
 #####################################
@@ -764,13 +704,6 @@ sub BlinkCamera_Callback($$$)
   my $maxRetries;
   
   
-  if ( defined( $param->{isPolling} ) ) {
-    $hash->{OLD_POLLING} = ( ( defined( $hash->{POLLING} ) )?$hash->{POLLING}:0 ) + 1;
-    $hash->{OLD_POLLING} = 1 if ( $hash->{OLD_POLLING} > 255 );
-    
-    $hash->{POLLING} = 0 if ( $hash->{POLLING} != -1 ) ;
-  }
-  
   Log3 $name, 4, "BlinkCamera_Callback $name: called from ".(( defined( $param->{isPolling} ) )?"Polling":"DoCmd");
 
   Log3 $name, 4, "BlinkCamera_Callback $name: status err :".(( defined( $err ) )?$err:"---").":  data ".(( defined( $data ) )?$data:"<undefined>");
@@ -814,155 +747,114 @@ sub BlinkCamera_Callback($$$)
 
   }
 
-  if ( defined( $param->{isPolling} ) ) {
-    ##################################################
-    # Polling means ??? - TODO
+  
+  my $cmd = $hash->{HU_DO_PARAMS}->{cmd};
+  my $par2 = $hash->{HU_DO_PARAMS}->{par2};
 
-    $hash->{FAILS} = 0;    # succesful UpdatePoll reset fails
+  my $polling = ($cmd eq "homescreen" ) && ($par2 eq "POLLING" );
+  
+ 
+  if ( $polling ) {
+    $ll =2;
+    $hash->{POLLING} = 0;
+  }
+ 
+  
+  ##################################################
+  $hash->{HU_DO_PARAMS}->{data} = "";
+
+  my %readUpdates = ();
+  
+  if ( ! defined( $ret ) ) {
+    # SUCCESS - parse results
+    $ll = 3;
     
-    # get timestamps and verbose
-    my $now = FmtDateTime( gettimeofday() ); 
-    my $tst = ReadingsTimestamp( $name, "PollingErrCount", "1970-01-01 01:00:00" );
-    my $pv = AttrVal( $name, "pollingVerbose", "1_Digest" );
+    $readUpdates{cmd} = $cmd;
+    $readUpdates{cmdId} = "";
 
-    # get current error cnt
-    my $cnt = ReadingsVal( $name, "PollingErrCount", "0" );
-
-    # flag if log needs to be written
-    my $doLog = 0;
+      Log3 $name, 4, "BlinkCamera_Callback $name: analyze result for cmd:$cmd:";
     
-    # Error to be converted to Reading for Poll
-    if ( defined( $ret ) ) {
-      # something went wrong increase fails
-      $hash->{FAILS} += 1;
-
-      # Put last error into reading
-      readingsSingleUpdate($hash, "PollingLastError", $ret , 1); 
-      
-      if ( substr($now,0,10) eq substr($tst,0,10) ) {
-        # Still same date just increment
-        $cnt += 1;
-        readingsSingleUpdate($hash, "PollingErrCount", $cnt, 1); 
-      } else {
-        # Write digest in log on next date
-        $doLog = ( $pv ne "3_None" );
-        readingsSingleUpdate($hash, "PollingErrCount", 1, 1); 
+    # LOGIN
+    if ( $cmd eq "login" ) {
+      if ( defined( $result->{authtoken} ) ) {
+        my $at = $result->{authtoken};
+        if ( defined( $at->{authtoken} ) ) {
+          $hash->{AuthToken} = $at->{authtoken};
+        }
       }
       
-    } elsif ( substr($now,0,10) ne substr($tst,0,10) ) {
-      readingsSingleUpdate($hash, "PollingErrCount", 0, 1);
-      $doLog = ( $pv ne "3_None" );
-    }
-
-    # log level is 2 on error if not digest is selected
-    $ll =( ( $pv eq "2_Log" )?2:4 );
-
-    # log digest if flag set
-    Log3 $name, 3, "BlinkCamera_Callback $name: Digest: Number of poll failures on ".substr($tst,0,10)." is :$cnt:" if ( $doLog );
-
-
-    # start next poll or wait
-    BlinkCamera_UpdatePoll($hash); 
-
-    Log3 $name, $ll, "BlinkCamera_Callback $name: resulted in :".(defined($ret)?$ret:"SUCCESS").": from Polling";
-
-  } else {
-    ##################################################
-    # Non Polling means: parse result depending on cmd
-    $hash->{HU_DO_PARAMS}->{data} = "";
-
-    my %readUpdates = ();
-    
-    if ( ! defined( $ret ) ) {
-      # SUCCESS - parse results
-      $ll = 3;
-      
-      my $cmd = $hash->{HU_DO_PARAMS}->{cmd};
-      $readUpdates{cmd} = $cmd;
-      $readUpdates{cmdId} = "";
-
-        Log3 $name, 4, "BlinkCamera_Callback $name: analyze result for cmd:$cmd:";
-      
-      # LOGIN
-      if ( $cmd eq "login" ) {
-        if ( defined( $result->{authtoken} ) ) {
-          my $at = $result->{authtoken};
-          if ( defined( $at->{authtoken} ) ) {
-            $hash->{AuthToken} = $at->{authtoken};
-          }
+      # grab network list
+      my $resnet = $result->{networks};
+      my $netlist = "";
+      if ( defined( $resnet ) ) {
+        Log3 $name, 3, "BlinkCamera_Callback $name: login number of networks ".scalar(keys %$resnet) ;
+        foreach my $netkey ( keys %$resnet ) {
+          Log3 $name, 4, "BlinkCamera_Callback $name: network  ".$netkey ;
+          my $net =  $resnet->{$netkey};
+          $netlist .= "\n" if ( length( $netlist) > 0 );
+          $netlist .= $netkey.":".$net->{name};
         }
-        
-        # grab network list
-        my $resnet = $result->{networks};
-        my $netlist = "";
-        if ( defined( $resnet ) ) {
-          Log3 $name, 3, "BlinkCamera_Callback $name: login number of networks ".scalar(keys %$resnet) ;
-          foreach my $netkey ( keys %$resnet ) {
-            Log3 $name, 4, "BlinkCamera_Callback $name: network  ".$netkey ;
-            my $net =  $resnet->{$netkey};
-            $netlist .= "\n" if ( length( $netlist) > 0 );
-            $netlist .= $netkey.":".$net->{name};
-          }
-        }
-        $readUpdates{networks} = $netlist;
-
-      } elsif ( ($cmd eq "arm") || ($cmd eq "disarm" ) ) {
-        $cmdId = $result->{id} if ( defined( $result->{id} ) );
-        Log3 $name, 4, "BlinkCamera_Callback $name: cmd :$cmd: sent resulting in id : ".(defined($cmdId)?$cmdId:"<undef>");
-
-      } elsif ($cmd eq "homescreen" ) {
-        $ret = BlinkCamera_ParseHomescreen( $hash, $result, \%readUpdates );
-      
-      } elsif ($cmd eq "command" ) {
-        if ( defined( $result->{complete} ) ) {
-          if ( $result->{complete} ) {
-            BlinkCamera_DoCmd( $hash, "homescreen" );
-          } else {
-            $ret = "waiting for command to be finished";
-            $maxRetries = 3;
-          }
-        }
-      } else {
-        
       }
-      
-      $readUpdates{cmdId} = $cmdId if ( defined($cmdId) );
+      $readUpdates{networks} = $netlist;
+
+    } elsif ( ($cmd eq "arm") || ($cmd eq "disarm" ) ) {
+      $cmdId = $result->{id} if ( defined( $result->{id} ) );
+      Log3 $name, 4, "BlinkCamera_Callback $name: cmd :$cmd: sent resulting in id : ".(defined($cmdId)?$cmdId:"<undef>");
+
+    } elsif ($cmd eq "homescreen" ) {
+      $ret = BlinkCamera_ParseHomescreen( $hash, $result, \%readUpdates );
+    
+    } elsif ($cmd eq "command" ) {
+      if ( defined( $result->{complete} ) ) {
+        if ( $result->{complete} ) {
+          BlinkCamera_DoCmd( $hash, "homescreen" );
+        } else {
+          $ret = "waiting for command to be finished";
+          $maxRetries = 3;
+        }
+      }
+    } else {
       
     }
     
+    $readUpdates{cmdId} = $cmdId if ( defined($cmdId) );
+      
     $ret = "SUCCESS" if ( ! defined( $ret ) );
-    Log3 $name, $ll, "BlinkCamera_Callback $name: resulted in :$ret: from ".(( defined( $param->{isPolling} ) )?"Polling":"DoCmd");
+    Log3 $name, $ll, "BlinkCamera_Callback $name: resulted in :$ret: from ".(( $polling ) ?"Polling":"DoCmd");
 
-    # handle retry
-    # ret defined / args defined in params 
-    if ( ( $ret ne  "SUCCESS" ) && ( defined( $param->{args} ) ) ) {
-      my $wait = $param->{args}[3];
-      
-      $maxRetries =  AttrVal($name,'maxRetries',0) if ( ! defined( $maxRetries ) );
-      if ( $wait <= $maxRetries ) {
-        # calculate wait time 10s / 100s / 1000s ~ 17min / 10000s ~ 3h / 100000s ~ 30h
-        $wait = 10**$wait;
-        
-        Log3 $name, 4, "BlinkCamera_Callback $name: do retry ".$param->{args}[3]." timer: $wait (ret: $ret) for cmd ".
-              $param->{args}[0];
+    if ( ! $polling ) {
 
-        # set timer
-        InternalTimer(gettimeofday()+$wait, "BlinkCamera_RetryDo", $param,0); 
+      # handle retry
+      # ret defined / args defined in params 
+      if ( ( $ret ne  "SUCCESS" ) && ( defined( $param->{args} ) ) ) {
+        my $wait = $param->{args}[3];
         
-        # finish
-        return;
+        $maxRetries =  AttrVal($name,'maxRetries',0) if ( ! defined( $maxRetries ) );
+        if ( $wait <= $maxRetries ) {
+          # calculate wait time 10s / 100s / 1000s ~ 17min / 10000s ~ 3h / 100000s ~ 30h
+          $wait = 10**$wait;
+          
+          Log3 $name, 4, "BlinkCamera_Callback $name: do retry ".$param->{args}[3]." timer: $wait (ret: $ret) for cmd ".
+                $param->{args}[0];
+
+          # set timer
+          InternalTimer(gettimeofday()+$wait, "BlinkCamera_RetryDo", $param,0); 
+          
+          # finish
+          return;
+        }
+
+        Log3 $name, 3, "BlinkCamera_Callback $name: Reached max retries (ret: $ret) for cmd ".$param->{args}[0];
+        
       }
-
-      Log3 $name, 3, "BlinkCamera_Callback $name: Reached max retries (ret: $ret) for cmd ".$param->{args}[0];
       
-    }
-    
-    $hash->{cmdResult} = $ret;
-    $hash->{cmdJson} = (defined($data)?$data:"<undef>");
+      $hash->{cmdResult} = $ret;
+      $hash->{cmdJson} = (defined($data)?$data:"<undef>");
+    }# retry/readingsupdate if not polling
 
     # Also set and result in Readings
     readingsBeginUpdate($hash);
-    readingsBulkUpdate($hash, "cmdResult", $ret);        
+    readingsBulkUpdate($hash, "cmdResult", $ret) if ( ! $polling );        
     foreach my $readName ( keys %readUpdates ) {
       readingsBulkUpdate($hash, $readName, $readUpdates{$readName} );        
     }
@@ -974,7 +866,7 @@ sub BlinkCamera_Callback($$$)
       BlinkCamera_DoCmd( $hash, "command", $cmdId );
       return ;
     }
-
+    
 
     if ( scalar( @{ $hash->{cmdQueue} } ) ) {
       my $ref = shift @{ $hash->{cmdQueue} };
@@ -997,54 +889,66 @@ sub BlinkCamera_Callback($$$)
 ##############################################################################
 
 
+#####################################
+#  INTERNAL: PollInfo is called to queue the next getInfo and/or set the next timer
+sub BlinkCamera_PollInfo($) 
+{
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+    
+  Log3 $name, 5, "BlinkCamera_PollInfo $name: called ";
+
+  # Get timeout from attribute 
+  my $timeout =   AttrVal($name,'pollingTimeout',0);
+  if ( $timeout == 0 ) {
+    $hash->{STATE} = "Static";
+    Log3 $name, 4, "BlinkCamera_PollInfo $name: Polling timeout 0 - no polling ";
+    return;
+  }
+
+  $hash->{STATE} = "Polling";
+
+  if ( $hash->{POLLING} ) {
+    Log3 $name, 4, "BlinkCamera_PollInfo $name: polling still running ";
+  } else {
+    $hash->{POLLING} = 1;
+    my $ret = BlinkCamera_DoCmd( $hash, "homescreen", undef, "POLLING" );
+    Log3 $name, 1, "BlinkCamera_PollInfo $name: Poll call resulted in ".$ret." " if ( defined($ret) );
+  }
+
+  Log3 $name, 4, "BlinkCamera_PollInfo $name: initiate next polling homescreen ".$timeout."s";
+  InternalTimer(gettimeofday()+$timeout, "BlinkCamera_PollInfo", $hash,0); 
+
+}
+  
 ######################################
 #  make sure a reinitialization is triggered on next update
 #  
-sub BlinkCamera_ResetPolling($) {
+sub BlinkCamera_ResetPollInfo($) {
   my ($hash) = @_;
   my $name = $hash->{NAME};
 
-  Log3 $name, 4, "BlinkCamera_ResetPolling $name: called ";
+  Log3 $name, 4, "BlinkCamera_ResetPollInfo $name: called ";
 
   RemoveInternalTimer($hash);
 
-  HttpUtils_Close($hash->{HU_UPD_PARAMS}); 
   HttpUtils_Close($hash->{HU_DO_PARAMS}); 
   
-  $hash->{WAIT} = 0;
   $hash->{FAILS} = 0;
 
   # let all existing methods first run into block
-  $hash->{POLLING} = -1;
-  
-  # wait some time before next polling is starting
-  InternalTimer(gettimeofday()+30, "BlinkCamera_RestartPolling", $hash,0); 
-
-  Log3 $name, 4, "BlinkCamera_ResetPolling $name: finished ";
-
-}
-
-  
-######################################
-#  make sure a reinitialization is triggered on next update
-#  
-sub BlinkCamera_RestartPolling($) {
-  my ($hash) = @_;
-  my $name = $hash->{NAME};
-
-  Log3 $name, 4, "BlinkCamera_RestartPolling $name: called ";
-
-  # Now polling can start
   $hash->{POLLING} = 0;
-
+  
   # wait some time before next polling is starting
-  BlinkCamera_UpdatePoll($hash);
+  InternalTimer(gettimeofday()+5, "BlinkCamera_PollInfo", $hash,0); 
 
-  Log3 $name, 4, "BlinkCamera_RestartPolling $name: finished ";
+  Log3 $name, 4, "BlinkCamera_ResetPollInfo $name: finished ";
 
 }
 
-  
+
+
+
 ######################################
 #  make sure a reinitialization is triggered on next update
 #  
@@ -1056,16 +960,6 @@ sub BlinkCamera_Setup($) {
 
   $hash->{STATE} = "Undefined";
 
-  my %hu_upd_params = (
-                  url        => "",
-                  timeout    => 5,
-                  method     => "GET",
-                  header     => $BlinkCamera_header,
-                  isPolling  => "update",
-                  hideurl    => 1,
-                  callback   => \&BlinkCamera_Callback
-  );
-
   my %hu_do_params = (
                   url        => "",
                   timeout    => 30,
@@ -1075,7 +969,6 @@ sub BlinkCamera_Setup($) {
                   callback   => \&BlinkCamera_Callback
   );
 
-  $hash->{HU_UPD_PARAMS} = \%hu_upd_params;
   $hash->{HU_DO_PARAMS} = \%hu_do_params;
 
   $hash->{POLLING} = -1;
@@ -1099,7 +992,7 @@ sub BlinkCamera_Setup($) {
 
   $hash->{STATE} = "Defined";
 
-  BlinkCamera_ResetPolling($hash);
+  BlinkCamera_ResetPollInfo($hash);
 
   Log3 $name, 4, "BlinkCamera_Setup $name: ended ";
 
@@ -1127,7 +1020,6 @@ sub BlinkCamera_GetNetwork( $ ) {
   if ( ! defined( $net ) ) {
     # grab reading
     my $nets = ReadingsVal($hash->{NAME},'networks',undef);
-    Debug $nets;
     if ( ( defined( $nets ) ) && ( $nets =~ /^([^:]+):/ ) ) {
       $net = $1;
     }

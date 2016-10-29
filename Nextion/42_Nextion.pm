@@ -19,8 +19,10 @@
 #
 ##############################################################################
 #  
-#  TelegramBot (c) Johannes Viegener / https://github.com/viegener/Telegram-fhem
-#
+#  42_Nextion (c) Johannes Viegener / https://github.com/viegener/Telegram-fhem
+#  
+#  $Id: 42_Nextion.pm 12468 2016-10-29 20:37:14Z viegener $
+#  
 ##############################################################################
 # 0.0 2016-03-23 Started
 #   Inital Version to communicate with Nextion via transparent bridge send raw commands and get returns as readings
@@ -48,6 +50,8 @@
 #   reduce log level for normal operation
 #   fix disconnect
 # 0.5 2016-06-30 disconnect-fix / log reduced / expectAnswer
+#   
+# 0.6 2016-10-29 available through SVN
 #   
 ##############################################
 ##############################################
@@ -234,6 +238,7 @@ Nextion_Set($@)
     }  
   } elsif($type eq "reopen") {
     DevIo_CloseDev($hash);
+    delete $hash->{DevIoJustClosed} if($hash->{DevIoJustClosed});
     return DevIo_OpenDev($hash, 0, "Nextion_DoInit");
   } elsif($type eq "disconnect") {
     DevIo_CloseDev($hash);
@@ -717,6 +722,8 @@ Nextion_DecodeFromIso($)
 1;
 
 =pod
+=item summary    interact with Nextion touch displays
+=item summary_DE interagiert mit Nextion Touchscreens
 =begin html
 
 <a name="Nextion"></a>
@@ -731,8 +738,6 @@ Nextion_DecodeFromIso($)
   
   A description of the Hardwarelayout for connecting the ESP8266 module and the Nextion Dispaly is in the correspdong forum thread <a href="https://forum.fhem.de/index.php/topic,51267.0.html">https://forum.fhem.de/index.php/topic,51267.0.html</a>. 
 
-  <br>
-  
 
   <br><br>
   <a name="Nextiondefine"></a>
@@ -805,7 +810,10 @@ Nextion_DecodeFromIso($)
   <ul>
     <li><code>received &lt;Hex values of the last received message from the display&gt;</code><br> The message is converted in hex values (old messages are stored in the readings old1 ... old5). Example for a message is <code>H65(e) H00 H04 H00</code> </li> 
     
-    <li><code>rectext &lt;text or empty&gt;</code><br> Translating the received message into text form if possible. </li> 
+    <li><code>rectext &lt;text or empty&gt;</code><br> Translating the received message into text form if possible. Beside predefined data that is sent from the display on specific changes, custom values can be sent in the form <code>$name=value</code>. This can be sent by statements in the Nextion display event code <br>
+      <code>print "$bt0="<br>
+            get bt0.val</code>
+    </li> 
     
     <li><code>currentPage &lt;page number on the display&gt;</code><br> Shows the number of the UI screen as configured on the Nextion display that is currently shown.<br>This is only valid if the attribute <code>hasSendMe</code> is set to 1 and used also in the display definition of the Nextion.</li> 
     

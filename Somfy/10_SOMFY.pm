@@ -85,6 +85,7 @@
 #  2016-10-17 viegener - positionInverse test and fixes
 #  2016-10-18 viegener - positionInverse documentation and complettion (no change to set on/off logic)
 #  2016-10-25 viegener - drive-Attribute - correct syntax check - add note in commandref
+#  2016-10-30 viegener - FIX: remove wrong attribute up-time-to-close - typo in attr setter
 # 
 #  
 #  
@@ -711,7 +712,7 @@ sub SOMFY_Attr(@) {
 
 		} elsif($aName eq 'drive-up-time-to-100') {
 			$attr{$name}{'drive-up-time-to-100'} = $aVal;
-			$attr{$name}{'drive-up-time-to-close'} = $aVal if(!defined($attr{$name}{'drive-up-time-to-open'}) || ($attr{$name}{'drive-up-time-to-open'} < $aVal));
+			$attr{$name}{'drive-up-time-to-open'} = $aVal if(!defined($attr{$name}{'drive-up-time-to-open'}) || ($attr{$name}{'drive-up-time-to-open'} < $aVal));
 
 		} elsif($aName eq 'drive-up-time-to-open') {
 			$attr{$name}{'drive-up-time-to-open'} = $aVal;

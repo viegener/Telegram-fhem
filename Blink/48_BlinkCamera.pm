@@ -1,4 +1,5 @@
 ##############################################################################
+##############################################################################
 #
 #     48_BlinkCamera.pm
 #
@@ -43,17 +44,27 @@
 #   poll for status info - homescreen
 #   check status for commands
 #   regular polling 
-#
+#   test polling of homescreen
+#   get thumbnails first run
 #   
 ##############################################################################
 # TASKS 
 #   
-#   test polling of homescreen
-#   
 #   show thumbnail for cameras
-#   show notifications and send event
+#     add proxy to blink
+#     url concept   /blinkCameraProxy/camera/<id>/thumbnail_<1/2>.jpg
+#                   /blinkCameraProxy/media...
+#     alt image
+#     smaller image
+#     no polling for images and no traces
+#
+#   proxydir to be configures
+#   check for update timestamp
+#
 #   
 #   show camera config
+#   
+#   show notifications and send event
 #   
 #   enable/disable cam
 #   
@@ -256,7 +267,7 @@ sub BlinkCamera_Set($@)
 
   my $cmd = shift @args;
 
-  Log3 $name, 4, "BlinkCamera_Set $name: Processing BlinkCamera_Set( $cmd )";
+  Log3 $name, 5, "BlinkCamera_Set $name: Processing BlinkCamera_Set( $cmd )";
 
   if (!exists($sets{$cmd}))  {
     my @cList;
@@ -398,30 +409,19 @@ sub BlinkCamera_Attr(@) {
 ##############################################################################
 ##############################################################################
 
+
 #####################################
 # INTERNAL: Function to send a command to the blink server
 # cmd is login / arm / homescreen 
 # par1/par2 are placeholder for addtl params
 sub BlinkCamera_DoCmd($$;$$$)
 {
-  my ( $p0, $p1, $p2, $p3, $p4) = @_;
-  return BlinkCamera_DoCmdInt( $p0, $p1, $p2, $p3, $p4 );
-}
-
-#####################################
-# INTERNAL: Function to send a command to the blink server
-# cmd is login / arm / homescreen 
-# par1/par2 are placeholder for addtl params
-sub BlinkCamera_DoCmdInt($$;$$$)
-{
   my ( $hash, @args) = @_;
 
   my ( $cmd, $par1, $par2, $retryCount) = @args;
   my $name = $hash->{NAME};
   
-  if ( ! defined( $retryCount ) ) {
-    $retryCount = 0;
-  }
+  $retryCount = 0 if ( ! defined( $retryCount ) );
 
   # increase retrycount for next try
   $args[3] = $retryCount+1;
@@ -478,6 +478,7 @@ sub BlinkCamera_DoCmdInt($$;$$$)
   delete( $hash->{HU_DO_PARAMS}->{args} );
   delete( $hash->{HU_DO_PARAMS}->{boundary} );
   delete( $hash->{HU_DO_PARAMS}->{compress} );
+  delete( $hash->{HU_DO_PARAMS}->{filename} );
 
   $hash->{HU_DO_PARAMS}->{cmd} = $cmd;
   $hash->{HU_DO_PARAMS}->{par2} = $par2;
@@ -487,6 +488,9 @@ sub BlinkCamera_DoCmdInt($$;$$$)
 
   # only for test / debug               
   $hash->{HU_DO_PARAMS}->{loglevel} = 4;
+  
+  $hash->{HU_DO_PARAMS}->{callback} = \&BlinkCamera_Callback;
+
 
   # handle data creation only if no error so far
   if ( ! defined( $ret ) ) {
@@ -499,7 +503,7 @@ sub BlinkCamera_DoCmdInt($$;$$$)
     
         $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."Content-Type: application/json";
 
-      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."login";
+      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/login";
 #      $hash->{HU_DO_PARAMS}->{url} = "http://requestb.in";
       
       $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_loginjson;
@@ -529,7 +533,7 @@ sub BlinkCamera_DoCmdInt($$;$$$)
 
       my $net =  BlinkCamera_GetNetwork( $hash );
       if ( defined( $net ) ) {
-        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."network/".$net."/".$cmd;
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/".$cmd;
       } else {
         $ret = "BlinkCamera_DoCmd $name: no network identifier found for arm/disarm - set attribute";
       }
@@ -542,11 +546,26 @@ sub BlinkCamera_DoCmdInt($$;$$$)
 
       my $net =  BlinkCamera_GetNetwork( $hash );
       if ( defined( $net ) ) {
-        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."network/".$net."/command/".$par1;
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/command/".$par1;
       } else {
         $ret = "BlinkCamera_DoCmd $name: no network identifier found for command - set attribute";
       }
 
+    } elsif ($cmd eq "thumbnail") {
+      # camera id in par
+      my $curl = ReadingsVal( $name, "networkCameraUrl".$par1, undef );
+      
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      $hash->{HU_DO_PARAMS}->{method} = "GET";
+      if ( defined( $curl ) ) {
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}.$curl.".jpg";
+        #     --> /tmp/BlinkCamera_<device>_thumbnail_<id>_<something 1 or 2>.<ext=jpg>
+        $hash->{HU_DO_PARAMS}->{filename} = "BlinkCamera/".$name."/thumbnail/camera/".$par1."_1.jpg";
+        
+      } else {
+        $ret = "BlinkCamera_DoCmd $name: no url found " 
+      }
+      
     } else {
       # TODO 
     }
@@ -573,6 +592,13 @@ sub BlinkCamera_DoCmdInt($$;$$$)
 }
 
 
+##############################################################################
+##############################################################################
+##
+## callback
+##
+##############################################################################
+##############################################################################
 
 #####################################
 #  INTERNAL: Called to retry a send operation after wait time
@@ -589,7 +615,6 @@ sub BlinkCamera_RetryDo($)
   BlinkCamera_DoCmd( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3] );
   
 }
-
 
 
 #####################################
@@ -630,6 +655,40 @@ sub BlinkCamera_Deepencode
 
 #####################################
 #  INTERNAL: Parse the homescreen results
+sub BlinkCamera_ParseLogin($$$)
+{
+  my ( $hash, $result, $readUpdates ) = @_;
+  my $name = $hash->{NAME};
+
+  my $ret;
+
+  if ( defined( $result->{authtoken} ) ) {
+    my $at = $result->{authtoken};
+    if ( defined( $at->{authtoken} ) ) {
+      $hash->{AuthToken} = $at->{authtoken};
+    }
+  }
+  
+  # grab network list
+  my $resnet = $result->{networks};
+  my $netlist = "";
+  if ( defined( $resnet ) ) {
+    Log3 $name, 3, "BlinkCamera_Callback $name: login number of networks ".scalar(keys %$resnet) ;
+    foreach my $netkey ( keys %$resnet ) {
+      Log3 $name, 4, "BlinkCamera_Callback $name: network  ".$netkey ;
+      my $net =  $resnet->{$netkey};
+      $netlist .= "\n" if ( length( $netlist) > 0 );
+      $netlist .= $netkey.":".$net->{name};
+    }
+  }
+  $readUpdates->{networks} = $netlist;
+
+  return $ret;
+}
+
+
+#####################################
+#  INTERNAL: Parse the homescreen results
 sub BlinkCamera_ParseHomescreen($$$)
 {
   my ( $hash, $result, $readUpdates ) = @_;
@@ -659,21 +718,27 @@ sub BlinkCamera_ParseHomescreen($$$)
   
   
   # loop through readings to reset all existing Cameras
-  foreach my $cam ( keys  $hash->{READINGS} ) {
-    $readUpdates->{$cam} = "" if ( $cam =~ /^deviceCamera/ );
+  if ( defined($hash->{READINGS}) ) {
+    foreach my $cam ( keys  $hash->{READINGS} ) {
+      $readUpdates->{$cam} = "" if ( $cam =~ /^networkCamera/ );
+    }
   }
-  $readUpdates->{deviceSyncModule} = "";
+  $readUpdates->{networkSyncModule} = "";
   
   # loop through devices and build a reading for cameras and a reading for the 
   if ( defined( $devList ) ) {
     foreach my $device ( @$devList ) {
       if ( $device->{device_type} eq "camera" ) {
-        $readUpdates->{"deviceCamera".$device->{device_id}} .= $device->{name}.":".$device->{active};
+        $readUpdates->{"networkCamera".$device->{device_id}} .= $device->{name}.":".$device->{active};
+        if ( defined( $device->{thumbnail} ) ) {
+          $readUpdates->{"networkCameraUrl".$device->{device_id}} .= $device->{thumbnail};
+          BlinkCamera_DoCmd( $hash, "thumbnail", $device->{device_id}, "POLLING" );
+        }
       } elsif ( $device->{device_type} eq "sync_module" ) {
-        if ( length( $readUpdates->{deviceSyncModule} ) > 0 ) {
+        if ( length( $readUpdates->{networkSyncModule} ) > 0 ) {
           Log3 $name, 1, "BlinkCamera_ParseHomescreen $name: found multiple syncModules ";
         } else {
-          $readUpdates->{deviceSyncModule} .= $device->{device_id}.":".$device->{status};
+          $readUpdates->{networkSyncModule} .= $device->{device_id}.":".$device->{status};
         }
       } else {
         Log3 $name, 1, "BlinkCamera_ParseHomescreen $name: unknown device type found ".$device->{device_type};
@@ -702,12 +767,27 @@ sub BlinkCamera_Callback($$$)
   my $result;
   my $ll = 5;
   my $maxRetries;
+  my %readUpdates = ();
   
+  my $filename = $param->{filename};
+  my $cmd = $param->{cmd};
+  my $par2 = $param->{par2};
+
+  my $polling = ($cmd eq "homescreen" ) && ($par2 eq "POLLING" );
   
   Log3 $name, 4, "BlinkCamera_Callback $name: called from ".(( defined( $param->{isPolling} ) )?"Polling":"DoCmd");
-
-  Log3 $name, 4, "BlinkCamera_Callback $name: status err :".(( defined( $err ) )?$err:"---").":  data ".(( defined( $data ) )?$data:"<undefined>");
-
+  
+  if ( defined( $filename ) ) {
+    Log3 $name, 4, "BlinkCamera_Callback $name: ".
+      (( defined( $err ) )?"status err :".$err:"").
+      ":  data length ".(( defined( $data ) )?length($data):"<undefined>").
+      "   filename :".$filename.":";
+  } else {
+    Log3 $name, 4, "BlinkCamera_Callback $name: ".
+      (( defined( $err ) )?"status err :".$err:"").
+      ":  data ".(( defined( $data ) )?$data:"<undefined>");
+  }
+  
   # Check for timeout   "read from $hash->{addr} timed out"
   if ( $err =~ /^read from.*timed out$/ ) {
     $ret = "NonBlockingGet timed out on read from ".($param->{hideurl}?"<hidden>":$param->{url})." after ".$param->{timeout}."s";
@@ -715,88 +795,74 @@ sub BlinkCamera_Callback($$$)
     $ret = "NonBlockingGet: returned $err";
   } elsif ( $data ne "" ) {
     # assuming empty data without err means timeout
-    Log3 $name, 4, "BlinkCamera_Callback $name: data returned :$data:";
     my $jo;
- 
 
-### mark as latin1 to ensure no conversion is happening (this works surprisingly)
-    eval {
-#       $data = encode( 'latin1', $data );
-       $data = encode_utf8( $data );
-#       $data = decode_utf8( $data );
-# Debug "-----AFTER------\n".$data."\n-------UC=".${^UNICODE} ."-----\n";
-       $jo = decode_json( $data );
-       $jo = BlinkCamera_Deepencode( $name, $jo );
-    };
- 
 
-###################### 
- 
-    if ( $@ ) {
-      $ret = "Callback returned no valid JSON: $@ ";
-    } elsif ( ! defined( $jo ) ) {
-      $ret = "Callback returned no valid JSON !";
-    } elsif ( $jo->{message} ) {
-      $ret = "Callback returned error:".$jo->{message}.":";
-      # reset authtoken if {"message":"Unauthorized Access"} --> will be re checked on next call
-      delete( $hash->{AuthToken} ) if ( $jo->{message} eq "Unauthorized Access" );
+    if ( defined( $filename ) ) {
+      # write file with media
+      
+      # TODO allow changing proxy dir -> from devname
+      my $proxyDir = '/tmp/';
+
+      # filename - "BlinkCamera/".$name."/thumbnail/camera/".$par1."_1.jpg"
+      my $repfilename = $filename;
+      $repfilename =~ s/\//_/g;
+      
+      Log3 $name, 4, "BlinkCamera_Callback $name: binary write  file :".$repfilename;
+      BlinkCamera_BinaryFileWrite( $hash, $proxyDir.$repfilename, $data );
+      
+#      $readUpdates{testImage} = "<html><img src=\""."/fhem/".$filename."\"  alt=\"".$filename."\"></html>";
+      $readUpdates{testImage} = "<html><img src=\""."/fhem/".$filename."\"></html>";
+
+#        "<html>abc".
+#        "<script language=\"javascript\" type=\"text/javascript\" src=\"/fhem/pgm2/jvimageloader.js\"></script>".
+#        "<button onClick=\"send_with_ajax()\">Get Image</button><br />".
+#        "<img id=\"get_img\" />".
+#        "</html>"
+
     } else {
-      $result = $jo;
+      Log3 $name, 4, "BlinkCamera_Callback $name: data returned :$data:";
+      eval {
+         $data = encode_utf8( $data );
+         $jo = decode_json( $data );
+         $jo = BlinkCamera_Deepencode( $name, $jo );
+      };
+ 
+      if ( $@ ) {
+        $ret = "Callback returned no valid JSON: $@ ";
+      } elsif ( ! defined( $jo ) ) {
+        $ret = "Callback returned no valid JSON !";
+      } elsif ( $jo->{message} ) {
+        $ret = "Callback returned error:".$jo->{message}.":";
+        # reset authtoken if {"message":"Unauthorized Access"} --> will be re checked on next call
+        delete( $hash->{AuthToken} ) if ( $jo->{message} eq "Unauthorized Access" );
+      } else {
+        $result = $jo;
+      }
+      Log3 $name, 4, "BlinkCamera_Callback $name: after decoding status ret:".(defined($ret)?$ret:" <success> ").":";
     }
-    Log3 $name, 4, "BlinkCamera_Callback $name: after decoding status ret:".(defined($ret)?$ret:" <success> ").":";
-
   }
-
-  
-  my $cmd = $hash->{HU_DO_PARAMS}->{cmd};
-  my $par2 = $hash->{HU_DO_PARAMS}->{par2};
-
-  my $polling = ($cmd eq "homescreen" ) && ($par2 eq "POLLING" );
-  
  
   if ( $polling ) {
-    $ll =2;
+    $ll = 2;
     $hash->{POLLING} = 0;
   }
  
-  
   ##################################################
   $hash->{HU_DO_PARAMS}->{data} = "";
-
-  my %readUpdates = ();
   
   if ( ! defined( $ret ) ) {
     # SUCCESS - parse results
     $ll = 3;
     
-    $readUpdates{cmd} = $cmd;
+    $readUpdates{cmd} = $cmd if ( ! $polling );
     $readUpdates{cmdId} = "";
 
-      Log3 $name, 4, "BlinkCamera_Callback $name: analyze result for cmd:$cmd:";
+    Log3 $name, 4, "BlinkCamera_Callback $name: analyze result for cmd:$cmd:";
     
-    # LOGIN
+    # handle different commands
     if ( $cmd eq "login" ) {
-      if ( defined( $result->{authtoken} ) ) {
-        my $at = $result->{authtoken};
-        if ( defined( $at->{authtoken} ) ) {
-          $hash->{AuthToken} = $at->{authtoken};
-        }
-      }
-      
-      # grab network list
-      my $resnet = $result->{networks};
-      my $netlist = "";
-      if ( defined( $resnet ) ) {
-        Log3 $name, 3, "BlinkCamera_Callback $name: login number of networks ".scalar(keys %$resnet) ;
-        foreach my $netkey ( keys %$resnet ) {
-          Log3 $name, 4, "BlinkCamera_Callback $name: network  ".$netkey ;
-          my $net =  $resnet->{$netkey};
-          $netlist .= "\n" if ( length( $netlist) > 0 );
-          $netlist .= $netkey.":".$net->{name};
-        }
-      }
-      $readUpdates{networks} = $netlist;
-
+      $ret = BlinkCamera_ParseLogin( $hash, $result, \%readUpdates );
     } elsif ( ($cmd eq "arm") || ($cmd eq "disarm" ) ) {
       $cmdId = $result->{id} if ( defined( $result->{id} ) );
       Log3 $name, 4, "BlinkCamera_Callback $name: cmd :$cmd: sent resulting in id : ".(defined($cmdId)?$cmdId:"<undef>");
@@ -849,25 +915,33 @@ sub BlinkCamera_Callback($$$)
       }
       
       $hash->{cmdResult} = $ret;
-      $hash->{cmdJson} = (defined($data)?$data:"<undef>");
-    }# retry/readingsupdate if not polling
+      $readUpdates{cmdResult} = $ret;
+      if ( defined( $filename ) ) {
+        $hash->{cmdJson} = (defined($data)?"length :".length($data):"<undef>");
+      } else {
+        $hash->{cmdJson} = (defined($data)?$data:"<undef>");
+      }
+
+    } else {
+      $hash->{pollResult} = $ret;
+    }
 
     # Also set and result in Readings
     readingsBeginUpdate($hash);
-    readingsBulkUpdate($hash, "cmdResult", $ret) if ( ! $polling );        
     foreach my $readName ( keys %readUpdates ) {
       readingsBulkUpdate($hash, $readName, $readUpdates{$readName} );        
     }
+    
     readingsEndUpdate($hash, 1);
 
+    # cmd sent / waiting for completion (so add command check) / completion reached add homescreen
     if ( ( $ret eq  "SUCCESS" ) && ( defined( $cmdId ) ) )  {
-      # cmd sent / waiting for completion (so add command check) / completion reached add homescreen
       Log3 $name, 4, "BlinkCamera_Callback $name: start polling for cmd result";
       BlinkCamera_DoCmd( $hash, "command", $cmdId );
       return ;
     }
-    
 
+    # start next command in queue if available
     if ( scalar( @{ $hash->{cmdQueue} } ) ) {
       my $ref = shift @{ $hash->{cmdQueue} };
       Log3 $name, 4, "BlinkCamera_Callback $name: handle queued cmd with :@$ref[0]: ";
@@ -878,6 +952,78 @@ sub BlinkCamera_Callback($$$)
 
   
 }
+
+
+##############################################################################
+##############################################################################
+##
+## Web proxy handling
+##
+##############################################################################
+##############################################################################
+
+########################################################################################
+#
+# CGI handling for medai and thumbnails of camera
+# camera thumbnail URL   
+#     /BlinkCamera/<device>/camera/thumbnail_<id>_<something 1 or 2>.<ext> 
+#     --> /tmp/BlinkCamera_<device>_thumbnail_<id>_<something 1 or 2>.<ext=jpg>
+#
+sub BlinkCamera_WebCallback($) {
+	my ($URL) = @_;
+	
+	Log3 undef, 2, "BlinkCamera_WebCallback: ".$URL;
+	
+	# Remove prefix
+  
+  $URL =~ s/^\/BlinkCamera//i;
+
+  # handle camera thumbnail
+	if ($URL =~ m/^\/([^\/]+)\/thumbnail\/camera\//i) {
+    # filename - "BlinkCamera/".$name."/thumbnail/camera/".$par1."_1.jpg"
+
+    my $devname = $1;
+    my $urlfile = "BlinkCamera".uri_unescape($URL);
+  
+    Log3 undef, 2, "BlinkCamera_WebCallback:   devname :$devname:   urlfile :$urlfile:  ";
+
+    # TODO allow changing proxy dir -> from devname
+		my $proxyDir = '/tmp/';
+
+    # normalize URL separator / into _
+    $urlfile =~ s/\//_/g;
+    
+    
+    # let fhemweb handle the rest
+    my $fullfile = $proxyDir.$urlfile;
+    if ( -e $fullfile ) {
+				Log3 undef, 2, "Found file in proxydir".$urlfile.' from ('.$URL.')';
+				
+        $urlfile =~ m/^(.*)\.(.*)$/;
+
+				FW_serveSpecial($1, $2, $proxyDir, 1);
+				
+				return(undef, undef);
+    } 
+    
+  }
+  
+  # Wenn wir hier ankommen, dann konnte nichts verarbeitet werden...
+	return ("text/html; charset=UTF8", "BlinkCamera_WebCallback could not handle: ".$URL);
+}
+ 
+########################################################################################
+#
+# Defines an extension (CGI call) to get pictures / media
+sub BlinkCamera_DefineWebExt() {
+	# CGI definition
+	my $name = "BlinkCamera";
+	my $baseurl = "/".$name ;
+	$data{FWEXT}{$baseurl}{FUNC} = "BlinkCamera_WebCallback";
+	$data{FWEXT}{$baseurl}{LINK} = $name;
+	$data{FWEXT}{$baseurl}{NAME} = "BlinkCamera"; 
+}
+
 
 
 ##############################################################################
@@ -988,11 +1134,13 @@ sub BlinkCamera_Setup($) {
   # remove timer for retry
   RemoveInternalTimer($hash->{HU_DO_PARAMS});
   
-  $hash->{URL} = "https://".$BlinkCamera_host."/";
+  $hash->{URL} = "https://".$BlinkCamera_host;
 
   $hash->{STATE} = "Defined";
 
   BlinkCamera_ResetPollInfo($hash);
+  
+  BlinkCamera_DefineWebExt();
 
   Log3 $name, 4, "BlinkCamera_Setup $name: ended ";
 
@@ -1028,6 +1176,20 @@ sub BlinkCamera_GetNetwork( $ ) {
   return $net;
 }
   
+######################################
+#  write binary file for (hest hash, filename and the data
+#  
+sub BlinkCamera_BinaryFileWrite($$$) {
+  my ($hash, $fileName, $data) = @_;
+
+  open BINFILE, '>'.$fileName;
+  binmode BINFILE;
+  print BINFILE $data;
+  close BINFILE;
+  
+  return undef;
+}
+
 
 
 

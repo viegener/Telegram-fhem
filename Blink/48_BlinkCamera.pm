@@ -54,12 +54,12 @@
 #   enable/disable cam
 #   reset to remove all readings?
 #   enable/disable cam also have selection
-
 #   simplify set / get
 #   enable/disable cam also have selection - remove all
 #   FIX: maxretries reached will not be removed from queue / no new start
 #   FIX: wait also for update config on command end
-#   
+
+#   FIX: misc. status and retry issues / adding hidden commands beside polling
 #   
 #   
 ##############################################################################
@@ -422,17 +422,17 @@ sub BlinkCamera_DoCmd($$;$$$)
   # increase retrycount for next try
   $args[3] = $retryCount+1;
   
-  my $cmdString = "cmd :$cmd: ".(defined($par1)?"  par1:".$par1.":":"").(defined($par2)?"  par2:".$par2.":":"");
+  my $cmdString = $cmd.(defined($par1)?"  par1:".$par1.":":"").(defined($par2)?"  par2:".$par2.":":"");
   
-  Log3 $name, 4, "BlinkCamera_DoCmd $name: called  for cmd :$cmd:";
+  Log3 $name, 4, "BlinkCamera_DoCmd $name: called  for cmd :$cmdString:";
   
   # ensure cmdQueue exists
   $hash->{cmdQueue} = [] if ( ! defined( $hash->{cmdQueue} ) );
 
   # Queue if not yet retried and currently waiting
-  if ( ( defined( $hash->{cmdResult} ) ) && ( $hash->{cmdResult} =~ /^WAITING/ ) && (  $retryCount == 0 ) ){
+  if ( ( defined( $hash->{doStatus} ) ) && ( $hash->{doStatus} =~ /^WAITING/ ) && (  $retryCount == 0 ) ){
     # add to queue
-    Log3 $name, 4, "BlinkCamera_DoCmd $name: add send to queue ".$cmdString;
+    Log3 $name, 4, "BlinkCamera_DoCmd $name: add send to queue cmd ".$cmdString;
     # command will always be added to the beginning of the queue
     if ( $cmd eq "command" ) {
       shift( @{ $hash->{cmdQueue} }, \@args );
@@ -445,7 +445,7 @@ sub BlinkCamera_DoCmd($$;$$$)
   # check authentication otherwise queue the current cmd and do authenticate first
   if ( ($cmd ne "login") && ( ! defined( $hash->{AuthToken} ) ) ) {
     # add to queue
-    Log3 $name, 4, "BlinkCamera_DoCmd $name: add send to queue ".$cmdString;
+    Log3 $name, 4, "BlinkCamera_DoCmd $name: add send to queue cmd ".$cmdString;
     push( @{ $hash->{cmdQueue} }, \@args );
     $cmd = "login";
     $par1 = undef;
@@ -463,16 +463,17 @@ sub BlinkCamera_DoCmd($$;$$$)
   
   my $ret;
 
-  $hash->{cmdResult} = "WAITING";
-  $hash->{cmdResult} .= " retry $retryCount" if ( $retryCount > 0 );
-  
-  $hash->{cmdJson} = "";
+  $hash->{doStatus} = "WAITING";
+  $hash->{doStatus} .= " retry $retryCount" if ( $retryCount > 0 );
   
   $hash->{AuthToken} = "INVALID" if ($cmd eq "login");
 
-  Log3 $name, 4, "BlinkCamera_DoCmd $name: try to send ".$cmdString;
+  Log3 $name, 4, "BlinkCamera_DoCmd $name: try to send cmd ".$cmdString;
 
-  $hash->{cmd} = $cmdString;
+  if ( ($par2 ne "POLLING" ) && ($par2 ne "HIDDEN" ) ) {
+    $hash->{cmd} = $cmdString; 
+    $hash->{cmdJson} = "";
+  }
   
   # init param hash
   $hash->{HU_DO_PARAMS}->{hash} = $hash;
@@ -774,7 +775,7 @@ sub BlinkCamera_ParseHomescreen($$$)
         $cameras .= $device->{name}."/".$device->{device_id}."//";
         if ( defined( $device->{thumbnail} ) ) {
           $readUpdates->{"networkCamera".$device->{device_id}."Url"} .= $device->{thumbnail};
-          BlinkCamera_DoCmd( $hash, "thumbnail", $device->{device_id}, "POLLING" );
+          BlinkCamera_DoCmd( $hash, "thumbnail", $device->{device_id}, "HIDDEN" );
         }
       } elsif ( $device->{device_type} eq "sync_module" ) {
         if ( length( $readUpdates->{networkSyncModule} ) > 0 ) {
@@ -842,10 +843,10 @@ sub BlinkCamera_Callback($$$)
   my $par1 = $param->{par1};
   my $par2 = $param->{par2};
 
-  my $polling = ($cmd eq "homescreen" ) && ($par2 eq "POLLING" );
-  my $blocking = ($par2 eq "BLOCKING" );
+  my $polling = ($par2 eq "POLLING" );
+  my $hidden = ($par2 eq "HIDDEN" ) || $polling;
   
-  Log3 $name, 4, "BlinkCamera_Callback $name: called from ".(( defined( $param->{isPolling} ) )?"Polling":"DoCmd");
+  Log3 $name, 4, "BlinkCamera_Callback $name: called from ".($polling?"Polling":($hidden?"Hidden":"DoCmd"));
   
   if ( defined( $filename ) ) {
     Log3 $name, 4, "BlinkCamera_Callback $name: ".
@@ -887,7 +888,6 @@ sub BlinkCamera_Callback($$$)
       
       my $readName = "networkCamera".$param->{par1}."Img";
       
-#      $readUpdates{testImage} = "<html><img src=\""."/fhem/".$filename."\"  alt=\"".$filename."\"></html>";
       $readUpdates{$readName} = "<html>".$imgTemplate."</html>";
 
     } else {
@@ -912,11 +912,9 @@ sub BlinkCamera_Callback($$$)
       Log3 $name, 4, "BlinkCamera_Callback $name: after decoding status ret:".(defined($ret)?$ret:" <success> ").":";
     }
   }
- 
-  if ( $polling ) {
-    $ll = 2;
-    $hash->{POLLING} = 0;
-  }
+
+  $ll = 2 if ( $hidden );
+  $hash->{POLLING} = 0 if ( $polling );
  
   ##################################################
   $hash->{HU_DO_PARAMS}->{data} = "";
@@ -925,8 +923,7 @@ sub BlinkCamera_Callback($$$)
     # SUCCESS - parse results
     $ll = 3;
     
-    $readUpdates{cmd} = $cmd if ( ! $polling );
-    $readUpdates{cmdId} = "";
+    $readUpdates{cmd} = $cmd if ( ! $hidden );
 
     Log3 $name, 4, "BlinkCamera_Callback $name: analyze result for cmd:$cmd:";
     
@@ -946,7 +943,7 @@ sub BlinkCamera_Callback($$$)
     } elsif ($cmd eq "command" ) {
       if ( defined( $result->{complete} ) ) {
         if ( $result->{complete} ) {
-          BlinkCamera_DoCmd( $hash, "homescreen" );
+          BlinkCamera_DoCmd( $hash, "homescreen", undef, "POLLING" );
         } else {
           $ret = "waiting for command to be finished";
           $maxRetries = 3;
@@ -956,13 +953,12 @@ sub BlinkCamera_Callback($$$)
       
     }
     
-    $readUpdates{cmdId} = $cmdId if ( defined($cmdId) );
   }
   
   $ret = "SUCCESS" if ( ! defined( $ret ) );
-  Log3 $name, $ll, "BlinkCamera_Callback $name: resulted in :$ret: from ".(( $polling ) ?"Polling":"DoCmd");
+  Log3 $name, $ll, "BlinkCamera_Callback $name: resulted in :$ret:  cmdId :".(defined($cmdId)?$cmdId:"--")." from ".($polling?"Polling":($hidden?"Hidden":"DoCmd"));
 
-  if ( ! $polling ) {
+  if ( ! $hidden ) {
 
     # handle retry
     # ret defined / args defined in params 
@@ -996,9 +992,11 @@ sub BlinkCamera_Callback($$$)
       $hash->{cmdJson} = (defined($data)?$data:"<undef>");
     }
 
-  } else {
-    $hash->{pollResult} = $ret;
+  } elsif ( $polling ) {
+    $hash->{pollResult} = $cmd." : ".$ret;
   }
+
+  $hash->{doStatus} = "";
 
   if ( ( $ret eq  "SUCCESS" ) )  {
     # Also set and result in Readings
@@ -1016,7 +1014,7 @@ sub BlinkCamera_Callback($$$)
     # cmd sent / waiting for completion (so add command check) / completion reached add homescreen
     if (  ( defined( $cmdId ) ) )  {
       Log3 $name, 4, "BlinkCamera_Callback $name: start polling for cmd result";
-      BlinkCamera_DoCmd( $hash, "command", $cmdId );
+      BlinkCamera_DoCmd( $hash, "command", $cmdId, "HIDDEN" );
       return ;
     }
   
@@ -1230,9 +1228,13 @@ sub BlinkCamera_Setup($) {
   # Ensure queueing is not happening
   delete( $hash->{cmdQueue} );
 
+  delete( $hash->{doStatus} );
+
   delete( $hash->{cmd} );
   delete( $hash->{cmdResult} );
   delete( $hash->{cmdJson} );
+
+  delete( $hash->{pollResult} );
 
   delete( $hash->{AuthToken} );
 

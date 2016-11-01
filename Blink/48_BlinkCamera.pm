@@ -50,9 +50,15 @@
 #   readings also deleted in homescreen/getInfo
 #   show thumbnail for cameras
 #   proxydir to be configured
-
 #   get camera config - as dump
 #   enable/disable cam
+#   reset to remove all readings?
+#   enable/disable cam also have selection
+
+#   simplify set / get
+#   enable/disable cam also have selection - remove all
+#   FIX: maxretries reached will not be removed from queue / no new start
+#   FIX: wait also for update config on command end
 #   
 #   
 #   
@@ -61,9 +67,7 @@
 #   
 #     no polling for images and no traces
 #
-#   reset to remove all readings?
-#   
-#   
+#   no report of homescreen/thumbnail (polling)
 #   
 #   
 #   check for update timestamp
@@ -131,7 +135,8 @@ sub BlinkCamera_DoCmdInt($$;$$$);
 sub BlinkCamera_PollInfo($);
 
 sub BlinkCamera_GetCameraId( $;$ );
-
+sub BlinkCamera_CameraDoCmd( $$$ );
+sub BlinkCamera_CheckSetGet( $$$ );
 
 #########################
 # Globals
@@ -225,30 +230,6 @@ sub BlinkCamera_Define($$) {
     return $errmsg;
   }
   
-  my %sets = (
-    "login" => undef,
-
-    "arm" => undef,
-    "disarm" => undef,
-    
-    "camEnable" => undef,
-    "camDisable" => undef,
-    
-    "reset" => undef,
-    
-    "zDebug" => undef
-
-  );
-
-  my %gets = (
-    "getInfo" => undef,
-    "getInfoCamera" => undef
-  );
-
-  $hash->{getoptions} = \%gets;
-  $hash->{setoptions} = \%sets;
-
-
   my $ret;
   
   $hash->{TYPE} = "BlinkCamera";
@@ -308,40 +289,20 @@ sub BlinkCamera_Set($@)
 
   Log3 $name, 5, "BlinkCamera_Set $name: Processing BlinkCamera_Set( $cmd ) - args :$addArg:";
 
-  my $sets = $hash->{setoptions};
-  if (!exists($sets->{$cmd}))  {
-    my @cList;
-    foreach my $k (keys %$sets) {
-      my $opts = undef;
-      $opts = $sets->{$k};
+  # check cmd / handle ?
+  my $ret = BlinkCamera_CheckSetGet( $hash, $cmd, $hash->{setoptions} );
 
-      if (defined($opts)) {
-        push(@cList,$k . ':' . $opts);
-      } else {
-        push (@cList,$k);
-      }
-    } # end foreach
-
-    return "BlinkCamera_Set: Unknown argument $cmd, choose one of " . join(" ", @cList);
-  } # error unknown cmd handling
-
-  my $ret = undef;
-  
-  if ($cmd eq 'login') {
-  
+  if ( $ret ) {
+    # do nothing if error/ret is defined
+  } elsif ($cmd eq 'login') {
     $ret = BlinkCamera_DoCmd( $hash, $cmd );
   
   } elsif( ($cmd eq 'camEnable') || ($cmd eq 'camDisable') ) {
-      my $cam = BlinkCamera_GetCameraId( $hash, $addArg );
-      if ( ! defined( $cam ) ) {
-        $ret = "BlinkCamera_Get: Camera :$addArg: not found - try GetInfo first";
-      } else {
-        $ret = BlinkCamera_DoCmd( $hash, $cmd, $cam );
-      }
+      $ret = BlinkCamera_CameraDoCmd( $hash, $cmd, $addArg )
+      
   } elsif( ($cmd eq 'arm') || ($cmd eq 'disarm') ) {
-
     $ret = BlinkCamera_DoCmd( $hash, $cmd );
-  
+
   } elsif($cmd eq 'reset') {
     Log3 $name, 5, "BlinkCamera_Set $name: reset requested ";
     BlinkCamera_Setup( $hash );
@@ -373,54 +334,16 @@ sub BlinkCamera_Get($@)
 
   Log3 $name, 5, "BlinkCamera_Get $name: Processing BlinkCamera_Get( $cmd )";
 
-  
-  my $gets = $hash->{getoptions};
-  if(!exists($gets->{$cmd})) {
-    my @cList;
-    foreach my $k (sort keys %$gets) {
-      my $opts = undef;
-      $opts = $gets->{$k};
+  # check cmd / handle ?
+  my $ret = BlinkCamera_CheckSetGet( $hash, $cmd, $hash->{getoptions} );
 
-      if (defined($opts)) {
-        push(@cList,$k . ':' . $opts);
-      } else {
-        push (@cList,$k);
-      }
-    } # end foreach
-
-    return "BlinkCamera_Get: Unknown argument $cmd, choose one of " . join(" ", @cList);
-  } # error unknown cmd handling
-
-  
-  my $ret = undef;
-  
-  if($cmd eq 'getInfo') {
-
-  $ret = BlinkCamera_DoCmd( $hash, "homescreen" );
+  if ( $ret ) {
+    # do nothing if error/ret is defined
+  } elsif($cmd eq 'getInfo') {
+    $ret = BlinkCamera_DoCmd( $hash, "homescreen" );
   
   } elsif ($cmd eq 'getInfoCamera') {
-
-    if ( $arg eq "all" ) {
-      my $cList = BlinkCamera_GetCameraId( $hash );
-      if ( ! defined( $cList ) ) {
-        $ret = "BlinkCamera_Get: No cameras found - try GetInfo first";
-      } else {
-        foreach my $cam ( @$cList ) {
-          my $sret = BlinkCamera_DoCmd( $hash, "cameraConfig", $cam );
-          if ( defined( $sret ) ) {
-            $sret = "BlinkCamera_Get: cameraConfig for $cam returned ".$sret;
-            $ret = (defined($ret)?$ret:"").$sret;
-          }
-        }
-      }
-    } else {
-      my $cam = BlinkCamera_GetCameraId( $hash, $arg );
-      if ( ! defined( $cam ) ) {
-        $ret = "BlinkCamera_Get: Camera :$arg: not found - try GetInfo first";
-      } else {
-        $ret = BlinkCamera_DoCmd( $hash, "cameraConfig", $cam );
-      }
-    }
+    $ret = BlinkCamera_CameraDoCmd( $hash, "cameraConfig", $arg )
 
   }
   
@@ -510,7 +433,12 @@ sub BlinkCamera_DoCmd($$;$$$)
   if ( ( defined( $hash->{cmdResult} ) ) && ( $hash->{cmdResult} =~ /^WAITING/ ) && (  $retryCount == 0 ) ){
     # add to queue
     Log3 $name, 4, "BlinkCamera_DoCmd $name: add send to queue ".$cmdString;
-    push( @{ $hash->{cmdQueue} }, \@args );
+    # command will always be added to the beginning of the queue
+    if ( $cmd eq "command" ) {
+      shift( @{ $hash->{cmdQueue} }, \@args );
+    } else {
+      push( @{ $hash->{cmdQueue} }, \@args );
+    }
     return;
   }  
 
@@ -542,7 +470,7 @@ sub BlinkCamera_DoCmd($$;$$$)
   
   $hash->{AuthToken} = "INVALID" if ($cmd eq "login");
 
-  Log3 $name, 4, "BlinkCamera_DoCmd $name: try to send cmd ".$cmdString;
+  Log3 $name, 4, "BlinkCamera_DoCmd $name: try to send ".$cmdString;
 
   $hash->{cmd} = $cmdString;
   
@@ -860,6 +788,8 @@ sub BlinkCamera_ParseHomescreen($$$)
     }
     $cameraGets .= "all";
     $hash->{getoptions}->{getInfoCamera} = $cameraGets;
+    $hash->{setoptions}->{camEnable} = $cameraGets;
+    $hash->{setoptions}->{camDisable} = $cameraGets;
     $readUpdates->{networkCameras} = $cameras;
   }
 
@@ -1003,7 +933,7 @@ sub BlinkCamera_Callback($$$)
     # handle different commands
     if ( $cmd eq "login" ) {
       $ret = BlinkCamera_ParseLogin( $hash, $result, \%readUpdates );
-    } elsif ( ($cmd eq "arm") || ($cmd eq "disarm" ) ) {
+    } elsif ( ($cmd eq "arm") || ($cmd eq "disarm" ) || ($cmd eq "camEnable" ) || ($cmd eq "camDisable" ) ) {
       $cmdId = $result->{id} if ( defined( $result->{id} ) );
       Log3 $name, 4, "BlinkCamera_Callback $name: cmd :$cmd: sent resulting in id : ".(defined($cmdId)?$cmdId:"<undef>");
 
@@ -1027,48 +957,50 @@ sub BlinkCamera_Callback($$$)
     }
     
     $readUpdates{cmdId} = $cmdId if ( defined($cmdId) );
+  }
+  
+  $ret = "SUCCESS" if ( ! defined( $ret ) );
+  Log3 $name, $ll, "BlinkCamera_Callback $name: resulted in :$ret: from ".(( $polling ) ?"Polling":"DoCmd");
+
+  if ( ! $polling ) {
+
+    # handle retry
+    # ret defined / args defined in params 
+    if ( ( $ret ne  "SUCCESS" ) && ( defined( $param->{args} ) ) ) {
+      my $wait = $param->{args}[3];
       
-    $ret = "SUCCESS" if ( ! defined( $ret ) );
-    Log3 $name, $ll, "BlinkCamera_Callback $name: resulted in :$ret: from ".(( $polling ) ?"Polling":"DoCmd");
-
-    if ( ! $polling ) {
-
-      # handle retry
-      # ret defined / args defined in params 
-      if ( ( $ret ne  "SUCCESS" ) && ( defined( $param->{args} ) ) ) {
-        my $wait = $param->{args}[3];
+      $maxRetries =  AttrVal($name,'maxRetries',0) if ( ! defined( $maxRetries ) );
+      if ( $wait <= $maxRetries ) {
+        # calculate wait time 10s / 100s / 1000s ~ 17min / 10000s ~ 3h / 100000s ~ 30h
+        $wait = 10**$wait;
         
-        $maxRetries =  AttrVal($name,'maxRetries',0) if ( ! defined( $maxRetries ) );
-        if ( $wait <= $maxRetries ) {
-          # calculate wait time 10s / 100s / 1000s ~ 17min / 10000s ~ 3h / 100000s ~ 30h
-          $wait = 10**$wait;
-          
-          Log3 $name, 4, "BlinkCamera_Callback $name: do retry ".$param->{args}[3]." timer: $wait (ret: $ret) for cmd ".
-                $param->{args}[0];
+        Log3 $name, 4, "BlinkCamera_Callback $name: do retry ".$param->{args}[3]." timer: $wait (ret: $ret) for cmd ".
+              $param->{args}[0];
 
-          # set timer
-          InternalTimer(gettimeofday()+$wait, "BlinkCamera_RetryDo", $param,0); 
-          
-          # finish
-          return;
-        }
-
-        Log3 $name, 3, "BlinkCamera_Callback $name: Reached max retries (ret: $ret) for cmd ".$param->{args}[0];
+        # set timer
+        InternalTimer(gettimeofday()+$wait, "BlinkCamera_RetryDo", $param,0); 
         
-      }
-      
-      $hash->{cmdResult} = $ret;
-      $readUpdates{cmdResult} = $ret;
-      if ( defined( $filename ) ) {
-        $hash->{cmdJson} = (defined($data)?"length :".length($data):"<undef>");
-      } else {
-        $hash->{cmdJson} = (defined($data)?$data:"<undef>");
+        # finish
+        return;
       }
 
+      Log3 $name, 3, "BlinkCamera_Callback $name: Reached max retries (ret: $ret) for cmd ".$param->{args}[0];
+      
+    }
+      
+    $hash->{cmdResult} = $ret;
+    $readUpdates{cmdResult} = $ret;
+    if ( defined( $filename ) ) {
+      $hash->{cmdJson} = (defined($data)?"length :".length($data):"<undef>");
     } else {
-      $hash->{pollResult} = $ret;
+      $hash->{cmdJson} = (defined($data)?$data:"<undef>");
     }
 
+  } else {
+    $hash->{pollResult} = $ret;
+  }
+
+  if ( ( $ret eq  "SUCCESS" ) )  {
     # Also set and result in Readings
     readingsBeginUpdate($hash);
     foreach my $readName ( keys %readUpdates ) {
@@ -1082,12 +1014,12 @@ sub BlinkCamera_Callback($$$)
     readingsEndUpdate($hash, 1);
 
     # cmd sent / waiting for completion (so add command check) / completion reached add homescreen
-    if ( ( $ret eq  "SUCCESS" ) && ( defined( $cmdId ) ) )  {
+    if (  ( defined( $cmdId ) ) )  {
       Log3 $name, 4, "BlinkCamera_Callback $name: start polling for cmd result";
       BlinkCamera_DoCmd( $hash, "command", $cmdId );
       return ;
     }
-
+  
   }
 
   # start next command in queue if available
@@ -1118,7 +1050,7 @@ sub BlinkCamera_Callback($$$)
 sub BlinkCamera_WebCallback($) {
 	my ($URL) = @_;
 	
-	Log3 undef, 2, "BlinkCamera_WebCallback: ".$URL;
+	Log3 undef, 4, "BlinkCamera_WebCallback: ".$URL;
 	
 	# Remove prefix
   
@@ -1131,7 +1063,7 @@ sub BlinkCamera_WebCallback($) {
     my $devname = $1;
     my $urlfile = "BlinkCamera".uri_unescape($URL);
   
-    Log3 undef, 2, "BlinkCamera_WebCallback:   devname :$devname:   urlfile :$urlfile:  ";
+    Log3 undef, 4, "BlinkCamera_WebCallback:   devname :$devname:   urlfile :$urlfile:  ";
 
     # allow changing proxy dir -> from devname
     my $proxyDir = AttrVal($devname,"proxyDir","/tmp/");
@@ -1143,14 +1075,16 @@ sub BlinkCamera_WebCallback($) {
     # let fhemweb handle the rest
     my $fullfile = $proxyDir.$urlfile;
     if ( -e $fullfile ) {
-				Log3 undef, 2, "Found file in proxydir".$urlfile.' from ('.$URL.')';
+				Log3 undef, 5, "Found file in proxydir".$urlfile.' from ('.$URL.')';
 				
         $urlfile =~ m/^(.*)\.(.*)$/;
 
 				FW_serveSpecial($1, $2, $proxyDir, 1);
 				
 				return(undef, undef);
-    } 
+    } else {
+      Log3 undef, 1, "File not found in proxydir".$urlfile.' from ('.$URL.')';
+    }
     
   }
   
@@ -1252,6 +1186,31 @@ sub BlinkCamera_Setup($) {
 
   $hash->{STATE} = "Undefined";
 
+  CommandDeleteReading(undef, "$name .*");
+  
+  my %sets = (
+    "login" => undef,
+
+    "arm" => undef,
+    "disarm" => undef,
+    
+    "camEnable" => undef,
+    "camDisable" => undef,
+    
+    "reset" => undef,
+    
+    "zDebug" => undef
+
+  );
+
+  my %gets = (
+    "getInfo" => undef,
+    "getInfoCamera" => undef
+  );
+
+  $hash->{getoptions} = \%gets;
+  $hash->{setoptions} = \%sets;
+
   my %hu_do_params = (
                   url        => "",
                   timeout    => 30,
@@ -1306,6 +1265,62 @@ sub BlinkCamera_Setup($) {
 
 #####################################
 #  INTERNAL: Get Id for a camera or list of all cameras if no name or id was given or undef if not found
+sub BlinkCamera_CheckSetGet( $$$ ) {
+  my ( $hash, $cmd, $options ) = @_;
+
+  if (!exists($options->{$cmd}))  {
+    my @cList;
+    foreach my $k (keys %$options) {
+      my $opts = undef;
+      $opts = $options->{$k};
+
+      if (defined($opts)) {
+        push(@cList,$k . ':' . $opts);
+      } else {
+        push (@cList,$k);
+      }
+    } # end foreach
+
+    return "BlinkCamera_Set: Unknown argument $cmd, choose one of " . join(" ", @cList);
+  } # error unknown cmd handling
+  return undef;
+}
+
+#####################################
+#  INTERNAL: Get Id for a camera or list of all cameras if no name or id was given or undef if not found
+sub BlinkCamera_CameraDoCmd( $$$ ) {
+  my ( $hash, $cmd, $arg ) = @_;
+
+  my $ret;
+  
+  if ( $arg eq "all" ) {
+    my $cList = BlinkCamera_GetCameraId( $hash );
+    if ( ! defined( $cList ) ) {
+      $ret = "No cameras found - try GetInfo first";
+    } else {
+      foreach my $cam ( @$cList ) {
+        my $sret = BlinkCamera_DoCmd( $hash, $cmd, $cam );
+        if ( defined( $sret ) ) {
+          $sret = "CameraConfig for $cam returned ".$sret;
+          $ret = (defined($ret)?$ret:"").$sret;
+        }
+      }
+    }
+  } else {
+    my $cam = BlinkCamera_GetCameraId( $hash, $arg );
+    if ( ! defined( $cam ) ) {
+      $ret = "Camera :$arg: not found - try GetInfo first";
+    } else {
+      $ret = BlinkCamera_DoCmd( $hash, $cmd, $cam );
+    }
+  }
+
+  return $ret;
+}
+
+
+#####################################
+#  INTERNAL: Get Id for a camera or list of all cameras if no name or id was given or undef if not found
 sub BlinkCamera_GetCameraId( $;$ ) {
   my ( $hash, $name ) = @_;
   
@@ -1323,9 +1338,8 @@ sub BlinkCamera_GetCameraId( $;$ ) {
     my @cameradefs = split( /\/\//, $cameras);
     my @retList;
     foreach my $cameradef ( @cameradefs ) {
-      @retList = () if ( ! defined(@retList) );
-      $cameradef =~ /\/\/([^\/]+)\/([^\/]+)\//;
-      push( @retList, $2 );
+      $cameradef =~ /^([^\/]+)\/([^\/]+)$/;
+      push( @retList, $2 ) if ( defined( $2 ) );
     }
     $ret = \@retList;
   }

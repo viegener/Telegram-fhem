@@ -28,7 +28,7 @@
 #
 # Discussed in FHEM Forum: <not yet>
 #
-# $Id: 48_BlinkCamera.pm 11714 2016-06-25 14:45:00Z viegener $
+# $Id: 48_BlinkCamera.pm $
 #
 ##############################################################################
 # 0.0 2015-10-16 Started
@@ -50,6 +50,9 @@
 #   readings also deleted in homescreen/getInfo
 #   show thumbnail for cameras
 #   proxydir to be configured
+
+#   get camera config - as dump
+#   enable/disable cam
 #   
 #   
 #   
@@ -58,13 +61,16 @@
 #   
 #     no polling for images and no traces
 #
+#   reset to remove all readings?
+#   
+#   
+#   
+#   
 #   check for update timestamp
 #   
-#   show camera config
+#   get camera config
 #   
 #   show notifications and send event
-#   
-#   enable/disable cam
 #   
 #   if not verbose > 3 - remove also results and data from httprequests
 #   
@@ -124,24 +130,11 @@ sub BlinkCamera_DoCmd($$;$$$);
 sub BlinkCamera_DoCmdInt($$;$$$);
 sub BlinkCamera_PollInfo($);
 
+sub BlinkCamera_GetCameraId( $;$ );
+
+
 #########################
 # Globals
-my %sets = (
-  "login" => undef,
-
-  "arm" => undef,
-  "disarm" => undef,
-  
-  "reset" => undef,
-  
-  "zDebug" => undef
-
-);
-
-my %gets = (
-  "getInfo" => undef
-);
-
 # OLD? my $BlinkCamera_host = "prod.immedia-semi.com";
 my $BlinkCamera_host = "rest.prir.immedia-semi.com";
 
@@ -149,6 +142,24 @@ my $BlinkCamera_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0"
 # my $BlinkCamera_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0\r\nAccept-Charset: utf-8";
 
 my $BlinkCamera_loginjson = "{ \"password\" : \"q_password_q\", \"client_specifier\" : \"FHEM blinkCameraModule 1 - q_name_q\", \"email\" : \"q_email_q\" }";
+
+my $BlinkCamera_configCamAlertjson = "{ \"camera\" : \"q_id_q\", \"id\" : \"q_id_q\", \"network\" : \"q_network_q\", \"motion_alert\" : \"q_alert_q\" }";
+
+#{
+#    "alert_interval": 30,
+#    "camera": 2149,
+#    "id": 2149,
+#    "illuminator_enable": 0,
+#    "illuminator_intensity": 7,
+#    "motion_alert": true,
+#    "motion_sensitivity": 5,
+#    "name": "gang",
+#    "network": 1018,
+#    "record_audio_enable": true,
+#    "video_length": 5
+#}
+
+
 
 
 my $BlinkCamera_imgTemplate="<a href=\"#URL#\"><img src=\"#URL#\" height=36 widht=64>#URL#</a>";
@@ -214,6 +225,30 @@ sub BlinkCamera_Define($$) {
     return $errmsg;
   }
   
+  my %sets = (
+    "login" => undef,
+
+    "arm" => undef,
+    "disarm" => undef,
+    
+    "camEnable" => undef,
+    "camDisable" => undef,
+    
+    "reset" => undef,
+    
+    "zDebug" => undef
+
+  );
+
+  my %gets = (
+    "getInfo" => undef,
+    "getInfoCamera" => undef
+  );
+
+  $hash->{getoptions} = \%gets;
+  $hash->{setoptions} = \%sets;
+
+
   my $ret;
   
   $hash->{TYPE} = "BlinkCamera";
@@ -269,13 +304,16 @@ sub BlinkCamera_Set($@)
 
   my $cmd = shift @args;
 
-  Log3 $name, 5, "BlinkCamera_Set $name: Processing BlinkCamera_Set( $cmd )";
+  my $addArg = ($args[0] ? join(" ", @args ) : "");
 
-  if (!exists($sets{$cmd}))  {
+  Log3 $name, 5, "BlinkCamera_Set $name: Processing BlinkCamera_Set( $cmd ) - args :$addArg:";
+
+  my $sets = $hash->{setoptions};
+  if (!exists($sets->{$cmd}))  {
     my @cList;
-    foreach my $k (keys %sets) {
+    foreach my $k (keys %$sets) {
       my $opts = undef;
-      $opts = $sets{$k};
+      $opts = $sets->{$k};
 
       if (defined($opts)) {
         push(@cList,$k . ':' . $opts);
@@ -293,6 +331,13 @@ sub BlinkCamera_Set($@)
   
     $ret = BlinkCamera_DoCmd( $hash, $cmd );
   
+  } elsif( ($cmd eq 'camEnable') || ($cmd eq 'camDisable') ) {
+      my $cam = BlinkCamera_GetCameraId( $hash, $addArg );
+      if ( ! defined( $cam ) ) {
+        $ret = "BlinkCamera_Get: Camera :$addArg: not found - try GetInfo first";
+      } else {
+        $ret = BlinkCamera_DoCmd( $hash, $cmd, $cam );
+      }
   } elsif( ($cmd eq 'arm') || ($cmd eq 'disarm') ) {
 
     $ret = BlinkCamera_DoCmd( $hash, $cmd );
@@ -328,11 +373,13 @@ sub BlinkCamera_Get($@)
 
   Log3 $name, 5, "BlinkCamera_Get $name: Processing BlinkCamera_Get( $cmd )";
 
-  if(!exists($gets{$cmd})) {
+  
+  my $gets = $hash->{getoptions};
+  if(!exists($gets->{$cmd})) {
     my @cList;
-    foreach my $k (sort keys %gets) {
+    foreach my $k (sort keys %$gets) {
       my $opts = undef;
-      $opts = $sets{$k};
+      $opts = $gets->{$k};
 
       if (defined($opts)) {
         push(@cList,$k . ':' . $opts);
@@ -351,6 +398,30 @@ sub BlinkCamera_Get($@)
 
   $ret = BlinkCamera_DoCmd( $hash, "homescreen" );
   
+  } elsif ($cmd eq 'getInfoCamera') {
+
+    if ( $arg eq "all" ) {
+      my $cList = BlinkCamera_GetCameraId( $hash );
+      if ( ! defined( $cList ) ) {
+        $ret = "BlinkCamera_Get: No cameras found - try GetInfo first";
+      } else {
+        foreach my $cam ( @$cList ) {
+          my $sret = BlinkCamera_DoCmd( $hash, "cameraConfig", $cam );
+          if ( defined( $sret ) ) {
+            $sret = "BlinkCamera_Get: cameraConfig for $cam returned ".$sret;
+            $ret = (defined($ret)?$ret:"").$sret;
+          }
+        }
+      }
+    } else {
+      my $cam = BlinkCamera_GetCameraId( $hash, $arg );
+      if ( ! defined( $cam ) ) {
+        $ret = "BlinkCamera_Get: Camera :$arg: not found - try GetInfo first";
+      } else {
+        $ret = BlinkCamera_DoCmd( $hash, "cameraConfig", $cam );
+      }
+    }
+
   }
   
   Log3 $name, 5, "BlinkCamera_Get $name: $cmd ".((defined( $ret ))?"failed with :$ret: ":"done succesful ");
@@ -527,7 +598,30 @@ sub BlinkCamera_DoCmd($$;$$$)
         Log3 $name, 4, "BlinkCamera_DoCmd $name:   data :".$hash->{HU_DO_PARAMS}->{data}.":";
 
       }
+        
+    } elsif ( ($cmd eq "camEnable") || ($cmd eq "camDisable" ) ) {
     
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken}."\r\n"."Content-Type: application/json";
+
+      $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_configCamAlertjson;
+      
+      my $net =  BlinkCamera_GetNetwork( $hash );
+      if ( defined( $net ) ) {
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/camera/".$par1."/update";
+      } else {
+        $ret = "BlinkCamera_DoCmd $name: no network identifier found for $cmd - set attribute";
+      }
+
+      if ( ! $ret ) {
+        my $alert = ($cmd eq "camEnable")?"true":"false";
+      
+        $hash->{HU_DO_PARAMS}->{data} =~ s/q_id_q/$par1/g;
+        $hash->{HU_DO_PARAMS}->{data} =~ s/q_network_q/$net/g;
+        $hash->{HU_DO_PARAMS}->{data} =~ s/q_alert_q/$alert/g;
+
+        Log3 $name, 4, "BlinkCamera_DoCmd $name:   data :".$hash->{HU_DO_PARAMS}->{data}.":";
+
+      }
     } elsif ( ($cmd eq "arm") || ($cmd eq "disarm" ) || ($cmd eq "homescreen" ) ) {
 
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
@@ -541,7 +635,7 @@ sub BlinkCamera_DoCmd($$;$$$)
         $ret = "BlinkCamera_DoCmd $name: no network identifier found for arm/disarm - set attribute";
       }
 
-    } elsif ($cmd eq "command" ) {
+    } elsif ( ($cmd eq "command" )  ) {
 
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
       
@@ -552,6 +646,19 @@ sub BlinkCamera_DoCmd($$;$$$)
         $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/command/".$par1;
       } else {
         $ret = "BlinkCamera_DoCmd $name: no network identifier found for command - set attribute";
+      }
+
+    } elsif ( ($cmd eq "cameraConfig" ) ) {
+
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      
+      $hash->{HU_DO_PARAMS}->{method} = "GET";
+
+      my $net =  BlinkCamera_GetNetwork( $hash );
+      if ( defined( $net ) ) {
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/camera/".$par1."/config";
+      } else {
+        $ret = "BlinkCamera_DoCmd $name: no network identifier found for $cmd - set attribute";
       }
 
     } elsif ($cmd eq "thumbnail") {
@@ -730,9 +837,13 @@ sub BlinkCamera_ParseHomescreen($$$)
   
   # loop through devices and build a reading for cameras and a reading for the 
   if ( defined( $devList ) ) {
+    my $cameraGets = "";
+    my $cameras = "//";
     foreach my $device ( @$devList ) {
       if ( $device->{device_type} eq "camera" ) {
         $readUpdates->{"networkCamera".$device->{device_id}} .= $device->{name}.":".$device->{active};
+        $cameraGets .= $device->{name}.",".$device->{device_id}.",";
+        $cameras .= $device->{name}."/".$device->{device_id}."//";
         if ( defined( $device->{thumbnail} ) ) {
           $readUpdates->{"networkCamera".$device->{device_id}."Url"} .= $device->{thumbnail};
           BlinkCamera_DoCmd( $hash, "thumbnail", $device->{device_id}, "POLLING" );
@@ -747,11 +858,35 @@ sub BlinkCamera_ParseHomescreen($$$)
         Log3 $name, 1, "BlinkCamera_ParseHomescreen $name: unknown device type found ".$device->{device_type};
       }
     }
+    $cameraGets .= "all";
+    $hash->{getoptions}->{getInfoCamera} = $cameraGets;
+    $readUpdates->{networkCameras} = $cameras;
   }
 
   return $ret;
 }
+
+
+
+#####################################
+#  INTERNAL: Parse the cameraConfig results
+sub BlinkCamera_ParseCameraConfig($$$$)
+{
+  my ( $hash, $result, $cam, $readUpdates ) = @_;
+  my $name = $hash->{NAME};
+
+  my $ret;
+
+  my $camera = $result->{camera};
+
+  Log3 $name, 4, "BlinkCamera_ParseCameraConfig $name: for Camera $cam ";
+
+  $readUpdates->{"cameraConfig".$cam} = Dumper($camera)."\n";
+
+  return $ret;
+}
       
+
 #####################################
 #  INTERNAL: Callback is the callback for any nonblocking call to the bot api (e.g. the long poll on update call)
 #   3 params are defined for callbacks
@@ -774,9 +909,11 @@ sub BlinkCamera_Callback($$$)
   
   my $filename = $param->{filename};
   my $cmd = $param->{cmd};
+  my $par1 = $param->{par1};
   my $par2 = $param->{par2};
 
   my $polling = ($cmd eq "homescreen" ) && ($par2 eq "POLLING" );
+  my $blocking = ($par2 eq "BLOCKING" );
   
   Log3 $name, 4, "BlinkCamera_Callback $name: called from ".(( defined( $param->{isPolling} ) )?"Polling":"DoCmd");
   
@@ -870,6 +1007,9 @@ sub BlinkCamera_Callback($$$)
       $cmdId = $result->{id} if ( defined( $result->{id} ) );
       Log3 $name, 4, "BlinkCamera_Callback $name: cmd :$cmd: sent resulting in id : ".(defined($cmdId)?$cmdId:"<undef>");
 
+    } elsif ( ($cmd eq "cameraConfig")  ) {
+      $ret = BlinkCamera_ParseCameraConfig( $hash, $result, $par1, \%readUpdates );
+
     } elsif ($cmd eq "homescreen" ) {
       $ret = BlinkCamera_ParseHomescreen( $hash, $result, \%readUpdates );
     
@@ -948,15 +1088,14 @@ sub BlinkCamera_Callback($$$)
       return ;
     }
 
-    # start next command in queue if available
-    if ( scalar( @{ $hash->{cmdQueue} } ) ) {
-      my $ref = shift @{ $hash->{cmdQueue} };
-      Log3 $name, 4, "BlinkCamera_Callback $name: handle queued cmd with :@$ref[0]: ";
-      BlinkCamera_DoCmd( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3] );
-    }
-
   }
 
+  # start next command in queue if available
+  if ( scalar( @{ $hash->{cmdQueue} } ) ) {
+    my $ref = shift @{ $hash->{cmdQueue} };
+    Log3 $name, 4, "BlinkCamera_Callback $name: handle queued cmd with :@$ref[0]: ";
+    BlinkCamera_DoCmd( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3] );
+  }
   
 }
 
@@ -1165,6 +1304,35 @@ sub BlinkCamera_Setup($) {
 ##############################################################################
 
 
+#####################################
+#  INTERNAL: Get Id for a camera or list of all cameras if no name or id was given or undef if not found
+sub BlinkCamera_GetCameraId( $;$ ) {
+  my ( $hash, $name ) = @_;
+  
+  my $cameras = ReadingsVal($hash->{NAME},'networkCameras',"");
+  
+  my $ret;
+  
+  if ( defined( $name ) ) {
+    if ( $cameras =~ /\/\/$name\/([^\/]+)\// ) {
+      $ret = $1;
+    } elsif ( $cameras =~ /\/\/([^\/]+)\/$name\// ) {
+      $ret = $name;
+    }
+  } else {
+    my @cameradefs = split( /\/\//, $cameras);
+    my @retList;
+    foreach my $cameradef ( @cameradefs ) {
+      @retList = () if ( ! defined(@retList) );
+      $cameradef =~ /\/\/([^\/]+)\/([^\/]+)\//;
+      push( @retList, $2 );
+    }
+    $ret = \@retList;
+  }
+  
+  return $ret;
+}
+  
 #####################################
 #  INTERNAL: Either read attribute, if not set use Reading networks first line
 sub BlinkCamera_GetNetwork( $ ) {

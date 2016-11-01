@@ -45,22 +45,20 @@
 #   check status for commands
 #   regular polling 
 #   test polling of homescreen
-#   get thumbnails first run
+#   get thumbnails and put to readings
+#     urls:  /BlinkCamera/<device>/thumbnail/camera/<cameraid>_1.jpg
+#   readings also deleted in homescreen/getInfo
+#   show thumbnail for cameras
+#   proxydir to be configured
+#   
+#   
 #   
 ##############################################################################
 # TASKS 
 #   
-#   show thumbnail for cameras
-#     add proxy to blink
-#     url concept   /blinkCameraProxy/camera/<id>/thumbnail_<1/2>.jpg
-#                   /blinkCameraProxy/media...
-#     alt image
-#     smaller image
 #     no polling for images and no traces
 #
-#   proxydir to be configures
 #   check for update timestamp
-#
 #   
 #   show camera config
 #   
@@ -153,6 +151,8 @@ my $BlinkCamera_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0"
 my $BlinkCamera_loginjson = "{ \"password\" : \"q_password_q\", \"client_specifier\" : \"FHEM blinkCameraModule 1 - q_name_q\", \"email\" : \"q_email_q\" }";
 
 
+my $BlinkCamera_imgTemplate="<a href=\"#URL#\"><img src=\"#URL#\" height=36 widht=64>#URL#</a>";
+
 ##############################################################################
 ##############################################################################
 ##
@@ -176,6 +176,8 @@ sub BlinkCamera_Initialize($) {
   $hash->{SetFn}      = "BlinkCamera_Set";
   $hash->{AttrFn}     = "BlinkCamera_Attr";
   $hash->{AttrList}   = " maxRetries:0,1,2,3,4,5 ".
+          "imgTemplate:textfield ".
+          "proxyDir:textfield ".
           "network ".
           "pollingTimeout ".
           $readingFnAttributes;           
@@ -481,6 +483,7 @@ sub BlinkCamera_DoCmd($$;$$$)
   delete( $hash->{HU_DO_PARAMS}->{filename} );
 
   $hash->{HU_DO_PARAMS}->{cmd} = $cmd;
+  $hash->{HU_DO_PARAMS}->{par1} = $par1;
   $hash->{HU_DO_PARAMS}->{par2} = $par2;
   
   my $timeout =   AttrVal($name,'cmdTimeout',30);
@@ -553,7 +556,7 @@ sub BlinkCamera_DoCmd($$;$$$)
 
     } elsif ($cmd eq "thumbnail") {
       # camera id in par
-      my $curl = ReadingsVal( $name, "networkCameraUrl".$par1, undef );
+      my $curl = ReadingsVal( $name, "networkCamera".$par1."Url", undef );
       
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
       $hash->{HU_DO_PARAMS}->{method} = "GET";
@@ -720,7 +723,7 @@ sub BlinkCamera_ParseHomescreen($$$)
   # loop through readings to reset all existing Cameras
   if ( defined($hash->{READINGS}) ) {
     foreach my $cam ( keys  $hash->{READINGS} ) {
-      $readUpdates->{$cam} = "" if ( $cam =~ /^networkCamera/ );
+      $readUpdates->{$cam} = undef if ( $cam =~ /^networkCamera/ );
     }
   }
   $readUpdates->{networkSyncModule} = "";
@@ -731,7 +734,7 @@ sub BlinkCamera_ParseHomescreen($$$)
       if ( $device->{device_type} eq "camera" ) {
         $readUpdates->{"networkCamera".$device->{device_id}} .= $device->{name}.":".$device->{active};
         if ( defined( $device->{thumbnail} ) ) {
-          $readUpdates->{"networkCameraUrl".$device->{device_id}} .= $device->{thumbnail};
+          $readUpdates->{"networkCamera".$device->{device_id}."Url"} .= $device->{thumbnail};
           BlinkCamera_DoCmd( $hash, "thumbnail", $device->{device_id}, "POLLING" );
         }
       } elsif ( $device->{device_type} eq "sync_module" ) {
@@ -802,7 +805,7 @@ sub BlinkCamera_Callback($$$)
       # write file with media
       
       # TODO allow changing proxy dir -> from devname
-      my $proxyDir = '/tmp/';
+      my $proxyDir = AttrVal($name,"proxyDir","/tmp/");
 
       # filename - "BlinkCamera/".$name."/thumbnail/camera/".$par1."_1.jpg"
       my $repfilename = $filename;
@@ -811,14 +814,14 @@ sub BlinkCamera_Callback($$$)
       Log3 $name, 4, "BlinkCamera_Callback $name: binary write  file :".$repfilename;
       BlinkCamera_BinaryFileWrite( $hash, $proxyDir.$repfilename, $data );
       
+      my $fullurl = "/fhem/".$filename;
+      my $imgTemplate = AttrVal($name,"imgTemplate",$BlinkCamera_imgTemplate);
+      $imgTemplate =~ s/#URL#/$fullurl/g;
+      
+      my $readName = "networkCamera".$param->{par1}."Img";
+      
 #      $readUpdates{testImage} = "<html><img src=\""."/fhem/".$filename."\"  alt=\"".$filename."\"></html>";
-      $readUpdates{testImage} = "<html><img src=\""."/fhem/".$filename."\"></html>";
-
-#        "<html>abc".
-#        "<script language=\"javascript\" type=\"text/javascript\" src=\"/fhem/pgm2/jvimageloader.js\"></script>".
-#        "<button onClick=\"send_with_ajax()\">Get Image</button><br />".
-#        "<img id=\"get_img\" />".
-#        "</html>"
+      $readUpdates{$readName} = "<html>".$imgTemplate."</html>";
 
     } else {
       Log3 $name, 4, "BlinkCamera_Callback $name: data returned :$data:";
@@ -929,7 +932,11 @@ sub BlinkCamera_Callback($$$)
     # Also set and result in Readings
     readingsBeginUpdate($hash);
     foreach my $readName ( keys %readUpdates ) {
-      readingsBulkUpdate($hash, $readName, $readUpdates{$readName} );        
+      if ( defined( $readUpdates{$readName} ) ) {
+        readingsBulkUpdate($hash, $readName, $readUpdates{$readName} );        
+      } else {
+        delete($hash->{READINGS}{$readName}); 
+      }
     }
     
     readingsEndUpdate($hash, 1);
@@ -987,8 +994,8 @@ sub BlinkCamera_WebCallback($) {
   
     Log3 undef, 2, "BlinkCamera_WebCallback:   devname :$devname:   urlfile :$urlfile:  ";
 
-    # TODO allow changing proxy dir -> from devname
-		my $proxyDir = '/tmp/';
+    # allow changing proxy dir -> from devname
+    my $proxyDir = AttrVal($devname,"proxyDir","/tmp/");
 
     # normalize URL separator / into _
     $urlfile =~ s/\//_/g;

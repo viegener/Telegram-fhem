@@ -59,7 +59,6 @@
 #   FIX: maxretries reached will not be removed from queue / no new start
 #   FIX: wait also for update config on command end
 #   FIX: misc. status and retry issues / adding hidden commands beside polling
-
 #   addtl call after homescreen with timestamps
 #     Get videos and make events/alerts - store in internal hash
 #     store list of videos in hash/intern - id -> deleted -> created_at, updated_at, camera_id, viewed, video
@@ -70,37 +69,44 @@
 #       alertVideo - 
 #       alertID - is relevant last set - for notify
 #   reading:    updateTimestamp - timestamp for reading changes (ignored if internal hash not defined)
+#   reading:    eventTimestamp - newest notification/video that was already used for an event
+#   send events only for new notifications after eventTimestamp
+#   add cameraname to alert
+
+#   get video (marks as viewed automatically) - reading video with proxy url 
+#   remove proxy files in reste
+#   clean some log entries
+#   FIX: alert / videos in correct sequence
+#   FIX: Video deletion returns messge: ""Successfully deleted all videos"
+#   remove video
+#   polling works
+#   
 #   
 #   
 ##############################################################################
 # TASKS 
 #   
-#   reading:    eventTimestamp - newest notification/video that was already used for an event
-#   add cameraname
-#   
-#   show notifications and send event
-#   
-#   get camera config
+#   get camera config in different device or detailed
 #   
 #   if not verbose > 3 - remove also results and data from httprequests
 #   
 #   make a test with unauthorized
 #   
-#   redo only once if authtoken invalid
+##############################################################################
+# Ideas
 #   
-#   setkey for authtoken
 #   remove password from define - discard it
 #   host cofigurable?
-#   
-#   get picture/video
+#   setkey for authtoken
+#
+#
 #
 ##############################################################################
-#
-#
 #
 #{"authtoken":{"authtoken":"sjkashajhdjkashd","message":"auth"},"networks":{"<n>":{"name":"<name>","onboarded":true}},"region":{"prde":"Europe"}}
 #{"message":"Unauthorized Access"}
 #
+# { "video_list": [ 1012458 ] }   - POST https://rest.prir.immedia-semi.com/api/v2/videos/delete
 #
 ##############################################################################
 
@@ -134,13 +140,14 @@ sub BlinkCamera_Get($@);
 
 sub BlinkCamera_Callback($$$);
 sub BlinkCamera_DoCmd($$;$$$);
-sub BlinkCamera_DoCmdInt($$;$$$);
 sub BlinkCamera_PollInfo($);
 
 sub BlinkCamera_GetCameraId( $;$ );
 sub BlinkCamera_CameraDoCmd( $$$ );
 sub BlinkCamera_CheckSetGet( $$$ );
 
+sub BlinkCamera_ReplacePattern( $$;$ );
+sub BlinkCamera_ParseStartAlerts($;$$$);
 sub BlinkCamera_AnalyzeAlertPage( $$$ );
 
 #########################
@@ -155,11 +162,17 @@ my $BlinkCamera_loginjson = "{ \"password\" : \"q_password_q\", \"client_specifi
 
 my $BlinkCamera_configCamAlertjson = "{ \"camera\" : \"q_id_q\", \"id\" : \"q_id_q\", \"network\" : \"q_network_q\", \"motion_alert\" : \"q_alert_q\" }";
 
-my $BlinkCamera_imgTemplate="<a href=\"#URL#\"><img src=\"#URL#\" height=36 widht=64>#URL#</a>";
+my $BlinkCamera_deleteVideojson = "{ \"video_list\" : [ q_id_q ] }";
+
+my $BlinkCamera_imgTemplate="<html><a href=\"#URL#\"><img src=\"#URL#\" height=36 widht=64>#URL#</a></html>";
+my $BlinkCamera_vidTemplate="<html><a href=\"#URL#\">Video Id:#ID#:  #URL#</a></html>";
 
 #     store list of videos in hash/intern - id -> deleted -> created_at, updated_at, camera_id, viewed, video
-my $BlinkCamera_alertEntry='^([^\|]*)\|([^\|]*)\|([^\|]*)\|([^\|]*)\|.*$';
+my $BlinkCamera_alertEntry='^([^\|]*)\|([^\|]*)\|([^\|]*)\|([^\|]*)\|(.*)$';
 
+# always include name for name of the device to find the right device hash in proxy
+my $BlinkCamera_camerathumbnail = "BlinkCamera/q_name_q/thumbnail/camera/q_id_q.jpg";
+my $BlinkCamera_videofile = "BlinkCamera/q_name_q/video/q_id_q.mp4";
 
 
 ##############################################################################
@@ -186,6 +199,7 @@ sub BlinkCamera_Initialize($) {
   $hash->{AttrFn}     = "BlinkCamera_Attr";
   $hash->{AttrList}   = " maxRetries:0,1,2,3,4,5 ".
           "imgTemplate:textfield ".
+          "videoTemplate:textfield ".
           "proxyDir:textfield ".
           "network ".
           "pollingTimeout ".
@@ -270,7 +284,7 @@ sub BlinkCamera_Set($@)
 {
   my ( $hash, $name, @args ) = @_;
   
-  Log3 $name, 4, "BlinkCamera_Set $name: called ";
+  Log3 $name, 5, "BlinkCamera_Set $name: called ";
 
   ### Check Args
   my $numberOfArgs  = int(@args);
@@ -278,14 +292,15 @@ sub BlinkCamera_Set($@)
 
   my $cmd = shift @args;
 
-  my $addArg = ($args[0] ? join(" ", @args ) : "");
+  my $addArg = ($args[0] ? join(" ", @args ) : undef);
 
-  Log3 $name, 5, "BlinkCamera_Set $name: Processing BlinkCamera_Set( $cmd ) - args :$addArg:";
+  Log3 $name, 4, "BlinkCamera_Set $name: Processing BlinkCamera_Set( $cmd ) - args :".(defined($addArg)?$addArg:"<undef>").":";
 
   # check cmd / handle ?
   my $ret = BlinkCamera_CheckSetGet( $hash, $cmd, $hash->{setoptions} );
 
   if ( $ret ) {
+
     # do nothing if error/ret is defined
   } elsif ($cmd eq 'login') {
     $ret = BlinkCamera_DoCmd( $hash, $cmd );
@@ -297,12 +312,20 @@ sub BlinkCamera_Set($@)
     $ret = BlinkCamera_DoCmd( $hash, $cmd );
 
   } elsif($cmd eq 'reset') {
-    Log3 $name, 5, "BlinkCamera_Set $name: reset requested ";
+    Log3 $name, 3, "BlinkCamera_Set $name: reset requested ";
     BlinkCamera_Setup( $hash );
 
+  } elsif($cmd eq 'videoDelete') {
+    $ret = BlinkCamera_DoCmd( $hash, "videoDelete", $addArg );
+    
   } elsif($cmd eq 'zDebug') {
     Log3 $name, 5, "BlinkCamera_Set $name: zDebug requested ";
     $hash->{AuthToken} = "ABCDEF";
+#    Debug "-------------------------";
+#    Debug Dumper( $hash->{alertResults} );
+#    Debug "-------------------------";
+#    Debug Dumper( $hash->{videos} );
+#    Debug "-------------------------";
 
   }
 
@@ -323,7 +346,7 @@ sub BlinkCamera_Get($@)
   return "BlinkCamera_Get: No value specified for get" if ( $numberOfArgs < 1 );
 
   my $cmd = $args[0];
-  my $arg = ($args[1] ? $args[1] : "");
+  my $arg = $args[1];
 
   Log3 $name, 5, "BlinkCamera_Get $name: Processing BlinkCamera_Get( $cmd )";
 
@@ -340,6 +363,9 @@ sub BlinkCamera_Get($@)
 
   } elsif($cmd eq 'getNotifications') {
     $ret = BlinkCamera_DoCmd( $hash, "events" );
+    
+  } elsif($cmd eq 'getVideoAlert') {
+    $ret = BlinkCamera_DoCmd( $hash, "video", $arg );
     
   }
   
@@ -377,7 +403,7 @@ sub BlinkCamera_Attr(@) {
       $hash->{POLLING} = -1;
       
       # wait some time before next polling is starting
-      BlinkCamera_ResetPolling( $hash );
+      BlinkCamera_ResetPollInfo( $hash );
 
     } elsif ($aName eq 'pollingVerbose') {
       return "\"BlinkCamera_Attr: \" Incorrect value given for pollingVerbose" if ( $aVal !~ /^((1_Digest)|(2_Log)|(0_None))$/ );
@@ -438,6 +464,7 @@ sub BlinkCamera_DoCmd($$;$$$)
     return;
   }  
 
+  #######################
   # check authentication otherwise queue the current cmd and do authenticate first
   if ( ($cmd ne "login") && ( ! defined( $hash->{AuthToken} ) ) ) {
     # add to queue
@@ -450,6 +477,7 @@ sub BlinkCamera_DoCmd($$;$$$)
     $cmdString = "cmd :$cmd: ".(defined($par1)?"  par1:".$par1.":":"").(defined($par2)?"  par2:".$par2.":":"");
   }
   
+  #######################
   # Check for invalid auth token and just remove cmds
   if ( ($cmd ne "login") && ( $hash->{AuthToken} eq "INVALID" ) ) {
     # add to queue
@@ -466,7 +494,7 @@ sub BlinkCamera_DoCmd($$;$$$)
 
   Log3 $name, 4, "BlinkCamera_DoCmd $name: try to send cmd ".$cmdString;
 
-  if ( ($par2 ne "POLLING" ) && ($par2 ne "HIDDEN" ) ) {
+  if ( ( !defined( $par2 ) ) || ( ($par2 ne "POLLING" ) && ($par2 ne "HIDDEN" ) ) ) {
     $hash->{cmd} = $cmdString; 
     $hash->{cmdJson} = "";
   }
@@ -498,6 +526,7 @@ sub BlinkCamera_DoCmd($$;$$$)
     $hash->{HU_DO_PARAMS}->{header} = $BlinkCamera_header.
       "\r\n"."Host: ".$BlinkCamera_host;
 
+    #######################
     if ($cmd eq "login") {
     
         $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."Content-Type: application/json";
@@ -524,6 +553,7 @@ sub BlinkCamera_DoCmd($$;$$$)
 
       }
         
+    #######################
     } elsif ( ($cmd eq "camEnable") || ($cmd eq "camDisable" ) ) {
     
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken}."\r\n"."Content-Type: application/json";
@@ -547,6 +577,8 @@ sub BlinkCamera_DoCmd($$;$$$)
         Log3 $name, 4, "BlinkCamera_DoCmd $name:   data :".$hash->{HU_DO_PARAMS}->{data}.":";
 
       }
+
+    #######################
     } elsif ( ($cmd eq "arm") || ($cmd eq "disarm" ) || ($cmd eq "homescreen" ) ) {
 
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
@@ -560,6 +592,7 @@ sub BlinkCamera_DoCmd($$;$$$)
         $ret = "BlinkCamera_DoCmd $name: no network identifier found for arm/disarm - set attribute";
       }
 
+    #######################
     } elsif ( ($cmd eq "command" )  ) {
 
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
@@ -573,6 +606,7 @@ sub BlinkCamera_DoCmd($$;$$$)
         $ret = "BlinkCamera_DoCmd $name: no network identifier found for command - set attribute";
       }
 
+    #######################
     } elsif ( ($cmd eq "events" )  ) {
 
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
@@ -591,18 +625,16 @@ sub BlinkCamera_DoCmd($$;$$$)
         $ret = "BlinkCamera_DoCmd $name: no network identifier found for command - set attribute";
       }
 
+    #######################
     } elsif ( ($cmd eq "alerts" )  ) {
 
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
       
       $hash->{HU_DO_PARAMS}->{method} = "GET";
       
-      my $lastUpdate = ReadingsVal($name,"updateTimestamp","2016-01-01T14:33:02");
-      # normalize timestamps for queries and update/create timestamps (2016-11-02T21:43:49+00:00)
-      $lastUpdate =~ s/\+.+$/Z/;
+      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v2/videos/changed?page=".$par1."&since=".$hash->{alertUpdate};
 
-      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v2/videos/changed?page=".$par1."&since=".$lastUpdate;
-
+    #######################
     } elsif ( ($cmd eq "cameraConfig" ) ) {
 
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
@@ -616,6 +648,7 @@ sub BlinkCamera_DoCmd($$;$$$)
         $ret = "BlinkCamera_DoCmd $name: no network identifier found for $cmd - set attribute";
       }
 
+    #######################
     } elsif ($cmd eq "thumbnail") {
       # camera id in par
       my $curl = ReadingsVal( $name, "networkCamera".$par1."Url", undef );
@@ -625,17 +658,65 @@ sub BlinkCamera_DoCmd($$;$$$)
       if ( defined( $curl ) ) {
         $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}.$curl.".jpg";
         #     --> /tmp/BlinkCamera_<device>_thumbnail_<id>_<something 1 or 2>.<ext=jpg>
-        $hash->{HU_DO_PARAMS}->{filename} = "BlinkCamera/".$name."/thumbnail/camera/".$par1."_1.jpg";
+        $hash->{HU_DO_PARAMS}->{filename} = BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $par1, $name );
         
       } else {
         $ret = "BlinkCamera_DoCmd $name: no url found " 
       }
       
-    } else {
-      # TODO 
+    #######################
+    } elsif ($cmd eq "video") {
+      # video id in par or take reading alertID
+      my $vid = $par1;
+      $vid = ReadingsVal( $name, "alertID", undef ) if ( !defined( $vid) );
+      
+      my $vidUrl = BlinkCamera_GetAlertVideoURL( $hash, $vid ) if ( defined( $vid) );
+      
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      $hash->{HU_DO_PARAMS}->{method} = "GET";
+
+      if ( defined( $vidUrl ) ) {
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}.$vidUrl;
+        #     --> /tmp/BlinkCamera_<device>_thumbnail_<id>_<something 1 or 2>.<ext=jpg>
+        $hash->{HU_DO_PARAMS}->{filename} = BlinkCamera_ReplacePattern( $BlinkCamera_videofile, $vid, $name );
+        
+      } else {
+        $ret = "BlinkCamera_DoCmd $name: no video id or url found (".(defined($vid)?$vid:"<undef>").")"; 
+      }
+      
+    #######################
+    } elsif ($cmd eq "videoDelete") {
+      # video id in par or take reading alertID
+      my $vid = $par1;
+      $vid = ReadingsVal( $name, "alertID", undef ) if ( !defined( $vid) );
+      
+      # first remove proxy file if existing
+      my $vidUrl = BlinkCamera_GetAlertVideoURL( $hash, $vid ) if ( defined( $vid) );
+      if ( defined( $vidUrl ) ) {
+        my $filename = BlinkCamera_ReplacePattern( $BlinkCamera_videofile, $vid, $name );
+        my $proxyDir = AttrVal($name,"proxyDir","/tmp/");
+
+        eval { unlink $proxyDir."/".$filename; } if ( -e $proxyDir."/".$filename );
+        Log3 $name, 2, "BlinkCamera_DoCmd $name: video file $filename could not be deleted :$@: " if $@; 
+      }
+        
+      if ( defined( $vid ) ) {
+        $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken}."\r\n"."Content-Type: application/json";
+
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v2/videos/delete";
+        $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_deleteVideojson;
+        $hash->{HU_DO_PARAMS}->{data} =~ s/q_id_q/$vid/g;
+
+        Log3 $name, 4, "BlinkCamera_DoCmd $name:   data :".$hash->{HU_DO_PARAMS}->{data}.":";
+
+      } else {
+        $ret = "BlinkCamera_DoCmd $name: no video id for deletion found (".(defined($vid)?$vid:"<undef>").")"; 
+      }
+      
     }
 
   }
+  #######################
   
   ## JVI
 #  Debug "send command  :".$hash->{HU_DO_PARAMS}->{data}.":";
@@ -647,7 +728,6 @@ sub BlinkCamera_DoCmd($$;$$$)
   } else {
     $hash->{HU_DO_PARAMS}->{args} = \@args;
     
-#    Log3 $name, 4, "BlinkCamera_DoCmd $name: timeout for cmd :".$hash->{HU_DO_PARAMS}->{timeout}.": ";
     Log3 $name, 4, "BlinkCamera_DoCmd $name: call url :".$hash->{HU_DO_PARAMS}->{url}.": ";
     HttpUtils_NonblockingGet( $hash->{HU_DO_PARAMS} );
 
@@ -706,12 +786,11 @@ sub BlinkCamera_Deepencode
             push @result, \%h;
         }
         else {
-# does not work        elsif ( defined( $_ ) ) {
             my $us = $_ ;
             if ( utf8::is_utf8($us) ) {
               $us = encode_utf8( $_ );
             }
-            Log3 $name, 5, "BlinkCamera_Deepencode $name: encoded a String from :".$_.": to :".$us.":";
+            Log3 $name, 5, "BlinkCamera_Deepencode $name: encoded a String from :".(defined($_)?$_:"<undef>").": to :".(defined($us)?$us:"<undef>").":";
             push @result, $us;
         }
     }
@@ -739,7 +818,7 @@ sub BlinkCamera_ParseLogin($$$)
   my $resnet = $result->{networks};
   my $netlist = "";
   if ( defined( $resnet ) ) {
-    Log3 $name, 3, "BlinkCamera_Callback $name: login number of networks ".scalar(keys %$resnet) ;
+    Log3 $name, 4, "BlinkCamera_Callback $name: login number of networks ".scalar(keys %$resnet) ;
     foreach my $netkey ( keys %$resnet ) {
       Log3 $name, 4, "BlinkCamera_Callback $name: network  ".$netkey ;
       my $net =  $resnet->{$netkey};
@@ -767,9 +846,7 @@ sub BlinkCamera_ParseHomescreen($$$)
   Log3 $name, 4, "BlinkCamera_ParseHomescreen $name:  ";
   
   # Homescreen succesful so start a request for alerst/videos/notifications
-  # todo
-  BlinkCamera_DoCmd( $hash, "alerts", 1 ); # , "HIDDEN" );   TODO
-
+  BlinkCamera_ParseStartAlerts($hash);
 
   # Get overall status
   $readUpdates->{networkName} = "";
@@ -811,12 +888,12 @@ sub BlinkCamera_ParseHomescreen($$$)
         }
       } elsif ( $device->{device_type} eq "sync_module" ) {
         if ( length( $readUpdates->{networkSyncModule} ) > 0 ) {
-          Log3 $name, 1, "BlinkCamera_ParseHomescreen $name: found multiple syncModules ";
+          Log3 $name, 2, "BlinkCamera_ParseHomescreen $name: found multiple syncModules ";
         } else {
           $readUpdates->{networkSyncModule} .= $device->{device_id}.":".$device->{status};
         }
       } else {
-        Log3 $name, 1, "BlinkCamera_ParseHomescreen $name: unknown device type found ".$device->{device_type};
+        Log3 $name, 2, "BlinkCamera_ParseHomescreen $name: unknown device type found ".$device->{device_type};
       }
     }
     $cameraGets .= "all";
@@ -852,26 +929,53 @@ sub BlinkCamera_ParseCameraConfig($$$$)
 
 #####################################
 #  INTERNAL: Parse the results of alerts to manage videos
-sub BlinkCamera_ParseAlerts($$$$)
+sub BlinkCamera_ParseStartAlerts($;$$$)
 {
   my ( $hash, $result, $page, $readUpdates ) = @_;
   my $name = $hash->{NAME};
 
   my $ret;
+  my $isLast = 0;
 
-  Log3 $name, 4, "BlinkCamera_ParseAlerts $name: for page :$page: ";
-
-  # check and call followup page - ignore result
-  $ret = BlinkCamera_DoCmd( $hash, "alerts", $page+1 ) if ( ! BlinkCamera_IsLastAlertPage( $hash, $result ) ); # , "HIDDEN" );   TODO 
-  if ( $ret ) {
-    Log3 $name, 4, "BlinkCamera_ParseAlerts $name: followup for page :$page: resulted in :$ret: ";
-    $ret = undef;
-  }
+  Log3 $name, 4, "BlinkCamera_ParseStartAlerts $name: for page :$page: ";
   
-  $ret = BlinkCamera_AnalyzeAlertPage( $hash, $result, $readUpdates );
+  if ( ! defined( $page ) ) {
+    # prepare for getting alerts
+    $page = 0;
+
+    my $lastUpdate = ReadingsVal($name,"updateTimestamp","2016-01-01T14:33:02");
+    # normalize timestamps for queries and update/create timestamps (2016-11-02T21:43:49+00:00)
+    $lastUpdate =~ s/\+.+$/Z/;
+    
+    # store old eventTimestamp and lastUpdate
+    $hash->{eventTimestamp} = ReadingsVal($name,"eventTimestamp","");
+    $hash->{alertUpdate} = $lastUpdate;
+    
+    my @a = ();
+    $hash->{alertResults} = \@a;
+  } else {
+    # Store results
+    my $v = $result->{videos}; 
+    push( $hash->{alertResults}, @$v );
+    
+    $isLast = ( BlinkCamera_IsLastAlertPage( $hash, $result ) ); 
+  }
+
+  if ( $isLast ) {
+    Log3 $name, 4, "BlinkCamera_ParseStartAlerts $name: Analyze the results now ";
+    $ret = BlinkCamera_AnalyzeAlertResults( $hash, $hash->{alertResults}, $readUpdates );
+
+    # TODO: remove internal values / specifically results
+    delete( $hash->{alertUpdate} );
+    delete( $hash->{alertResults} );
+    delete( $hash->{eventTimestamp} );
+  } else {
+    $ret = BlinkCamera_DoCmd( $hash, "alerts", $page+1, "HIDDEN" ) if ( ! $isLast );
+  }
   
   return $ret;
 }
+
 
 
 
@@ -900,8 +1004,8 @@ sub BlinkCamera_Callback($$$)
   my $par1 = $param->{par1};
   my $par2 = $param->{par2};
 
-  my $polling = ($par2 eq "POLLING" );
-  my $hidden = ($par2 eq "HIDDEN" ) || $polling;
+  my $polling = ( defined($par2) ) && ($par2 eq "POLLING" );
+  my $hidden = ( ( defined($par2) ) && ($par2 eq "HIDDEN" ) ) || $polling;
   
   Log3 $name, 4, "BlinkCamera_Callback $name: called from ".($polling?"Polling":($hidden?"Hidden":"DoCmd"));
   
@@ -939,13 +1043,21 @@ sub BlinkCamera_Callback($$$)
       BlinkCamera_BinaryFileWrite( $hash, $proxyDir.$repfilename, $data );
       
       my $fullurl = "/fhem/".$filename;
-      my $imgTemplate = AttrVal($name,"imgTemplate",$BlinkCamera_imgTemplate);
-      $imgTemplate =~ s/#URL#/$fullurl/g;
       
-      my $readName = "networkCamera".$param->{par1}."Img";
-      
-      $readUpdates{$readName} = "<html>".$imgTemplate."</html>";
+      my $readTemplate;
+      my $readName;
+      if ($cmd eq "video") {
+        $readTemplate = AttrVal($name,"videoTemplate",$BlinkCamera_vidTemplate);
+        $readName = "video";
 
+      } else {
+        $readTemplate = AttrVal($name,"imgTemplate",$BlinkCamera_imgTemplate);
+        $readName = "networkCamera".$param->{par1}."Img";
+      }
+      $readTemplate =~ s/#URL#/$fullurl/g;
+      $readTemplate =~ s/#ID#/$par1/g;
+      $readUpdates{$readName} = $readTemplate;
+      
     } else {
       Log3 $name, 5, "BlinkCamera_Callback $name: data returned :$data:";
       eval {
@@ -962,6 +1074,8 @@ sub BlinkCamera_Callback($$$)
         $ret = "Callback returned no valid JSON (no hash: ".ref( $jo ).")!";
       } elsif ( $jo->{message} ) {
         $ret = "Callback returned error:".$jo->{message}.":";
+        
+        $ret = "SUCCESS" if ( $jo->{message} =~ /^Successfully / );
         # reset authtoken if {"message":"Unauthorized Access"} --> will be re checked on next call
         delete( $hash->{AuthToken} ) if ( $jo->{message} eq "Unauthorized Access" );
       } else {
@@ -1012,7 +1126,7 @@ sub BlinkCamera_Callback($$$)
         }
       }
     } elsif ($cmd eq "alerts" ) {
-      $ret = BlinkCamera_ParseAlerts( $hash, $result, $par1, \%readUpdates );
+      $ret = BlinkCamera_ParseStartAlerts( $hash, $result, $par1, \%readUpdates );
     
     } else {
       
@@ -1120,8 +1234,8 @@ sub BlinkCamera_WebCallback($) {
   $URL =~ s/^\/BlinkCamera//i;
 
   # handle camera thumbnail
-	if ($URL =~ m/^\/([^\/]+)\/thumbnail\/camera\//i) {
-    # filename - "BlinkCamera/".$name."/thumbnail/camera/".$par1."_1.jpg"
+	if ( ($URL =~ m/^\/([^\/]+)\/(thumbnail|video)\//i) ) {
+    # filename - "BlinkCamera/".$name."/thumbnail/camera/".$par1."_1.jpg" or "BlinkCamera/<name>/video/<id>.mp4"
 
     my $devname = $1;
     my $urlfile = "BlinkCamera".uri_unescape($URL);
@@ -1146,7 +1260,7 @@ sub BlinkCamera_WebCallback($) {
 				
 				return(undef, undef);
     } else {
-      Log3 undef, 1, "File not found in proxydir".$urlfile.' from ('.$URL.')';
+      Log3 undef, 2, "File not found in proxydir".$urlfile.' from ('.$URL.')';
     }
     
   }
@@ -1262,6 +1376,8 @@ sub BlinkCamera_Setup($) {
     
     "reset" => undef,
     
+    "videoDelete" => undef,
+    
     "zDebug" => undef
 
   );
@@ -1270,7 +1386,10 @@ sub BlinkCamera_Setup($) {
     "getInfo" => undef,
     "getInfoCamera" => undef,
     
-    "getNotifications" => undef
+    "getVideoAlert" => undef,
+
+    "getNotifications" => undef,
+
   );
 
   $hash->{getoptions} = \%gets;
@@ -1311,6 +1430,19 @@ sub BlinkCamera_Setup($) {
   # remove timer for retry
   RemoveInternalTimer($hash->{HU_DO_PARAMS});
   
+  # cleanup proxy dir only blink files for current name
+  my $proxyDir = AttrVal($name,"proxyDir","/tmp/");
+  if(opendir(DH, $proxyDir)) {
+    my $pattern = "^BlinkCamera_".$name."_";
+    while(my $f = readdir(DH)) {
+      Log3 $name, 4, "BlinkCamera_Setup $name: found file :$f: ";
+      next if($f !~ /$pattern/ );
+      eval { unlink $proxyDir."/".$f; };
+      Log3 $name, 1, "BlinkCamera_Setup $name: file $f could not be deleted :$@: " if $@; 
+    }
+    closedir(DH); 
+  }
+
   $hash->{URL} = "https://".$BlinkCamera_host;
 
   $hash->{STATE} = "Defined";
@@ -1334,6 +1466,17 @@ sub BlinkCamera_Setup($) {
 ##############################################################################
 ##############################################################################
 
+
+#####################################
+#  INTERNAL: get pattern replaced
+sub BlinkCamera_ReplacePattern( $$;$ ) {
+  my ( $pattern, $id, $name ) = @_;
+
+ $pattern =~ s/q_id_q/$id/g if ( defined($id) );
+ $pattern =~ s/q_name_q/$name/g if ( defined($name) );
+
+ return $pattern;
+}
 
 #####################################
 #  INTERNAL: Get Id for a camera or list of all cameras if no name or id was given or undef if not found
@@ -1414,6 +1557,24 @@ sub BlinkCamera_GetCameraId( $;$ ) {
       push( @retList, $2 ) if ( defined( $2 ) );
     }
     $ret = \@retList;
+  }
+  
+  return $ret;
+}
+  
+#####################################
+#  INTERNAL: Get name for a camera or undef if not found
+sub BlinkCamera_GetCameraName( $$ ) {
+  my ( $hash, $id ) = @_;
+  
+  my $cameras = ReadingsVal($hash->{NAME},'networkCameras',"");
+  
+  my $ret;
+  
+  if ( $cameras =~ /\/\/$id\/([^\/]+)\// ) {
+    $ret = $id;
+  } elsif ( $cameras =~ /\/\/([^\/]+)\/$id\// ) {
+    $ret = $1;
   }
   
   return $ret;
@@ -1501,6 +1662,28 @@ sub BlinkCamera_GetAlertEntry( $$ ) {
   return ($id, $deleted, $updated, $entrystring);
 }
 
+
+
+#####################################
+#  INTERNAL: get url for a video from internal alert list for given id
+sub BlinkCamera_GetAlertVideoURL( $$ ) {
+  my ( $hash, $vid) = @_;
+  my $name = $hash->{NAME};
+
+  my $vidUrl;
+  
+  if ( defined( $hash->{videos} ) ) {
+    my $entry = $hash->{videos}->{$vid};
+    
+    if ( ( defined( $entry ) ) && (  $entry =~ /$BlinkCamera_alertEntry/ ) ) {
+      $vidUrl = $5;
+    }
+  }
+
+  return $vidUrl;
+}
+
+
 #####################################
 #  INTERNAL: analyze an alert page to check if a followup page might be needed
 sub BlinkCamera_IsLastAlertPage( $$ ) {
@@ -1517,7 +1700,7 @@ sub BlinkCamera_IsLastAlertPage( $$ ) {
   my $v = $jpage->{videos};
   $entries = scalar( @$v ) if ( ( defined( $jpage->{videos} ) ) && ( ref( $v ) eq "ARRAY" ) );
 
-  Log3 $name, 1, "BlinkCamera_IsLastAlertPage $name: limit :$limit: / entries :$entries: ";
+  Log3 $name, 4, "BlinkCamera_IsLastAlertPage $name: limit :$limit: / entries :$entries: ";
   
   return ( $limit > $entries );
 }
@@ -1529,15 +1712,17 @@ sub BlinkCamera_HandleAlertEntry( $$$$ ) {
 
   my ( $hash, $id, $deleted, $entry ) = @_;
   my $name = $hash->{NAME};
+
+  $hash->{videos} = () if ( ! defined( $hash->{videos} ) );
   
   my $videos = $hash->{videos};
   
   if ( $deleted ) {
     delete( $videos->{$id} );
   } elsif ( defined( $videos->{$id} ) ) {
-    # existing means just update the entry
+    # existing means just update the entry  
     $videos->{$id} = $entry;
-  } else {
+  } else {  
     # non existing means new entry events also needed
     $videos->{$id} = $entry;
 
@@ -1550,14 +1735,31 @@ sub BlinkCamera_HandleAlertEntry( $$$$ ) {
     if ( $entry =~ /$BlinkCamera_alertEntry/ ) {
       my $alertTime = $1;
       my $alertCamera = $3;
+      my $alertViewed = $4;
       my $alertVideo = $5;
 
-      readingsBeginUpdate($hash);
-      readingsBulkUpdate($hash, "alertVideo", $alertVideo );        
-      readingsBulkUpdate($hash, "alertCamera", $alertCamera );        
-      readingsBulkUpdate($hash, "alertTime", $alertTime );        
-      readingsBulkUpdate($hash, "alertID", $id );        
-      readingsEndUpdate($hash, 1);
+      my $lastUpdate = $hash->{eventTimestamp};
+
+      Log3 $name, 5, "BlinkCamera_HandleAlertEntry $name: id  :$id: alert time  :$alertTime: ";
+      
+      if ( ( $alertTime gt $lastUpdate ) && ( length($alertViewed) == 0 ) ) {
+        readingsBeginUpdate($hash);
+        readingsBulkUpdate($hash, "alertVideo", $alertVideo );        
+        readingsBulkUpdate($hash, "alertCamera", $alertCamera );        
+        
+        my $cname = BlinkCamera_GetCameraName( $hash, $alertCamera );
+        readingsBulkUpdate($hash, "alertCameraName", $cname ) if ( defined( $cname ) );        
+
+        readingsBulkUpdate($hash, "alertTime", $alertTime );        
+        readingsBulkUpdate($hash, "alertID", $id );        
+
+        readingsEndUpdate($hash, 1);
+      }
+
+      # eval eventTimestamp to check for latest and update event timestamp
+      my $newestTS =  ReadingsVal($name,"eventTimestamp","");
+      readingsSingleUpdate($hash, "eventTimestamp", $alertTime, 1 ) if ( $alertTime gt $newestTS );
+
 
     } else {
       Log3 $name, 1, "BlinkCamera_HandleAlertEntry $name: parsing of alertEntry failed :$entry: ";
@@ -1570,30 +1772,30 @@ sub BlinkCamera_HandleAlertEntry( $$$$ ) {
 
 #####################################
 #  INTERNAL: analyze an alert page
-sub BlinkCamera_AnalyzeAlertPage( $$$ ) {
-  my ( $hash, $jpage, $readUpdates ) = @_;
+sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
+  my ( $hash, $jvarray, $readUpdates ) = @_;
   my $name = $hash->{NAME};
 
   my $ret;
   
-  return "BlinkCamera_AnalyzeAlertPage: No videos found" if ( ( ! defined( $jpage->{videos} ) ) || ( ref( $jpage->{videos} ) ne "ARRAY" ) );
+  Log3 $name, 5, "BlinkCamera_AnalyzeAlertResults $name: parsing of alertEntry entries:".scalar(@$jvarray).":   ref:".ref($jvarray).": ";
+
+  return "BlinkCamera_AnalyzeAlertPage: No videos found" if ( ( ! defined( $jvarray ) ) || ( ref( $jvarray ) ne "ARRAY" ) );
 
   # ensure the internal video hash is existing
   if ( ! defined( $hash->{videos} ) ) {
     my %h = ();
     
     $hash->{videos} = \%h;
-  }  
+  }   
   
   my $lastUpdate = ReadingsVal($name,"updateTimestamp","");
 
-  my $videolist = $jpage->{videos};
-  
-  foreach my $video ( @$videolist ) {
+  foreach my $video ( reverse( @$jvarray ) ) {
     my ( $id, $deleted, $updated, $entry ) = BlinkCamera_GetAlertEntry( $hash, $video );
     
     # set reading if time is later meaning > 
-#    Log3 $name, 1, "BlinkCamera_HandleAlertEntry $name: update :$updated:  last :$lastUpdate:  compare ".(( $updated gt $lastUpdate )?"newer":"-");
+    Log3 $name, 5, "BlinkCamera_AnalyzeAlertResults $name: id  :$id: update :$updated:  last :$lastUpdate:  compare ".(( $updated gt $lastUpdate )?"newer":"-");
     if ( $updated gt $lastUpdate ) {
       $readUpdates->{updateTimestamp} = $updated;
       $lastUpdate = $updated;

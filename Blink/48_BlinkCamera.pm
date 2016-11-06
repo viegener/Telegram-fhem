@@ -72,7 +72,6 @@
 #   reading:    eventTimestamp - newest notification/video that was already used for an event
 #   send events only for new notifications after eventTimestamp
 #   add cameraname to alert
-
 #   get video (marks as viewed automatically) - reading video with proxy url 
 #   remove proxy files in reste
 #   clean some log entries
@@ -80,11 +79,18 @@
 #   FIX: Video deletion returns messge: ""Successfully deleted all videos"
 #   remove video
 #   polling works
-#   
+
+#   FIXED: Use of uninitialized value $page in concatenation (.) or string at ./FHEM/48_BlinkCamera.pm line 939.
+#   get Videofilename --> intern video file
+#   check for succesful writing of video file - otherwise not setting readings/interns
 #   
 #   
 ##############################################################################
 # TASKS 
+#   
+#   check for succesful received video file ??
+#   
+#   send message on new video alert with video
 #   
 #   get camera config in different device or detailed
 #   
@@ -294,7 +300,7 @@ sub BlinkCamera_Set($@)
 
   my $addArg = ($args[0] ? join(" ", @args ) : undef);
 
-  Log3 $name, 4, "BlinkCamera_Set $name: Processing BlinkCamera_Set( $cmd ) - args :".(defined($addArg)?$addArg:"<undef>").":";
+  Log3 $name, 5, "BlinkCamera_Set $name: Processing BlinkCamera_Set( $cmd ) - args :".(defined($addArg)?$addArg:"<undef>").":";
 
   # check cmd / handle ?
   my $ret = BlinkCamera_CheckSetGet( $hash, $cmd, $hash->{setoptions} );
@@ -672,6 +678,10 @@ sub BlinkCamera_DoCmd($$;$$$)
       
       my $vidUrl = BlinkCamera_GetAlertVideoURL( $hash, $vid ) if ( defined( $vid) );
       
+      # store back in par1 the actual video reques
+      $par1 = $vid;
+      $hash->{HU_DO_PARAMS}->{par1} = $par1;
+      
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
       $hash->{HU_DO_PARAMS}->{method} = "GET";
 
@@ -876,12 +886,12 @@ sub BlinkCamera_ParseHomescreen($$$)
   # loop through devices and build a reading for cameras and a reading for the 
   if ( defined( $devList ) ) {
     my $cameraGets = "";
-    my $cameras = "//";
+    my $cameras = "";
     foreach my $device ( @$devList ) {
       if ( $device->{device_type} eq "camera" ) {
         $readUpdates->{"networkCamera".$device->{device_id}} .= $device->{name}.":".$device->{active};
         $cameraGets .= $device->{name}.",".$device->{device_id}.",";
-        $cameras .= $device->{name}."/".$device->{device_id}."//";
+        $cameras .= $device->{device_id}.":".$device->{name}."\n";
         if ( defined( $device->{thumbnail} ) ) {
           $readUpdates->{"networkCamera".$device->{device_id}."Url"} .= $device->{thumbnail};
           BlinkCamera_DoCmd( $hash, "thumbnail", $device->{device_id}, "HIDDEN" );
@@ -937,7 +947,7 @@ sub BlinkCamera_ParseStartAlerts($;$$$)
   my $ret;
   my $isLast = 0;
 
-  Log3 $name, 4, "BlinkCamera_ParseStartAlerts $name: for page :$page: ";
+  Log3 $name, 4, "BlinkCamera_ParseStartAlerts $name: for page :".(defined($page)?$page:"--").": ";
   
   if ( ! defined( $page ) ) {
     # prepare for getting alerts
@@ -1007,19 +1017,17 @@ sub BlinkCamera_Callback($$$)
   my $polling = ( defined($par2) ) && ($par2 eq "POLLING" );
   my $hidden = ( ( defined($par2) ) && ($par2 eq "HIDDEN" ) ) || $polling;
   
+  my $fullurl;
+  my $repfilename;
+
   Log3 $name, 4, "BlinkCamera_Callback $name: called from ".($polling?"Polling":($hidden?"Hidden":"DoCmd"));
   
-  if ( defined( $filename ) ) {
-    Log3 $name, 4, "BlinkCamera_Callback $name: ".
-      (( defined( $err ) )?"status err :".$err:"").
-      ":  data length ".(( defined( $data ) )?length($data):"<undefined>").
-      "   filename :".$filename.":";
-  } else {
-    Log3 $name, 4, "BlinkCamera_Callback $name: ".
-      (( defined( $err ) )?"status err :".$err:"").
-      ":  data ".(( defined( $data ) )?$data:"<undefined>");
-  }
-  
+  Log3 $name, 4, "BlinkCamera_Callback $name: ".
+    (defined( $err )?"status err :".$err:"").
+    (defined( $filename )?
+        ":  data length ".(( defined( $data ) )?length($data):"<undefined>")."   filename :".$filename.":" :
+        ":  data ".(( defined( $data ) )?$data:"<undefined>"));
+
   # Check for timeout   "read from $hash->{addr} timed out"
   if ( $err =~ /^read from.*timed out$/ ) {
     $ret = "NonBlockingGet timed out on read from ".($param->{hideurl}?"<hidden>":$param->{url})." after ".$param->{timeout}."s";
@@ -1032,31 +1040,25 @@ sub BlinkCamera_Callback($$$)
     if ( defined( $filename ) ) {
       # write file with media
       
-      # allow changing proxy dir -> from devname
-      my $proxyDir = AttrVal($name,"proxyDir","/tmp/");
-
-      # filename - "BlinkCamera/".$name."/thumbnail/camera/".$par1."_1.jpg"
-      my $repfilename = $filename;
-      $repfilename =~ s/\//_/g;
-      
-      Log3 $name, 4, "BlinkCamera_Callback $name: binary write  file :".$repfilename;
-      BlinkCamera_BinaryFileWrite( $hash, $proxyDir.$repfilename, $data );
-      
-      my $fullurl = "/fhem/".$filename;
-      
-      my $readTemplate;
-      my $readName;
-      if ($cmd eq "video") {
-        $readTemplate = AttrVal($name,"videoTemplate",$BlinkCamera_vidTemplate);
-        $readName = "video";
-
-      } else {
-        $readTemplate = AttrVal($name,"imgTemplate",$BlinkCamera_imgTemplate);
-        $readName = "networkCamera".$param->{par1}."Img";
+      # check for message json return
+      if ( $data =~ /^\s*{\s*\"message\":\"(.*)\"\s*}\s*$/ ) {
+        Log3 $name, 4, "BlinkCamera_Callback $name: data on file returned :$data:";
+        $ret = "Callback returned error:".$1.":";
       }
-      $readTemplate =~ s/#URL#/$fullurl/g;
-      $readTemplate =~ s/#ID#/$par1/g;
-      $readUpdates{$readName} = $readTemplate;
+      
+      if ( ! $ret ) {
+        # allow changing proxy dir -> from devname
+        my $proxyDir = AttrVal($name,"proxyDir","/tmp/");
+
+        # filename - "BlinkCamera/".$name."/thumbnail/camera/".$par1."_1.jpg"
+        $repfilename = $filename;
+        $repfilename =~ s/\//_/g;
+
+        Log3 $name, 4, "BlinkCamera_Callback $name: binary write  file :".$repfilename;
+        $ret = BlinkCamera_BinaryFileWrite( $hash, $proxyDir.$repfilename, $data );
+        
+        $fullurl = "/fhem/".$filename;
+      }
       
     } else {
       Log3 $name, 5, "BlinkCamera_Callback $name: data returned :$data:";
@@ -1090,6 +1092,8 @@ sub BlinkCamera_Callback($$$)
  
   ##################################################
   $hash->{HU_DO_PARAMS}->{data} = "";
+
+  $readUpdates{cmd} = $cmd if ( ! $hidden );
   
   if ( ! defined( $ret ) ) {
     # SUCCESS - parse results
@@ -1097,8 +1101,6 @@ sub BlinkCamera_Callback($$$)
 
     # clean up param hash
     delete( $param->{buf} );
-    
-    $readUpdates{cmd} = $cmd if ( ! $hidden );
 
     Log3 $name, 4, "BlinkCamera_Callback $name: analyze result for cmd:$cmd:";
     
@@ -1125,6 +1127,24 @@ sub BlinkCamera_Callback($$$)
           $maxRetries = 3;
         }
       }
+
+    } elsif ( ($cmd eq "video" ) || ($cmd eq "thumbnail"  ) ) {
+      my $readTemplate;
+      my $readName;
+      if ($cmd eq "video") {
+        $readTemplate = AttrVal($name,"videoTemplate",$BlinkCamera_vidTemplate);
+        $readName = "video";
+        $readUpdates{videoFilename} = $repfilename;
+        $readUpdates{videoID} = $par1;
+
+      } else {
+        $readTemplate = AttrVal($name,"imgTemplate",$BlinkCamera_imgTemplate);
+        $readName = "networkCamera".$param->{par1}."Img";
+      }
+      $readTemplate =~ s/#URL#/$fullurl/g;
+      $readTemplate =~ s/#ID#/$par1/g;
+      $readUpdates{$readName} = $readTemplate;
+
     } elsif ($cmd eq "alerts" ) {
       $ret = BlinkCamera_ParseStartAlerts( $hash, $result, $par1, \%readUpdates );
     
@@ -1135,9 +1155,17 @@ sub BlinkCamera_Callback($$$)
   }
   
   $ret = "SUCCESS" if ( ! defined( $ret ) );
-  Log3 $name, $ll, "BlinkCamera_Callback $name: resulted in :$ret:  cmdId :".(defined($cmdId)?$cmdId:"--")." from ".($polling?"Polling":($hidden?"Hidden":"DoCmd"));
+  Log3 $name, $ll, "BlinkCamera_Callback $name: for cmd :$cmd: resulted in :$ret:  cmdId :".(defined($cmdId)?$cmdId:"--")." from ".($polling?"Polling":($hidden?"Hidden":"DoCmd"));
 
-  if ( ! $hidden ) {
+  if ( ! $polling ) {
+
+    # cmd result intern also set if retried
+    $hash->{cmdResult} = $ret;
+    if ( defined( $filename ) ) {
+      $hash->{cmdJson} = (defined($data)?"length :".length($data):"<undef>");
+    } else {
+      $hash->{cmdJson} = (defined($data)?$data:"<undef>");
+    }
 
     # handle retry
     # ret defined / args defined in params 
@@ -1162,24 +1190,20 @@ sub BlinkCamera_Callback($$$)
       Log3 $name, 3, "BlinkCamera_Callback $name: Reached max retries (ret: $ret) for cmd ".$param->{args}[0];
       
     }
-      
-    $hash->{cmdResult} = $ret;
-    $readUpdates{cmdResult} = $ret;
-    if ( defined( $filename ) ) {
-      $hash->{cmdJson} = (defined($data)?"length :".length($data):"<undef>");
-    } else {
-      $hash->{cmdJson} = (defined($data)?$data:"<undef>");
-    }
-
-  } elsif ( $polling ) {
+    
+  } else {
     $hash->{pollResult} = $cmd." : ".$ret;
   }
 
   $hash->{doStatus} = "";
 
+  #########################
+  # Also set and result in Readings
+  readingsBeginUpdate($hash);
+  if ( ! $polling ) {
+    readingsBulkUpdate($hash, "cmdResult", $ret );   
+  }
   if ( ( $ret eq  "SUCCESS" ) )  {
-    # Also set and result in Readings
-    readingsBeginUpdate($hash);
     foreach my $readName ( keys %readUpdates ) {
       if ( defined( $readUpdates{$readName} ) ) {
         readingsBulkUpdate($hash, $readName, $readUpdates{$readName} );        
@@ -1187,9 +1211,12 @@ sub BlinkCamera_Callback($$$)
         delete($hash->{READINGS}{$readName}); 
       }
     }
-    
-    readingsEndUpdate($hash, 1);
+  }
+  readingsEndUpdate($hash, 1);
 
+  #########################
+  # Wait for command completion if cmd Id found
+  if ( ( $ret eq  "SUCCESS" ) )  {
     # cmd sent / waiting for completion (so add command check) / completion reached add homescreen
     if (  ( defined( $cmdId ) ) )  {
       Log3 $name, 4, "BlinkCamera_Callback $name: start polling for cmd result";
@@ -1199,6 +1226,7 @@ sub BlinkCamera_Callback($$$)
   
   }
 
+  #########################
   # start next command in queue if available
   if ( scalar( @{ $hash->{cmdQueue} } ) ) {
     my $ref = shift @{ $hash->{cmdQueue} };
@@ -1427,6 +1455,10 @@ sub BlinkCamera_Setup($) {
   delete( $hash->{videos} );
   delete( $hash->{updateTimestamp} );
 
+  delete( $hash->{video} );
+  delete( $hash->{videoFilename} );
+  delete( $hash->{videoID} );
+
   # remove timer for retry
   RemoveInternalTimer($hash->{HU_DO_PARAMS});
   
@@ -1543,18 +1575,17 @@ sub BlinkCamera_GetCameraId( $;$ ) {
   
   my $ret;
   
+  my @cameradefs = split( "\n", $cameras);
   if ( defined( $name ) ) {
-    if ( $cameras =~ /\/\/$name\/([^\/]+)\// ) {
-      $ret = $1;
-    } elsif ( $cameras =~ /\/\/([^\/]+)\/$name\// ) {
-      $ret = $name;
+    foreach my $cameradef ( @cameradefs ) {
+    $cameradef =~ /^([^:]+):(.*)$/;
+      $ret = $1 if ( ( $2 eq $name ) || ( $1 eq $name ) );
     }
   } else {
-    my @cameradefs = split( /\/\//, $cameras);
     my @retList;
     foreach my $cameradef ( @cameradefs ) {
-      $cameradef =~ /^([^\/]+)\/([^\/]+)$/;
-      push( @retList, $2 ) if ( defined( $2 ) );
+      $cameradef =~ /^([^:]+):(.*)$/;
+      push( @retList, $1 ) if ( defined( $1 ) );
     }
     $ret = \@retList;
   }
@@ -1571,12 +1602,12 @@ sub BlinkCamera_GetCameraName( $$ ) {
   
   my $ret;
   
-  if ( $cameras =~ /\/\/$id\/([^\/]+)\// ) {
-    $ret = $id;
-  } elsif ( $cameras =~ /\/\/([^\/]+)\/$id\// ) {
-    $ret = $1;
+  my @cameradefs = split( "\n", $cameras);
+  foreach my $cameradef ( @cameradefs ) {
+    $cameradef =~ /^([^:]+):(.*)$/;
+    $ret = $2 if ( ( $2 eq $id ) || ( $1 eq $id ) );
   }
-  
+ 
   return $ret;
 }
   
@@ -1604,11 +1635,12 @@ sub BlinkCamera_GetNetwork( $ ) {
 sub BlinkCamera_BinaryFileWrite($$$) {
   my ($hash, $fileName, $data) = @_;
 
-  open BINFILE, '>'.$fileName;
+  return "BlinkCamera_BinaryFileWrite - could not write ".$fileName.": ".$! if ( ! open BINFILE, '>'.$fileName );
+
   binmode BINFILE;
   print BINFILE $data;
   close BINFILE;
-  
+
   return undef;
 }
 

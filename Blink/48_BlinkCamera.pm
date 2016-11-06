@@ -31,7 +31,7 @@
 # $Id: 48_BlinkCamera.pm $
 #
 ##############################################################################
-# 0.0 2015-10-16 Started
+# 0.0 2016-10-16 Started
 #   set login
 #   parse of login
 #   change internals to show only pars that exist (not undef)
@@ -86,7 +86,6 @@
 #   send message on new video alert with video
 #      define blinkNewVideoAlert notify blink:alertID.* get blink getVideoAlert
 #      define blinkNewVideoAvailable notify blink:videoFilename.* set telegramBot sendMedia /tmp/[blink:videoFilename]
-
 #   reduce logging on callback to loglevel 4
 #   cmdJson only set of log level > 3
 #   ensure complete reload of videos on restart - internanl instead of reading?
@@ -96,6 +95,13 @@
 #   alert pages will be called first
 #   remove getNotifications
 #   add specialLog setting $BlinkCamera_specialLog for calls/results = 3 or 4
+# 1.0 2016-11-6 Basic capabilities working including setting and alerting plus video download
+
+#   
+#   
+#   
+#   
+#   
 #   
 ##############################################################################
 # TASKS 

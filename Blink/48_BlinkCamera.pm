@@ -97,9 +97,11 @@
 #   add specialLog setting $BlinkCamera_specialLog for calls/results = 3 or 4
 # 1.0 2016-11-6 Basic capabilities working including setting and alerting plus video download
 
-#   
-#   
-#   
+#   change cameraurl to point to fhemurl
+#   add intern for originalurl and storing which picture was retrieved
+#   load picture only if same thumbnail not there
+#   get new thumbnail for camera
+#
 #   
 #   
 #   
@@ -108,9 +110,7 @@
 #   
 #   store poll failures / digest?
 #   
-#   
-#   
-#   check timestamp for not getting thumbnails if no change
+#   allow thumbnailreset
 #   
 #   remove video file
 #   
@@ -189,6 +189,9 @@ my $BlinkCamera_loginjson = "{ \"password\" : \"q_password_q\", \"client_specifi
 my $BlinkCamera_configCamAlertjson = "{ \"camera\" : \"q_id_q\", \"id\" : \"q_id_q\", \"network\" : \"q_network_q\", \"motion_alert\" : \"q_alert_q\" }";
 
 my $BlinkCamera_deleteVideojson = "{ \"video_list\" : [ q_id_q ] }";
+
+my $BlinkCamera_cameraThumbnailjson = "{ \"id\" : \"q_id_q\", \"network\" : \"q_network_q\" }";
+
 
 my $BlinkCamera_imgTemplate="<html><a href=\"#URL#\"><img src=\"#URL#\" height=36 widht=64>#URL#</a></html>";
 my $BlinkCamera_vidTemplate="<html><a href=\"#URL#\">Video Id:#ID#:  #URL#</a></html>";
@@ -389,6 +392,9 @@ sub BlinkCamera_Get($@)
   
   } elsif ($cmd eq 'getInfoCamera') {
     $ret = BlinkCamera_CameraDoCmd( $hash, "cameraConfig", $arg )
+
+  } elsif ($cmd eq 'getThumbnail') {
+    $ret = BlinkCamera_CameraDoCmd( $hash, "cameraThumbnail", $arg )
 
   } elsif($cmd eq 'getVideoAlert') {
     $ret = BlinkCamera_DoCmd( $hash, "video", $arg );
@@ -663,9 +669,27 @@ sub BlinkCamera_DoCmd($$;$$$)
       }
 
     #######################
+    } elsif ( ($cmd eq "cameraThumbnail" ) ) {
+
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      
+      $hash->{HU_DO_PARAMS}->{method} = "POST";
+
+      my $net =  BlinkCamera_GetNetwork( $hash );
+      if ( defined( $net ) ) {
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/camera/".$par1."/thumbnail";
+
+        $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_cameraThumbnailjson;
+        $hash->{HU_DO_PARAMS}->{data} =~ s/q_network_q/$net/g;
+        $hash->{HU_DO_PARAMS}->{data} =~ s/q_id_q/$par1/g;
+      } else {
+        $ret = "BlinkCamera_DoCmd $name: no network identifier found for $cmd - set attribute";
+      }
+
+    #######################
     } elsif ($cmd eq "thumbnail") {
       # camera id in par
-      my $curl = ReadingsVal( $name, "networkCamera".$par1."Url", undef );
+      my $curl =  $hash->{"thumbnail".$par1."Req"};
       
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
       $hash->{HU_DO_PARAMS}->{method} = "GET";
@@ -902,12 +926,20 @@ sub BlinkCamera_ParseHomescreen($$$)
     my $cameras = "";
     foreach my $device ( @$devList ) {
       if ( $device->{device_type} eq "camera" ) {
-        $readUpdates->{"networkCamera".$device->{device_id}} .= $device->{name}.":".$device->{active};
+        $readUpdates->{"networkCamera".$device->{device_id}} = $device->{name}.":".$device->{active};
         $cameraGets .= $device->{name}.",".$device->{device_id}.",";
         $cameras .= $device->{device_id}.":".$device->{name}."\n";
         if ( defined( $device->{thumbnail} ) ) {
-          $readUpdates->{"networkCamera".$device->{device_id}."Url"} .= $device->{thumbnail};
-          BlinkCamera_DoCmd( $hash, "thumbnail", $device->{device_id}, "HIDDEN" );
+          # Load Thumbnail only if not already there
+          if ( ( ! defined( $hash->{"thumbnail".$device->{device_id}."Url"} ) ||
+               ( $hash->{"thumbnail".$device->{device_id}."Url"} ne $device->{thumbnail} ) ) ) {
+            $hash->{"thumbnail".$device->{device_id}."Req"} = $device->{thumbnail};
+            BlinkCamera_DoCmd( $hash, "thumbnail", $device->{device_id}, "HIDDEN" );
+          } else {
+            # already there just update readings
+            $readUpdates->{"networkCamera".$device->{device_id}."Url"} = "/fhem/".
+                BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $device->{device_id}, $name ); 
+          }
         }
       } elsif ( $device->{device_type} eq "sync_module" ) {
         if ( length( $readUpdates->{networkSyncModule} ) > 0 ) {
@@ -920,6 +952,7 @@ sub BlinkCamera_ParseHomescreen($$$)
       }
     }
     $cameraGets .= "all";
+    $hash->{getoptions}->{getThumbnail} = $cameraGets;
     $hash->{getoptions}->{getInfoCamera} = $cameraGets;
     $hash->{setoptions}->{camEnable} = $cameraGets;
     $hash->{setoptions}->{camDisable} = $cameraGets;
@@ -1155,6 +1188,13 @@ sub BlinkCamera_Callback($$$)
       } else {
         $readTemplate = AttrVal($name,"imgTemplate",$BlinkCamera_imgTemplate);
         $readName = "networkCamera".$param->{par1}."Img";
+        
+        # Store which thumbnail file is loaded already
+        $hash->{"thumbnail".$par1."Url"} = $hash->{"thumbnail".$par1."Req"};
+        delete( $hash->{"thumbnail".$par1."Req"} );
+        $readUpdates{"networkCamera".$par1."Url"} = "/fhem/".
+            BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $par1, $name ); 
+        
       }
       $readTemplate =~ s/#URL#/$fullurl/g;
       $readTemplate =~ s/#ID#/$par1/g;
@@ -1245,7 +1285,7 @@ sub BlinkCamera_Callback($$$)
 
   #########################
   # start next command in queue if available
-  if ( scalar( @{ $hash->{cmdQueue} } ) ) {
+  if ( ( defined( $hash->{cmdQueue} ) ) && ( scalar( @{ $hash->{cmdQueue} } ) ) ) {
     my $ref = shift @{ $hash->{cmdQueue} };
     Log3 $name, 4, "BlinkCamera_Callback $name: handle queued cmd with :@$ref[0]: ";
     BlinkCamera_DoCmd( $hash, @$ref[0], @$ref[1], @$ref[2], @$ref[3] );
@@ -1413,6 +1453,10 @@ sub BlinkCamera_Setup($) {
   CommandDeleteReading(undef, "$name .*");
   readingsSingleUpdate($hash, "eventTimestamp", $eventTime, 0 ) if ( defined( $eventTime ) );
 
+  foreach my $aKey ( keys  $hash ) {
+    # "thumbnail".$device->{device_id}."Req"
+    delete( $hash->{$aKey} ) if ( $aKey =~ /^thumbnail/ );
+  }
   
   my %sets = (
     "login" => undef,
@@ -1434,6 +1478,8 @@ sub BlinkCamera_Setup($) {
   my %gets = (
     "getInfo" => undef,
     "getInfoCamera" => undef,
+
+    "getThumbnail" => undef,
     
     "getVideoAlert" => undef,
 

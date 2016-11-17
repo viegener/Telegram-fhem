@@ -348,7 +348,7 @@ Nextion_SendCommand($$$)
   my $name = $hash->{NAME};
   my @ret; 
   
-  Log3 $name, 1, "Nextion_SendCommand $name: send commands :".$msg.": ";
+  Log3 $name, 4, "Nextion_SendCommand $name: send commands :".$msg.": ";
   
   # First replace any magics
   my %dummy; 

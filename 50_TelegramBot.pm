@@ -166,15 +166,20 @@
 
 #   disable_web_page_preview - attribut webPagePreview - msg506924
 #   log other messages in getupdate
+#   add new get command "update" for single update poll
 
-#   add new get command for single update poll
+#   new cmd for forcing a msg reply - msgForceReply
+#   add readings for reply msg id: msgReplyMsgId
+#   documemt: msgForceReply, msgReplyMsgId 
+#   
 #   
 ##############################################################################
 # TASKS 
 #   
+#   
+#   
+#   
 #   keyboards through [] in message
-#   
-#   
 #   
 #   check inlinekeyboards for confirmation - msg505012
 #   
@@ -239,6 +244,7 @@ my %sets = (
   "send" => "textField",
 
   "msgEdit" => "textField",
+  "msgForceReply" => "textField",
 
   "sendImage" => "textField",
   "sendPhoto" => "textField",
@@ -455,21 +461,24 @@ sub TelegramBot_Set($@)
 
   my $ret = undef;
   
-  if( ($cmd eq 'message') || ($cmd eq 'msg') || ($cmd eq 'reply') || ($cmd eq 'msgEdit') || ($cmd =~ /^send.*/ ) ) {
+  if( ($cmd eq 'message') || ($cmd eq 'msg') || ($cmd eq 'reply') || ($cmd eq 'msgEdit') || ($cmd eq 'msgForceReply') || ($cmd =~ /^send.*/ ) ) {
 
     my $msgid;
+    my $msg;
+    my $addPar;
+    my $sendType = 0;
+    my $peers;
     
     if ( ($cmd eq 'reply') || ($cmd eq 'msgEdit' ) ) {
       return "TelegramBot_Set: Command $cmd, no peer, msgid and no text/file specified" if ( $numberOfArgs < 3 );
       $msgid = shift @args; 
       $numberOfArgs--;
+    } elsif ($cmd eq 'msgForceReply')  {
+      $addPar = "{\"force_reply\":true}";
     }
     
     return "TelegramBot_Set: Command $cmd, no peers and no text/file specified" if ( $numberOfArgs < 2 );
 
-    my $sendType = 0;
-    
-    my $peers;
     while ( $args[0] =~ /^@(..+)$/ ) {
       my $ppart = $1;
       return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( ($cmd eq 'reply') && ( defined( $peers ) ) );
@@ -500,10 +509,7 @@ sub TelegramBot_Set($@)
       $sendType = 11;
     }
 
-    my $msg;
-    my $addPar;
-    
-    if ( $sendType > 10 ) {
+    if ( $sendType == 11 ) {
       # location
       
       return "TelegramBot_Set: Command $cmd, 2 parameters latitude / longitude need to be specified" if ( int(@args) != 2 );      
@@ -1974,6 +1980,13 @@ sub TelegramBot_ParseMsg($$$)
     push( @contacts, $user );
   }
 
+  # get reply message id
+  my $replyId;
+  my $replyPart = $message->{reply_to_message};
+  if ( defined( $replyPart ) ) {
+    $replyId = $replyPart->{message_id};
+  }
+  
   # mtext contains the text of the message (if empty no further handling)
   my ( $mtext, $mfileid );
 
@@ -2094,6 +2107,7 @@ sub TelegramBot_ParseMsg($$$)
     readingsBulkUpdate($hash, "prevMsgChat", $hash->{READINGS}{msgChat}{VAL});        
     readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});        
     readingsBulkUpdate($hash, "prevMsgFileId", $hash->{READINGS}{msgFileId}{VAL});        
+    readingsBulkUpdate($hash, "prevMsgReplyMsgId", $hash->{READINGS}{msgReplyMsgId}{VAL});        
 
     readingsEndUpdate($hash, 0);
     
@@ -2104,6 +2118,7 @@ sub TelegramBot_ParseMsg($$$)
     readingsBulkUpdate($hash, "msgChat", TelegramBot_GetFullnameForChat( $hash, $chatId ) );        
     readingsBulkUpdate($hash, "msgPeerId", $mpeernorm);        
     readingsBulkUpdate($hash, "msgText", $mtext);
+    readingsBulkUpdate($hash, "msgReplyMsgId", $replyId);        
 
     readingsBulkUpdate($hash, "msgFileId", ( ( defined( $mfileid ) ) ? $mfileid : "" ) );        
 
@@ -2809,6 +2824,8 @@ sub TelegramBot_BinaryFileWrite($$$) {
           <dd> to send the message "Bye" to a contact or chat with the id "1234567". Chat ids might be negative and need to be specified with a leading hyphen (-). <br></dd>
       <dl>
     </li>
+    <li><code>msgForceReply [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;text&gt;</code><br>Sends the given message to the recipient(s) and requests (forces) a reply. Handling of peers is equal to the message command. Adding reply keyboards is currently not supported by telegram.
+    </li>
     <li><code>reply &lt;msgid&gt; [ @&lt;peer1&gt; ] &lt;text&gt;</code><br>Sends the given message as a reply to the msgid (number) given to the given peer or if peer is ommitted to the defined default peer user. Only a single peer can be specified. Beside the handling of the message as a reply to a message received earlier, the peer and message handling is otherwise identical to the msg command. 
     </li>
 
@@ -2974,6 +2991,8 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li>msgPeerId &lt;text&gt;<br>The sender id of the last received message</li> 
     <li>msgText &lt;text&gt;<br>The last received message text is stored in this reading. Information about special messages like documents, audio, video, locations or venues will be also stored in this reading</li> 
     <li>msgFileId &lt;fileid&gt;<br>The last received message file_id (Audio, Photo, Video, Voice or other Document) is stored in this reading.</li> 
+    <li>msgReplyMsgId &lt;text&gt;<br>Contains the message id of the original message, that this message was a reply to</li> 
+    
   <br>
     <li>prevMsgId &lt;text&gt;<br>The id of the SECOND last received message is stored in this reading</li> 
     <li>prevMsgPeer &lt;text&gt;<br>The sender name of the SECOND last received message (either full name or if not available @username)</li> 

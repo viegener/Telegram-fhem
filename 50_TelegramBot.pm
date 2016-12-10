@@ -167,10 +167,12 @@
 #   disable_web_page_preview - attribut webPagePreview - msg506924
 #   log other messages in getupdate
 #   add new get command "update" for single update poll
-
 #   new cmd for forcing a msg reply - msgForceReply
 #   add readings for reply msg id: msgReplyMsgId
 #   documemt: msgForceReply, msgReplyMsgId 
+
+#   diable attribute to stop polling
+#   
 #   
 #   
 ##############################################################################
@@ -183,12 +185,8 @@
 #   
 #   check inlinekeyboards for confirmation - msg505012
 #   
-#   diable command
-#   
 #   allow keyboards in the device api
 #   
-#   Wait: Look for solution on space at beginning of line --> checked that data is sent correctly to telegram but does not end up in the message
-#
 ##############################################################################
 # Ideas / Future
 #   
@@ -305,7 +303,7 @@ sub TelegramBot_Initialize($) {
   $hash->{SetFn}      = "TelegramBot_Set";
   $hash->{AttrFn}     = "TelegramBot_Attr";
   $hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer ". "cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None ".
-  "cmdTimeout pollingTimeout ".
+  "cmdTimeout pollingTimeout disable ".
   "allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCommands:textField allowedCommands filenameUrlEscape:1,0 ". 
   "textResponseFavorites:textField textResponseResult:textField textResponseUnauthorized:textField ".
   "parseModeSend:0_None,1_Markdown,2_HTML,3_InMsg webPagePreview:1,0 ".
@@ -1629,7 +1627,8 @@ sub TelegramBot_UpdatePoll($;$)
 
   # Get timeout from attribute 
   my $timeout =   AttrVal($name,'pollingTimeout',0);
-
+  $timeout = 0 if ( AttrVal($name,'disable',0) );
+  
   if ( $doOnce ) {
     $timeout = 0;
     
@@ -2944,9 +2943,10 @@ sub TelegramBot_BinaryFileWrite($$$) {
 
   <br>
     <li><code>pollingTimeout &lt;number&gt;</code><br>Used to specify the timeout for long polling of updates. A value of 0 is switching off any long poll. 
-      In this case no updates are automatically received and therefore also no messages can be received. It is recommended to set the pollingtimeout to a reasonable time between 15 (not too short) and 60 (to avoid broken connections). 
+      In this case no updates are automatically received and therefore also no messages can be received. It is recommended to set the pollingtimeout to a reasonable time between 15 (not too short) and 60 (to avoid broken connections). See also attribute <code>disable</code>. 
     </li> 
     <li><code>pollingVerbose &lt;0_None 1_Digest 2_Log&gt;</code><br>Used to limit the amount of logging for errors of the polling connection. These errors are happening regularly and usually are not consider critical, since the polling restarts automatically and pauses in case of excess errors. With the default setting "1_Digest" once a day the number of errors on the last day is logged (log level 3). With "2_Log" every error is logged with log level 2. With the setting "0_None" no errors are logged. In any case the count of errors during the last day and the last error is stored in the readings <code>PollingErrCount</code> and <code>PollingLastError</code> </li> 
+    <li><code>disbale &lt;0 or 1&gt;</code><br>Used to disable the polling if set to 1 (default is 0). 
     
   <br>
     <li><code>cmdTimeout &lt;number&gt;</code><br>Used to specify the timeout for sending commands. The default is a value of 30 seconds, which should be normally fine for most environments. In the case of slow or on-demand connections to the internet this parameter can be used to specify a longer time until a connection failure is considered.

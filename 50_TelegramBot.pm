@@ -166,9 +166,14 @@
 
 #   disable_web_page_preview - attribut webPagePreview - msg506924
 #   log other messages in getupdate
+
+#   add new get command for single update poll
 #   
 ##############################################################################
 # TASKS 
+#   
+#   keyboards through [] in message
+#   
 #   
 #   
 #   check inlinekeyboards for confirmation - msg505012
@@ -260,7 +265,9 @@ my %deprecatedsets = (
 );
 
 my %gets = (
-  "urlForFile" => "textField"
+  "urlForFile" => "textField",
+
+  "update" => undef
 );
 
 my $TelegramBot_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0\r\nAccept: application/json\r\nAccept-Charset: utf-8";
@@ -626,9 +633,11 @@ sub TelegramBot_Get($@)
       $hash->{fileUrl} = $ret;
     }
 
+  } elsif ( $cmd eq "update" ) {
+    $ret = TelegramBot_UpdatePoll( $hash, "doOnce" );
   }
   
-  Log3 $name, 5, "TelegramBot_Get $name: done with $ret: ";
+  Log3 $name, 5, "TelegramBot_Get $name: done with ".( defined($ret)?$ret:"<undef>").": ";
 
   return $ret
 }
@@ -1599,46 +1608,54 @@ sub TelegramBot_MakeKeyboard($$$@)
 #  if still polling return
 #  if more than one fails happened --> wait instead of poll
 #
-sub TelegramBot_UpdatePoll($) 
+#  2nd parameter set means do it once only not by regular update
+sub TelegramBot_UpdatePoll($;$) 
 {
-  my ($hash) = @_;
+  my ($hash, $doOnce) = @_;
   my $name = $hash->{NAME};
     
   Log3 $name, 5, "TelegramBot_UpdatePoll $name: called ";
 
   if ( $hash->{POLLING} ) {
     Log3 $name, 4, "TelegramBot_UpdatePoll $name: polling still running ";
-    return;
+    return ( ( $doOnce ) ? "Update polling still running" : undef );
   }
 
   # Get timeout from attribute 
   my $timeout =   AttrVal($name,'pollingTimeout',0);
-  if ( $timeout == 0 ) {
-    $hash->{STATE} = "Static";
-    Log3 $name, 4, "TelegramBot_UpdatePoll $name: Polling timeout 0 - no polling ";
-    return;
-  }
-  
-  if ( $hash->{FAILS} > 1 ) {
-    # more than one fail in a row wait until next poll
-    $hash->{OLDFAILS} = $hash->{FAILS};
-    $hash->{FAILS} = 0;
-    my $wait = $hash->{OLDFAILS}+2;
-    Log3 $name, 5, "TelegramBot_UpdatePoll $name: got fails :".$hash->{OLDFAILS}.": wait ".$wait." seconds";
-    InternalTimer(gettimeofday()+$wait, "TelegramBot_UpdatePoll", $hash,0); 
-    return;
-  } elsif ( defined($hash->{OLDFAILS}) ) {
-    # oldfails defined means 
-    $hash->{FAILS} = $hash->{OLDFAILS};
-    delete $hash->{OLDFAILS};
-  }
 
+  if ( $doOnce ) {
+    $timeout = 0;
+    
+  } else {
+  
+    if ( $timeout == 0 ) {
+      $hash->{STATE} = "Static";
+      Log3 $name, 4, "TelegramBot_UpdatePoll $name: Polling timeout 0 - no polling ";
+      return;
+    }
+    
+    if ( $hash->{FAILS} > 1 ) {
+      # more than one fail in a row wait until next poll
+      $hash->{OLDFAILS} = $hash->{FAILS};
+      $hash->{FAILS} = 0;
+      my $wait = $hash->{OLDFAILS}+2;
+      Log3 $name, 5, "TelegramBot_UpdatePoll $name: got fails :".$hash->{OLDFAILS}.": wait ".$wait." seconds";
+      InternalTimer(gettimeofday()+$wait, "TelegramBot_UpdatePoll", $hash,0); 
+      return;
+    } elsif ( defined($hash->{OLDFAILS}) ) {
+      # oldfails defined means 
+      $hash->{FAILS} = $hash->{OLDFAILS};
+      delete $hash->{OLDFAILS};
+    }
+  }
+    
   # get next offset id
   my $offset = $hash->{offset_id};
   $offset = 0 if ( ! defined($offset) );
   
   # build url 
-  my $url =  $hash->{URL}."getUpdates?offset=".$offset."&limit=5&timeout=".$timeout;
+  my $url =  $hash->{URL}."getUpdates?offset=".$offset. ( ($timeout!=0)? "&limit=5&timeout=".$timeout : "" );
 
   $hash->{HU_UPD_PARAMS}->{url} = $url;
   $hash->{HU_UPD_PARAMS}->{timeout} = $timeout+$timeout+5;

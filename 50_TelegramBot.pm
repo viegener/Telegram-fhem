@@ -171,15 +171,19 @@
 #   add readings for reply msg id: msgReplyMsgId
 #   documemt: msgForceReply, msgReplyMsgId 
 #   diable attribute to stop polling
-#   keyboards through [] in message command(s)
-
+#   keyboards through [] in message command(s) -> no changed to () to avoid issues
 #   send incomplete keyboards as message instead of error
 #   Add | as separator for keys
 #   documentation alignment - more consistent usage of peer (instead of user)
+
+#   Keyboards in () istead of []
+#   
+#   
+#   
+#   
 #   
 ##############################################################################
 # TASKS 
-#   
 #   
 #   
 #   check inlinekeyboards for confirmation - msg505012
@@ -531,9 +535,9 @@ sub TelegramBot_Set($@)
       if ( ! defined( $addPar ) ) {
         # check for Keyboard given (only if not forcing reply) and parse it to keys / jsonkb
         my @keys; 
-        while ( $args[0] =~ /^\s*\[.*$/ ) {
+        while ( $args[0] =~ /^\s*\(.*$/ ) {
           my $aKey = "";
-          while ( $aKey !~ /^\s*\[(.*)\]\s*$/ ) {
+          while ( $aKey !~ /^\s*\((.*)\)\s*$/ ) {
             $aKey .= " ".$args[0];
             
             shift @args;
@@ -542,7 +546,7 @@ sub TelegramBot_Set($@)
           # trim key
           $aKey =~ s/^\s+|\s+$//g;
 
-          if ( $aKey =~ /^\[(.*)\]$/ ) {
+          if ( $aKey =~ /^\((.*)\)$/ ) {
             my @tmparr = split( /\|/, $1 );  
             push( @keys, \@tmparr );           
           } else {
@@ -2833,9 +2837,9 @@ sub TelegramBot_BinaryFileWrite($$$) {
   <a name="TelegramBotset"></a>
   <b>Set</b>
   <ul>
-    <li><code>message|msg|send [ &lt;@peer1&gt; ... &lt;@peerN&gt; ] [ &lt;[keyrow1]&gt; ... &lt;[keyrowN]&gt; ] &lt;text&gt;</code><br>Sends the given message to the given peer or if peer(s) is ommitted currently defined default peer user. Each peer given needs to be always prefixed with a '@'. Peers can be specified as contact ids, full names (with underscore instead of space), usernames (prefixed with another @) or chat names (also known as groups in telegram groups must be prefixed with #). Multiple peers are to be separated by space<br>
-    A reply keyboard can be specified by adding a list of strings enclosed in square brackets "[]". Each separate string will make one keyboard row in a reply keyboard. The different keys in the row need to be separated by |. The key strings can contain spaces.<br>
-    Messages do not need to be quoted if containing spaces.<br>
+    <li><code>message|msg|send [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] [ (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) ] &lt;text&gt;</code><br>Sends the given message to the given peer or if peer(s) is ommitted currently defined default peer user. Each peer given needs to be always prefixed with a '@'. Peers can be specified as contact ids, full names (with underscore instead of space), usernames (prefixed with another @) or chat names (also known as groups in telegram groups must be prefixed with #). Multiple peers are to be separated by space<br>
+    A reply keyboard can be specified by adding a list of strings enclosed in parentheses "()". Each separate string will make one keyboard row in a reply keyboard. The different keys in the row need to be separated by |. The key strings can contain spaces.<br>
+    Messages do not need to be quoted if containing spaces. If you want to use parentheses at the start of the message than add one extra character before the parentheses (i.e. an underline) to avoid the message being parsed as a keyboard <br>
     Examples:<br>
       <dl>
         <dt><code>set aTelegramBotDevice message @@someusername a message to be sent</code></dt>

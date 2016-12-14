@@ -101,7 +101,8 @@
 #   add intern for originalurl and storing which picture was retrieved
 #   load picture only if same thumbnail not there
 #   get new thumbnail for camera
-#
+
+#   first commandref version
 #   
 #   
 #   
@@ -230,9 +231,9 @@ sub BlinkCamera_Initialize($) {
   $hash->{SetFn}      = "BlinkCamera_Set";
   $hash->{AttrFn}     = "BlinkCamera_Attr";
   $hash->{AttrList}   = " maxRetries:0,1,2,3,4,5 ".
-          "imgTemplate:textfield ".
-          "videoTemplate:textfield ".
-          "proxyDir:textfield ".
+          "imgTemplate:textField ".
+          "videoTemplate:textField ".
+          "proxyDir:textField ".
           "network ".
           "pollingTimeout ".
           $readingFnAttributes;           
@@ -1933,6 +1934,130 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
 =begin html
 
 <a name="BlinkCamera"></a>
+<h3>BlinkCamera</h3>
+<ul>
+
+  This module connects remotely to a system of Blink Home Cameras 
+  
+  <a href="https://blinkforhome.com">Blink Home Cameras</a> are relatively inexpensive wire-free video home security & monitoring system
+
+  The blink device contains the possibility to regular poll for updates (i.e. specifically for notificatio0ns/alerts) 
+  MOst commands that change configurations are not synchronous, but the result will be returned after polling for status information. This is automatically handled in the device and the result of the cmd is marked in the reading <code>cmdResult</code> with the value "SUCCESS".
+  <br>
+  The blink device also contains a proxy for retrieving videos and thumbnails throug an FHEMweb extension in the form of http://&lt;fhem&gt;:&lt;fhemwebport&gt;/fhem/BlinkCamera/&lt;name of the blink device&gt;/...
+  
+  <br><br>
+  <a name="BlinkCameradefine"></a>
+  <b>Define</b>
+  <ul>
+    <code>define &lt;name&gt; BlinkCamera &lt;email&gt; &lt;password&gt; </code>
+    <br><br>
+    Defines a BlinkCamera devic, which connects to the cloud servers with the given user name and password (as provided during registration / setup)
+    <br><br>
+    Example: <code>define blink BlinkCamera ichbins@nicht.de abc123</code><br>
+    <br>
+  </ul>
+  <br><br>   
+  
+  <a name="BlinkCameraset"></a>
+  <b>Set</b>
+  <ul>
+    <code>set &lt;name&gt; &lt;what&gt; [&lt;value&gt;]</code>
+    <br><br>
+    where &lt;what&gt; / &lt;value&gt; is one of
+
+  <br><br>
+    <li><code>login</code><br>Initiate a login to the blink servers. This is usually done automatically when needed or when the login is expired
+    </li>
+    <li><code>arm</code> or <code>disarm</code><br>All enabled cameras in the system will be armed (i.e. they will be set to a mode where alarms/videos are automatically created based on the current settings) / disarmed (set to inactive mode where no video is recorded.
+    </li>
+    <li><code>camEnable &lt;camera name or number or "all"&gt;</code> or <code>camDisable &lt;camera name or number&gt;</code><br>The specified camera will be enabled (i.e. so that it is included in the arm / disarm commands) / disabled (excluded from arm/disarm).
+    </li>
+    
+    <li><code>reset</code><br>Reset the FHEM device (only used in case of something gets into an unknown or strange state)
+    </li>
+    
+    <li><code>videoDelete &lt;video id&gt;</code><br>The video with the given id will be removed (both from the local filesystem and from the blink servers)
+    </li>
+    
+  </ul>
+
+  <br><br>
+
+  <a name="BlinkCameraget"></a>
+  <b>Set</b>
+  <ul>
+    <code>get &lt;name&gt; &lt;what&gt; [&lt;value&gt;]</code>
+    <br><br>
+    where &lt;what&gt; / &lt;value&gt; is one of
+
+  <br><br>
+    <li><code>getInfo</code><br>Get information about the system from the blink servers (including cameras and state) . This is usually done automatically based on the reular interval specified in attribute <code>pollingTimeout</code>
+    </li>
+    <li><code>getInfoCamera &lt;camera name or number or "all"&gt;</code><br>Get the information about the specified camera from the blink system. Currently the information about the camera is just stored in raw json format in a single reading <code>cameraConfig&lt;camera id&gt;</code>
+    </li>
+    <li><code>getThumbnail &lt;camera name or number or "all"&gt;</code><br>Request a new thumbnail being taken from the specified camera in the blink system. The thumbnail is not automatically retrieved, this can be done using <code>getInfoCamera</code>
+    </li>
+    
+    
+    <li><code>getVideoAlert [ &lt;video id&gt; ]</code><br>Retrieve the video for the corresponding id (or if ommitted as specified in the reading <code>alertID</code>) and store the video in a local file in the directory given in the attribute <code>proxyDir</code>
+    </li>
+    
+  </ul>
+
+  <br><br>
+
+  <a name="BlinkCameraattr"></a>
+  <b>Attributes</b>
+  <br><br>
+  <ul>
+    <li><code>network &lt;network id&gt;</code><br>This attribute is needed if your blink system contains more than one network. If not specified the first netowrk defined in the account is used
+    </li> 
+
+    <li><code>proxyDir &lt;directory path&gt;</code><br>Specify the path where temporary files (videos, thumbnails) are stored to be access via the proxy server built into the device as an fhemweb extension
+    </li> 
+
+    <li><code>pollingTimeout &lt;interval&gt;</code><br>Interval in which the system is checking for status updates from the blink servers (given in seconds - value 0 means no polling). This is the frequency in which new alerts can be received
+    </li> 
+
+    <li><code>imgTemplate &lt;HTML template for reading&gt;</code><br>Give an HTML template for the image reading that shows the thumbnail of a camera. Default is a template which shows the image a link to the image and also the url as text. In the template the string #URL# will be replaced with the actual URL
+    </li> 
+
+    <li><code>vidTemplate &lt;HTML template for reading&gt;</code><br>Give an HTML template for the video reading that shows the video of a notification from the camera. Default is a template which shows the video a link to the video and also the url and id as text. In the template the string #URL# will be replaced with the actual URL of the video and #ID# will be replaced by the video ID.
+    </li> 
+
+  </ul>
+
+  <br><br>
+
+
+    <a name="BlinkCamerareadings"></a>
+  <b>Readings</b>
+  
+  <ul>
+    <li><code>cmd &lt;internal name of the last executed command&gt;</code><br>Used to identify the cmd that was last executed and where the result is given in cmdResult </li> 
+    <li><code>cmdResult &lt;error message or SUCCESS&gt;</code><br>Used to identify success or failure of a command </li> 
+    
+    <br>
+    
+    <li><code>networks &lt;list of networks&gt;</code><br>Lists the defined networks for the account at blink in the form networkid:networkname </li> 
+    <li><code>networkName &lt;name&gt;</code><br>Name of the network that is currently used to fill the readings </li> 
+    <li><code>networkArmed &lt;status&gt;</code><br>Network arm status (true or false)</li> 
+    <li><code>networkStatus &lt;ok or failure&gt;</code><br>Basic status of the current network</li> 
+    <li><code>networkCameras &lt;number&gt;</code><br>Lists the defined cameras in the current network in the form cameraid:cameraname </li> 
+    <li><code>networkSyncModule &lt;id and status&gt;</code><br>Information about the syncmodule in the current network in the form syncid:syncmodulestatus </li> 
+    
+    <br>
+    
+    <li><code>networkCamera... </code><br>Set of readings specific for each camera (identified by the cameraID in the reading name). Providing status and name of the camera / most recent thumbnail / url for the thumbnail to the proxy </li> 
+    
+    
+  </ul> 
+
+  <br><br>   
+</ul>
+
+
 
 =end html
 =cut

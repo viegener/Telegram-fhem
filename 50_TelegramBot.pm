@@ -181,9 +181,10 @@
 #   allow answer to callback (id must be given / text is optional)
 #   document inline / answer
 #   cleaned up recommendations for cmdKeyword etc
-
 #   corrections to doc and code - msg540802
 #   command names for answer / inline -changed to-> queryInline, queryAnswer - msg540802
+
+#   attribute for automatic answer - eval set logic - queryAnswerText
 #   
 #   
 #   
@@ -192,7 +193,6 @@
 ##############################################################################
 # TASKS 
 #   
-#   attribute for automatic answer 
 #   
 #   
 ##############################################################################
@@ -315,7 +315,7 @@ sub TelegramBot_Initialize($) {
   $hash->{SetFn}      = "TelegramBot_Set";
   $hash->{AttrFn}     = "TelegramBot_Attr";
   $hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer ". "cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None ".
-  "cmdTimeout pollingTimeout disable ".
+  "cmdTimeout pollingTimeout disable queryAnswerText:textField ".
   "allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCommands:textField allowedCommands filenameUrlEscape:1,0 ". 
   "textResponseFavorites:textField textResponseResult:textField textResponseUnauthorized:textField ".
   "parseModeSend:0_None,1_Markdown,2_HTML,3_InMsg webPagePreview:1,0 ".
@@ -2262,13 +2262,12 @@ sub TelegramBot_ParseCallback($$$)
   # check peers beside from only contact (shared contact) and new_chat_participant are checked
   push( @contacts, $from );
 
-  Log3 $name, 1, "TelegramBot_ParseCallback $name: ".$mtext;
+  my $answerData = "";
 
   if ( TelegramBot_checkAllowedPeer( $hash, $mpeernorm, $mtext ) ) {
 
-    Log3 $name, 2, "TelegramBot_ParseCallback $name: ".$mtext;
+    Log3 $name, 4, "TelegramBot_ParseCallback $name: ".$mtext;
 
-#    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer :$mtext:";
 
     # contacts handled separately since readings are updated in here
     TelegramBot_ContactUpdate($hash, @contacts) if ( scalar(@contacts) > 0 );
@@ -2285,8 +2284,29 @@ sub TelegramBot_ParseCallback($$$)
 
     readingsEndUpdate($hash, 1);
     
-  }
+    $answerData = AttrVal($name,'queryAnswerText',undef); 
+    
+  } 
   
+  # sent answer if not undef 
+  if ( defined( $answerData ) ) {
+    if ( length( $answerData ) > 0 ) {
+      my %dummy; 
+      my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $answerData ) );
+      
+      if ( $err ) {
+        Log3 $name, 1, "TelegramBot_ParseCallback $name: parse answerData failed on ReplaceSetmagic with :$err: on  :$answerData:";
+        $answerData = "";
+      } else {
+        $answerData = join(" ", @a);
+        Log3 $name, 4, "TelegramBot_ParseCallback $name: parse answerData returned :$answerData:";
+      } 
+    }
+
+    my $tmpRet = TelegramBot_SendIt( $hash, $mpeernorm, $answerData, $qid, 12, undef );
+    Log3 $name, 1, "TelegramBot_ParseCallback $name: send answer failed with :$tmpRet: " if ( $tmpRet );
+  }
+
   return $ret;
 }
 
@@ -3107,6 +3127,12 @@ sub TelegramBot_BinaryFileWrite($$$) {
           So if for example cmdKeyword is set to <code>ok fhem</code> and cmdTriggerOnly is set, then a message of <code>ok fhem someMacro</code> would execute the fhem command  <code>trigger someMacro</code>.<br>
     Note: This is deprecated and will be removed in one of the next releases
     </li> 
+
+    <li><code>queryAnswerText &lt;text&gt;</code><br>Specify the automatic answering to buttons send through queryInline command. If this attribute is set (even with empty string), an automatic answer is provided to the press of the inline button. The text in the attribute is evaluated through set-logic, so that readings and also perl code can be stored here. The result of the translation with set-logic will be sent as a text with the answer (this text is currently limited by telegram to 200 characters).
+    <br>
+    Note: If the peer sending the button is not authorized an answer is always sent without any text.
+    </li> 
+
 
 
   <br>

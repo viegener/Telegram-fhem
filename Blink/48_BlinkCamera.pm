@@ -103,12 +103,17 @@
 #   get new thumbnail for camera
 
 #   first commandref version
-#   
+#   new File reading for thumbnails
 #   
 #   
 ##############################################################################
 # TASKS 
 #   
+#   reading for camera battery status - msg539729
+#   reading for camera temperature - msg539729
+#   
+#   live video - msg539729
+#
 #   store poll failures / digest?
 #   
 #   allow thumbnailreset
@@ -1195,6 +1200,8 @@ sub BlinkCamera_Callback($$$)
         delete( $hash->{"thumbnail".$par1."Req"} );
         $readUpdates{"networkCamera".$par1."Url"} = "/fhem/".
             BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $par1, $name ); 
+        my $proxyDir = AttrVal($name,"proxyDir","/tmp/");
+        $readUpdates{"networkCamera".$par1."File"} = $proxyDir.$repfilename;
         
       }
       $readTemplate =~ s/#URL#/$fullurl/g;

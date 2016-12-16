@@ -175,8 +175,12 @@
 #   send incomplete keyboards as message instead of error
 #   Add | as separator for keys
 #   documentation alignment - more consistent usage of peer (instead of user)
-
 #   Keyboards in () istead of []
+
+#   added callback being retrieved in updates
+#   allow inline keyboards sent - new command inline keys titel:data
+#   allow answer to callback (id must be given / text is optional)
+#   document inline / answer
 #   
 #   
 #   
@@ -186,7 +190,7 @@
 # TASKS 
 #   
 #   
-#   check inlinekeyboards for confirmation - msg505012
+#   
 #   
 ##############################################################################
 # Ideas / Future
@@ -238,12 +242,16 @@ sub TelegramBot_MakeKeyboard($$$@);
 #########################
 # Globals
 my %sets = (
+  "_msg" => "textField",
   "message" => "textField",
   "msg" => "textField",
   "send" => "textField",
 
   "msgEdit" => "textField",
   "msgForceReply" => "textField",
+
+  "answer" => "textField",
+  "inline" => "textField",
 
   "sendImage" => "textField",
   "sendPhoto" => "textField",
@@ -460,13 +468,14 @@ sub TelegramBot_Set($@)
 
   my $ret = undef;
   
-  if( ($cmd eq 'message') || ($cmd eq 'msg') || ($cmd eq 'reply') || ($cmd eq 'msgEdit') || ($cmd eq 'msgForceReply') || ($cmd =~ /^send.*/ ) ) {
+  if( ($cmd eq 'message') || ($cmd eq 'inline') || ($cmd eq 'answer') || ($cmd eq 'msg') || ($cmd eq '_msg') || ($cmd eq 'reply') || ($cmd eq 'msgEdit') || ($cmd eq 'msgForceReply') || ($cmd =~ /^send.*/ ) ) {
 
     my $msgid;
     my $msg;
     my $addPar;
     my $sendType = 0;
     my $peers;
+    my $inline = 0;
     
     if ( ($cmd eq 'reply') || ($cmd eq 'msgEdit' ) ) {
       return "TelegramBot_Set: Command $cmd, no peer, msgid and no text/file specified" if ( $numberOfArgs < 3 );
@@ -474,6 +483,8 @@ sub TelegramBot_Set($@)
       $numberOfArgs--;
     } elsif ($cmd eq 'msgForceReply')  {
       $addPar = "{\"force_reply\":true}";
+    } elsif ($cmd eq 'inline')  {
+      $inline = 1;
     }
     
     return "TelegramBot_Set: Command $cmd, no peers and no text/file specified" if ( $numberOfArgs < 2 );
@@ -507,6 +518,8 @@ sub TelegramBot_Set($@)
       $sendType = 10;
     } elsif ($cmd eq 'sendLocation')  {
       $sendType = 11;
+    } elsif ($cmd eq 'answer')  {
+      $sendType = 12;
     }
 
     if ( $sendType == 11 ) {
@@ -520,6 +533,18 @@ sub TelegramBot_Set($@)
       # first latitude
       $addPar = shift @args;
       
+    } elsif ( $sendType == 12 ) {
+      # location
+      
+      return "TelegramBot_Set: Command $cmd, no inline query id given" if ( int(@args) < 1 );      
+
+      # first inline query id
+      $addPar = shift @args;
+      
+      # remaining msg
+      $msg = "";
+      $msg = join(" ", @args ) if ( int(@args) > 0 );
+
     } elsif ( ( $sendType > 0 ) && ( $sendType < 10 ) ) {
       # should return undef if succesful
       $msg = shift @args;
@@ -556,7 +581,7 @@ sub TelegramBot_Set($@)
           }
         }
     
-        $addPar = TelegramBot_MakeKeyboard( $hash, 1, 0, @keys ) if ( scalar( @keys ) );
+        $addPar = TelegramBot_MakeKeyboard( $hash, 1, $inline, @keys ) if ( scalar( @keys ) );
       }
     
       return "TelegramBot_Set: Command $cmd, no text for msg specified " if ( int(@args) == 0 );
@@ -1431,6 +1456,17 @@ sub TelegramBot_SendIt($$$$$;$$)
       $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "longitude", undef, $addPar, 0 ) if ( ! defined( $ret ) );
       $addPar = undef;
       
+    } elsif ( $isMedia == 12 ) {
+      # answer Inline query
+      $hash->{sentMsgText} = "Location: ".TelegramBot_MsgForLog($msg, ($isMedia<0) ).
+          (( defined( $addPar ) )?" - ".$addPar:"");
+
+      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."answerCallbackQuery";
+      
+      $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "callback_query_id", undef, $addPar, 0 ) if ( ! defined( $ret ) );
+
+      $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "text", undef, $msg, 0 ) if ( ! defined( $ret ) );
+      
     } elsif ( abs($isMedia) == 1 ) {
       # Photo send    
       $hash->{sentMsgText} = "Image: ".TelegramBot_MsgForLog($msg, ($isMedia<0) ).
@@ -1602,7 +1638,9 @@ sub TelegramBot_MakeKeyboard($$$@)
     foreach my $aKeyRow (  @keys ) {
       my @parRow = ();
       foreach my $aKey (  @$aKeyRow ) {
-        my %oneKey = ( "text" => $aKey, "callback_data" => $aKey );
+        my ( $keytext, $keydata ) = split( /:/, $aKey, 2);
+        $keydata = $keytext if ( ! defined( $keydata ) );
+        my %oneKey = ( "text" => $keytext, "callback_data" => $keytext );
         push( @parRow, \%oneKey );
       }
       push( @parKeys, \@parRow );
@@ -1795,6 +1833,8 @@ sub TelegramBot_Callback($$$)
     my $jo;
  
 
+#  Debug "jjj: ".$data;
+ 
 ### mark as latin1 to ensure no conversion is happening (this works surprisingly)
     eval {
 #       $data = encode( 'latin1', $data );
@@ -1842,6 +1882,9 @@ sub TelegramBot_Callback($$$)
         if ( defined( $update->{message} ) ) {
           
           $ret = TelegramBot_ParseMsg( $hash, $update->{update_id}, $update->{message} );
+        } elsif ( defined( $update->{callback_query} ) ) {
+          
+          $ret = TelegramBot_ParseCallback( $hash, $update->{update_id}, $update->{callback_query} );
         } else {
           Log3 $name, 3, "UpdatePoll $name: inline_query  id:".$update->{inline_query}->{id}.
                 ":  query:".$update->{inline_query}->{query}.":" if ( defined( $update->{inline_query} ) );
@@ -1911,7 +1954,7 @@ sub TelegramBot_Callback($$$)
     # Non Polling means: get msgid, reset the params and set loglevel
     $hash->{HU_DO_PARAMS}->{data} = "";
     $ll = 3 if ( defined( $ret ) );
-    $msgId = $result->{message_id} if ( defined($result) );
+    $msgId = $result->{message_id} if ( ( defined($result) ) && ( ref($result) eq "HASH" ) );
        
   }
 
@@ -2170,6 +2213,81 @@ sub TelegramBot_ParseMsg($$$)
 }
 
 
+#####################################
+#  INTERNAL: _ParseCallbackQuery handle the callback of a query provide as 
+#   params are the hash, the updateid and the actual message
+sub TelegramBot_ParseCallback($$$)
+{
+  my ( $hash, $uid, $callback ) = @_;
+  my $name = $hash->{NAME};
+
+  my @contacts;
+  
+  my $ret;
+  
+  my $qid = $callback->{id};
+  
+  my $from = $callback->{from};
+  my $mpeer = $from->{id};
+  
+  # get reply message id
+  my $replyId;
+  my $replyPart = $callback->{message};
+  if ( defined( $replyPart ) ) {
+    $replyId = $replyPart->{message_id};
+  }
+
+  my $imid = $callback->{inline_message_id};
+  my $chat= $callback->{chat_instance};
+  my $data = $callback->{data};
+
+  my $mtext = "Callback for inline query id: $qid  from : $mpeer :  data : ".(defined($data)?$data:"<undef>");
+
+  # ignore if unknown contacts shall be accepter
+  if ( ( AttrVal($name,'allowUnknownContacts',1) == 0 ) && ( ! TelegramBot_IsKnownContact( $hash, $mpeer ) ) ) {
+    my $mName = $from->{first_name};
+    $mName .= " ".$from->{last_name} if ( defined($from->{last_name}) );
+    Log3 $name, 3, "TelegramBot $name: Message from unknown Contact (id:$mpeer: name:$mName:) blocked";
+    
+    return $ret;
+  }
+
+  my $mpeernorm = $mpeer;
+  $mpeernorm =~ s/^\s+|\s+$//g;
+  $mpeernorm =~ s/ /_/g;
+  
+  # check peers beside from only contact (shared contact) and new_chat_participant are checked
+  push( @contacts, $from );
+
+  Log3 $name, 1, "TelegramBot_ParseCallback $name: ".$mtext;
+
+  if ( TelegramBot_checkAllowedPeer( $hash, $mpeernorm, $mtext ) ) {
+
+    Log3 $name, 2, "TelegramBot_ParseCallback $name: ".$mtext;
+
+#    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer :$mtext:";
+
+    # contacts handled separately since readings are updated in here
+    TelegramBot_ContactUpdate($hash, @contacts) if ( scalar(@contacts) > 0 );
+    
+    readingsBeginUpdate($hash);
+
+    readingsBulkUpdate($hash, "callbackID", $qid);        
+    readingsBulkUpdate($hash, "callbackPeer", TelegramBot_GetFullnameForContact( $hash, $mpeernorm ));        
+    readingsBulkUpdate($hash, "callbackPeerId", $mpeernorm);        
+
+    readingsBulkUpdate($hash, "callbackData", ( ( defined( $data ) ) ? $data : "" ) );        
+
+    readingsBulkUpdate($hash, "callbackReplyMsgId", ( ( defined( $replyId ) ) ? $replyId : "" ) );        
+
+    readingsEndUpdate($hash, 1);
+    
+  }
+  
+  return $ret;
+}
+
+
 ##############################################################################
 ##############################################################################
 ##
@@ -2240,7 +2358,9 @@ sub TelegramBot_Setup($) {
   $hash->{STATE} = "Undefined";
 
   $hash->{POLLING} = -1;
-  
+  $hash->{HU_UPD_PARAMS}->{callback} = \&TelegramBot_Callback;
+  $hash->{HU_DO_PARAMS}->{callback} = \&TelegramBot_Callback;
+ 
   # Temp?? SNAME is required for allowed (normally set in TCPServerUtils)
   $hash->{SNAME} = $name;
 
@@ -2837,18 +2957,18 @@ sub TelegramBot_BinaryFileWrite($$$) {
   <a name="TelegramBotset"></a>
   <b>Set</b>
   <ul>
-    <li><code>message|msg|send [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] [ (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) ] &lt;text&gt;</code><br>Sends the given message to the given peer or if peer(s) is ommitted currently defined default peer user. Each peer given needs to be always prefixed with a '@'. Peers can be specified as contact ids, full names (with underscore instead of space), usernames (prefixed with another @) or chat names (also known as groups in telegram groups must be prefixed with #). Multiple peers are to be separated by space<br>
+    <li><code>message|msg|_msg|send [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] [ (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) ] &lt;text&gt;</code><br>Sends the given message to the given peer or if peer(s) is ommitted currently defined default peer user. Each peer given needs to be always prefixed with a '@'. Peers can be specified as contact ids, full names (with underscore instead of space), usernames (prefixed with another @) or chat names (also known as groups in telegram groups must be prefixed with #). Multiple peers are to be separated by space<br>
     A reply keyboard can be specified by adding a list of strings enclosed in parentheses "()". Each separate string will make one keyboard row in a reply keyboard. The different keys in the row need to be separated by |. The key strings can contain spaces.<br>
     Messages do not need to be quoted if containing spaces. If you want to use parentheses at the start of the message than add one extra character before the parentheses (i.e. an underline) to avoid the message being parsed as a keyboard <br>
     Examples:<br>
       <dl>
         <dt><code>set aTelegramBotDevice message @@someusername a message to be sent</code></dt>
           <dd> to send to a peer having someusername as username (not first and last name) in telegram <br> </dd>
-        <dt><code>set aTelegramBotDevice message [yes] [may be] are you there?</code></dt>
+        <dt><code>set aTelegramBotDevice message (yes) (may be) are you there?</code></dt>
           <dd> to send the message "are you there?" and provide a reply keyboard with two buttons ("yes" and "may be") on separate rows to the default peer <br> </dd>
-        <dt><code>set aTelegramBotDevice message @@someusername [yes] [may be] are you there?</code></dt>
+        <dt><code>set aTelegramBotDevice message @@someusername (yes) (may be) are you there?</code></dt>
           <dd> to send the message from above with reply keyboard to a peer having someusername as username <br> </dd>
-        <dt><code>set aTelegramBotDevice message [yes|no] [may be] are you there?</code></dt>
+        <dt><code>set aTelegramBotDevice message (yes|no) (may be) are you there?</code></dt>
           <dd> to send the message from above with reply keyboard having 3 keys, 2 in the first row ("yes" / "no") and a second row with just one key to the default peer <br> </dd>
         <dt><code>set aTelegramBotDevice message @@someusername @1234567 a message to be sent to multiple receipients</code></dt>
           <dd> to send to a peer having someusername as username (not first and last name) in telegram <br> </dd>
@@ -2866,6 +2986,13 @@ sub TelegramBot_BinaryFileWrite($$$) {
     </li>
 
     <li><code>msgEdit &lt;msgid&gt; [ @&lt;peer1&gt; ] &lt;text&gt;</code><br>Changes the given message on the recipients clients. The msgid of the message to be changed must match a valid msgId and the peers need to match the original recipient, so only a single peer can be given or if peer is ommitted the defined default peer user is used. Beside the handling of a change of an existing message, the peer and message handling is otherwise identical to the msg command. 
+    </li>
+
+    <li><code>inline [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) &lt;text&gt;</code><br>Sends the given message to the recipient(s) with an inline keyboard allowing direct response <br>
+    IMPORTANT: The response coming from the keyboard will be provided in readings and a corresponding answer command with the query id is required, sicne the client is frozen otherwise waiting for the response from the bot!
+    REMARK: inline queries are only accepted from contacts/peers that are authorized (i.e. as for executing commands, see cmdKeyword and cmdRestrictedPeer !)
+    </li>
+    <li><code>answer &lt;queryid&gt; [ &lt;text&gt; ] </code><br>Sends the response to the inline query button press. The message is optional, the query id can be collected from the reading "callbackID". This call is mandatory on reception of an inline query from the inline command above
     </li>
 
     <li><code>sendImage|image [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer(s) or if ommitted to the default peer. 
@@ -2916,7 +3043,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>cmdKeyword &lt;keyword&gt;</code><br>Specify a specific text that needs to be sent to make the rest of the message being executed as a command. 
       So if for example cmdKeyword is set to <code>ok fhem</code> then a message starting with this string will be executed as fhem command 
         (see also cmdTriggerOnly).<br>
-        Please also consider cmdRestrictedPeer for restricting access to this feature!<br>
+        NOTE: It is advised to set cmdRestrictedPeer for restricting access to this feature!<br>
         Example: If this attribute is set to a value of <code>ok fhem</code> a message of <code>ok fhem attr telegram room IM</code> 
         send to the bot would execute the command  <code>attr telegram room IM</code> and set a device called telegram into room IM.
         The result of the cmd is sent to the requestor and in addition (if different) sent also as message to the defaultPeer (This can be controlled with the attribute <code>defaultPeerCopy</code>). 
@@ -2932,8 +3059,8 @@ sub TelegramBot_BinaryFileWrite($$$) {
   <br>
     <li><code>cmdFavorites &lt;keyword&gt;</code><br>Specify a specific text that will trigger sending the list of defined favorites or executes a given favorite by number (the favorites are defined in attribute <code>favorites</code>).
     <br>
+    NOTE: It is advised to set cmdRestrictedPeer for restricting access to this feature!<br>
         Example: If this attribute is set to a value of <code>favorite</code> a message of <code>favorite</code> to the bot will return a list of defined favorite commands and their index number. In the same case the message <code>favorite &lt;n&gt;</code> (with n being a number) would execute the command that is the n-th command in the favorites list. The result of the command will be returned as in other command executions. 
-        Please also consider cmdRestrictedPeer for restricting access to this feature!<br>
     </li> 
     <li><code>favorites &lt;list of commands&gt;</code><br>Specify a list of favorite commands for Fhem (without cmdKeyword). Multiple commands are separated by semicolon (;). This also means that only simple commands (without embedded semicolon) can be defined. <br>
     <br>
@@ -2957,9 +3084,10 @@ sub TelegramBot_BinaryFileWrite($$$) {
     </li> 
 
   <br>
-    <li><code>cmdRestrictedPeer &lt;peername(s)&gt;</code><br>Restrict the execution of commands only to messages sent from the given peername or multiple peernames
+    <li><code>cmdRestrictedPeer &lt;peer(s)&gt;</code><br>Restrict the execution of commands only to messages sent from the given peername or multiple peernames
     (specified in the form of contact id, username or full name, multiple peers to be separated by a space). 
     A message with the cmd and sender is sent to the default peer in case of another peer trying to sent messages<br>
+    It is recommended to use only peer ids for this restriction to reduce spoofing risk!
     </li> 
     <li><code>allowUnknownContacts &lt;1 or 0&gt;</code><br>Allow new contacts to be added automatically (1 - Default) or restrict message reception only to known contacts and unknwown contacts will be ignored (0).
     </li> 
@@ -3049,6 +3177,9 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li>PollingErrCount &lt;number&gt;<br>Show the number of polling errors during the last day. The number is reset at the beginning of the next day.</li> 
     <li>PollingLastError &lt;number&gt;<br>Last error message that occured during a polling update call</li> 
     
+  <br>
+    <li>callbackID &lt;id&gt; / callbackPeerId &lt;peer id&gt; / callbackPeer &lt;peer&gt;<br>Contains the query ID (respective the peer id and peer name) of the last received inline query from an inline query button (see set ... inline)</li> 
+
   </ul>
   <br><br>
   

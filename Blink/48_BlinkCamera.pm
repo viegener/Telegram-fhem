@@ -101,9 +101,10 @@
 #   add intern for originalurl and storing which picture was retrieved
 #   load picture only if same thumbnail not there
 #   get new thumbnail for camera
-
 #   first commandref version
 #   new File reading for thumbnails
+
+#   
 #   
 #   
 ##############################################################################

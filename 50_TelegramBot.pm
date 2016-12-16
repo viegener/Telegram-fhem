@@ -176,11 +176,14 @@
 #   Add | as separator for keys
 #   documentation alignment - more consistent usage of peer (instead of user)
 #   Keyboards in () istead of []
-
 #   added callback being retrieved in updates
 #   allow inline keyboards sent - new command inline keys titel:data
 #   allow answer to callback (id must be given / text is optional)
 #   document inline / answer
+#   cleaned up recommendations for cmdKeyword etc
+
+#   corrections to doc and code - msg540802
+#   command names for answer / inline -changed to-> queryInline, queryAnswer - msg540802
 #   
 #   
 #   
@@ -189,7 +192,7 @@
 ##############################################################################
 # TASKS 
 #   
-#   
+#   attribute for automatic answer 
 #   
 #   
 ##############################################################################
@@ -250,8 +253,8 @@ my %sets = (
   "msgEdit" => "textField",
   "msgForceReply" => "textField",
 
-  "answer" => "textField",
-  "inline" => "textField",
+  "queryAnswer" => "textField",
+  "queryInline" => "textField",
 
   "sendImage" => "textField",
   "sendPhoto" => "textField",
@@ -468,7 +471,7 @@ sub TelegramBot_Set($@)
 
   my $ret = undef;
   
-  if( ($cmd eq 'message') || ($cmd eq 'inline') || ($cmd eq 'answer') || ($cmd eq 'msg') || ($cmd eq '_msg') || ($cmd eq 'reply') || ($cmd eq 'msgEdit') || ($cmd eq 'msgForceReply') || ($cmd =~ /^send.*/ ) ) {
+  if( ($cmd eq 'message') || ($cmd eq 'queryInline') || ($cmd eq 'queryAnswer') || ($cmd eq 'msg') || ($cmd eq '_msg') || ($cmd eq 'reply') || ($cmd eq 'msgEdit') || ($cmd eq 'msgForceReply') || ($cmd =~ /^send.*/ ) ) {
 
     my $msgid;
     my $msg;
@@ -483,7 +486,7 @@ sub TelegramBot_Set($@)
       $numberOfArgs--;
     } elsif ($cmd eq 'msgForceReply')  {
       $addPar = "{\"force_reply\":true}";
-    } elsif ($cmd eq 'inline')  {
+    } elsif ($cmd eq 'queryInline')  {
       $inline = 1;
     }
     
@@ -518,7 +521,7 @@ sub TelegramBot_Set($@)
       $sendType = 10;
     } elsif ($cmd eq 'sendLocation')  {
       $sendType = 11;
-    } elsif ($cmd eq 'answer')  {
+    } elsif ($cmd eq 'queryAnswer')  {
       $sendType = 12;
     }
 
@@ -530,11 +533,11 @@ sub TelegramBot_Set($@)
       # first latitude
       $msg = shift @args;
 
-      # first latitude
+      # first longitude
       $addPar = shift @args;
       
     } elsif ( $sendType == 12 ) {
-      # location
+      # inline query
       
       return "TelegramBot_Set: Command $cmd, no inline query id given" if ( int(@args) < 1 );      
 
@@ -1640,7 +1643,7 @@ sub TelegramBot_MakeKeyboard($$$@)
       foreach my $aKey (  @$aKeyRow ) {
         my ( $keytext, $keydata ) = split( /:/, $aKey, 2);
         $keydata = $keytext if ( ! defined( $keydata ) );
-        my %oneKey = ( "text" => $keytext, "callback_data" => $keytext );
+        my %oneKey = ( "text" => $keytext, "callback_data" => $keydata );
         push( @parRow, \%oneKey );
       }
       push( @parKeys, \@parRow );
@@ -2988,11 +2991,11 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>msgEdit &lt;msgid&gt; [ @&lt;peer1&gt; ] &lt;text&gt;</code><br>Changes the given message on the recipients clients. The msgid of the message to be changed must match a valid msgId and the peers need to match the original recipient, so only a single peer can be given or if peer is ommitted the defined default peer user is used. Beside the handling of a change of an existing message, the peer and message handling is otherwise identical to the msg command. 
     </li>
 
-    <li><code>inline [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) &lt;text&gt;</code><br>Sends the given message to the recipient(s) with an inline keyboard allowing direct response <br>
+    <li><code>queryInline [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) &lt;text&gt;</code><br>Sends the given message to the recipient(s) with an inline keyboard allowing direct response <br>
     IMPORTANT: The response coming from the keyboard will be provided in readings and a corresponding answer command with the query id is required, sicne the client is frozen otherwise waiting for the response from the bot!
     REMARK: inline queries are only accepted from contacts/peers that are authorized (i.e. as for executing commands, see cmdKeyword and cmdRestrictedPeer !)
     </li>
-    <li><code>answer &lt;queryid&gt; [ &lt;text&gt; ] </code><br>Sends the response to the inline query button press. The message is optional, the query id can be collected from the reading "callbackID". This call is mandatory on reception of an inline query from the inline command above
+    <li><code>queryAnswer &lt;queryid&gt; [ &lt;text&gt; ] </code><br>Sends the response to the inline query button press. The message is optional, the query id can be collected from the reading "callbackID". This call is mandatory on reception of an inline query from the inline command above
     </li>
 
     <li><code>sendImage|image [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer(s) or if ommitted to the default peer. 
@@ -3111,7 +3114,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
       In this case no updates are automatically received and therefore also no messages can be received. It is recommended to set the pollingtimeout to a reasonable time between 15 (not too short) and 60 (to avoid broken connections). See also attribute <code>disable</code>. 
     </li> 
     <li><code>pollingVerbose &lt;0_None 1_Digest 2_Log&gt;</code><br>Used to limit the amount of logging for errors of the polling connection. These errors are happening regularly and usually are not consider critical, since the polling restarts automatically and pauses in case of excess errors. With the default setting "1_Digest" once a day the number of errors on the last day is logged (log level 3). With "2_Log" every error is logged with log level 2. With the setting "0_None" no errors are logged. In any case the count of errors during the last day and the last error is stored in the readings <code>PollingErrCount</code> and <code>PollingLastError</code> </li> 
-    <li><code>disbale &lt;0 or 1&gt;</code><br>Used to disable the polling if set to 1 (default is 0). 
+    <li><code>disable &lt;0 or 1&gt;</code><br>Used to disable the polling if set to 1 (default is 0). 
     
   <br>
     <li><code>cmdTimeout &lt;number&gt;</code><br>Used to specify the timeout for sending commands. The default is a value of 30 seconds, which should be normally fine for most environments. In the case of slow or on-demand connections to the internet this parameter can be used to specify a longer time until a connection failure is considered.

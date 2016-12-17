@@ -186,6 +186,7 @@
 #   attribute for automatic answer - eval set logic - queryAnswerText
 
 #   FIX: trim $ret avoiding empty msg error from telegram in command response
+#   FIX: trim $ret avoiding empty msg error from telegram also with control characters in 2 chars
 #   
 #   
 #   
@@ -1115,7 +1116,9 @@ sub TelegramBot_ExecuteCommand($$$) {
   }
 
   # trim $ret avoiding empty msg error from telegram
-  $ret =~ s/^\s+|\s+$//g if ( defined($ret) );
+#  Debug "Length before :".length($ret)."   :$ret:";
+  $ret =~ s/^(\s|(\\[rfnt]))+|(\s|(\\[rfnt]))+$//g if ( defined($ret) );
+#  Debug "Length after :".length($ret);
   
   
   

@@ -183,8 +183,9 @@
 #   cleaned up recommendations for cmdKeyword etc
 #   corrections to doc and code - msg540802
 #   command names for answer / inline -changed to-> queryInline, queryAnswer - msg540802
-
 #   attribute for automatic answer - eval set logic - queryAnswerText
+
+#   FIX: trim $ret avoiding empty msg error from telegram in command response
 #   
 #   
 #   
@@ -1103,6 +1104,7 @@ sub TelegramBot_ExecuteCommand($$$) {
   } else {
     $retMsg =~ s/\$peer//g;
   }
+  
 
   if ( ( ! defined( $ret ) ) || ( length( $ret) == 0 ) ) {
     $retMsg =~ s/\$result/OK/g;
@@ -1112,6 +1114,11 @@ sub TelegramBot_ExecuteCommand($$$) {
     $ret = $retMsg;
   }
 
+  # trim $ret avoiding empty msg error from telegram
+  $ret =~ s/^\s+|\s+$//g if ( defined($ret) );
+  
+  
+  
 #  my $retstart = "TelegramBot FHEM";
 #  $retstart .= " from $pname ($mpeernorm)" if ( defined( $defpeer ) );
   

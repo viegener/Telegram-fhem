@@ -184,11 +184,11 @@
 #   corrections to doc and code - msg540802
 #   command names for answer / inline -changed to-> queryInline, queryAnswer - msg540802
 #   attribute for automatic answer - eval set logic - queryAnswerText
-
 #   FIX: trim $ret avoiding empty msg error from telegram in command response
 #   FIX: trim $ret avoiding empty msg error from telegram also with control characters in 2 chars
-#   
-#   
+
+#   rename callback... readings to query... for consistency
+#   value 0 for queryAnswerText means no text sent but still answer
 #   
 #   
 #   
@@ -1897,7 +1897,7 @@ sub TelegramBot_Callback($$$)
           $ret = TelegramBot_ParseMsg( $hash, $update->{update_id}, $update->{message} );
         } elsif ( defined( $update->{callback_query} ) ) {
           
-          $ret = TelegramBot_ParseCallback( $hash, $update->{update_id}, $update->{callback_query} );
+          $ret = TelegramBot_ParseCallbackQuery( $hash, $update->{update_id}, $update->{callback_query} );
         } else {
           Log3 $name, 3, "UpdatePoll $name: inline_query  id:".$update->{inline_query}->{id}.
                 ":  query:".$update->{inline_query}->{query}.":" if ( defined( $update->{inline_query} ) );
@@ -2229,7 +2229,7 @@ sub TelegramBot_ParseMsg($$$)
 #####################################
 #  INTERNAL: _ParseCallbackQuery handle the callback of a query provide as 
 #   params are the hash, the updateid and the actual message
-sub TelegramBot_ParseCallback($$$)
+sub TelegramBot_ParseCallbackQuery($$$)
 {
   my ( $hash, $uid, $callback ) = @_;
   my $name = $hash->{NAME};
@@ -2284,13 +2284,13 @@ sub TelegramBot_ParseCallback($$$)
     
     readingsBeginUpdate($hash);
 
-    readingsBulkUpdate($hash, "callbackID", $qid);        
-    readingsBulkUpdate($hash, "callbackPeer", TelegramBot_GetFullnameForContact( $hash, $mpeernorm ));        
-    readingsBulkUpdate($hash, "callbackPeerId", $mpeernorm);        
+    readingsBulkUpdate($hash, "queryID", $qid);        
+    readingsBulkUpdate($hash, "queryPeer", TelegramBot_GetFullnameForContact( $hash, $mpeernorm ));        
+    readingsBulkUpdate($hash, "queryPeerId", $mpeernorm);        
 
-    readingsBulkUpdate($hash, "callbackData", ( ( defined( $data ) ) ? $data : "" ) );        
+    readingsBulkUpdate($hash, "queryData", ( ( defined( $data ) ) ? $data : "" ) );        
 
-    readingsBulkUpdate($hash, "callbackReplyMsgId", ( ( defined( $replyId ) ) ? $replyId : "" ) );        
+    readingsBulkUpdate($hash, "queryReplyMsgId", ( ( defined( $replyId ) ) ? $replyId : "" ) );        
 
     readingsEndUpdate($hash, 1);
     
@@ -2300,6 +2300,7 @@ sub TelegramBot_ParseCallback($$$)
   
   # sent answer if not undef 
   if ( defined( $answerData ) ) {
+    $answerData = "" if ( ! $answerData  );
     if ( length( $answerData ) > 0 ) {
       my %dummy; 
       my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $answerData ) );
@@ -3138,7 +3139,8 @@ sub TelegramBot_BinaryFileWrite($$$) {
     Note: This is deprecated and will be removed in one of the next releases
     </li> 
 
-    <li><code>queryAnswerText &lt;text&gt;</code><br>Specify the automatic answering to buttons send through queryInline command. If this attribute is set (even with empty string), an automatic answer is provided to the press of the inline button. The text in the attribute is evaluated through set-logic, so that readings and also perl code can be stored here. The result of the translation with set-logic will be sent as a text with the answer (this text is currently limited by telegram to 200 characters).
+    <li><code>queryAnswerText &lt;text&gt;</code><br>Specify the automatic answering to buttons send through queryInline command. If this attribute is set an automatic answer is provided to the press of the inline button. The text in the attribute is evaluated through set-logic, so that readings and also perl code can be stored here. The result of the translation with set-logic will be sent as a text with the answer (this text is currently limited by telegram to 200 characters). <br>
+    Note: A value of "0" in the attribute or as result of the evaluation will result in no text being sent with the answer.
     <br>
     Note: If the peer sending the button is not authorized an answer is always sent without any text.
     </li> 

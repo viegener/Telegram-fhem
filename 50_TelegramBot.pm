@@ -186,9 +186,9 @@
 #   attribute for automatic answer - eval set logic - queryAnswerText
 #   FIX: trim $ret avoiding empty msg error from telegram in command response
 #   FIX: trim $ret avoiding empty msg error from telegram also with control characters in 2 chars
-
 #   rename callback... readings to query... for consistency
 #   value 0 for queryAnswerText means no text sent but still answer
+
 #   
 #   
 #   
@@ -1089,7 +1089,7 @@ sub TelegramBot_ExecuteCommand($$$) {
     
   }
 
-  Log3 $name, 5, "TelegramBot_ExecuteCommand result for analyze :".TelegramBot_MsgForLog($ret, $isMediaStream ).": ";
+  Log3 $name, 4, "TelegramBot_ExecuteCommand result for analyze :".TelegramBot_MsgForLog($ret, $isMediaStream ).": ";
 
   my $defpeer = AttrVal($name,'defaultPeer',undef);
   $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
@@ -3153,6 +3153,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     </li> 
     <li><code>pollingVerbose &lt;0_None 1_Digest 2_Log&gt;</code><br>Used to limit the amount of logging for errors of the polling connection. These errors are happening regularly and usually are not consider critical, since the polling restarts automatically and pauses in case of excess errors. With the default setting "1_Digest" once a day the number of errors on the last day is logged (log level 3). With "2_Log" every error is logged with log level 2. With the setting "0_None" no errors are logged. In any case the count of errors during the last day and the last error is stored in the readings <code>PollingErrCount</code> and <code>PollingLastError</code> </li> 
     <li><code>disable &lt;0 or 1&gt;</code><br>Used to disable the polling if set to 1 (default is 0). 
+    </li> 
     
   <br>
     <li><code>cmdTimeout &lt;number&gt;</code><br>Used to specify the timeout for sending commands. The default is a value of 30 seconds, which should be normally fine for most environments. In the case of slow or on-demand connections to the internet this parameter can be used to specify a longer time until a connection failure is considered.
@@ -3176,7 +3177,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     </li> 
     <li><code>textResponseCommands &lt;TelegramBot FHEM : $peer\n Letzte Befehle \n&gt;</code><br>Text to be sent as starter for the list of last commands. Default is shown here and $peer will be replaced with the actual contact full name if added.
     </li> 
-    <li><code>textResponseResult &lt;TelegramBot FHEM : $peer\n Befehl:$cmd:\n Ergebnis:\n$result\n&gt;</code><br>Text to be sent as result for a cmd execution. Default is shown here and $peer will be replaced with the actual contact full name if added. Similarly $cmd and $result will be replaced with the cmd and the execution result.
+    <li><code>textResponseResult &lt;TelegramBot FHEM : $peer\n Befehl:$cmd:\n Ergebnis:\n$result\n&gt;</code><br>Text to be sent as result for a cmd execution. Default is shown here and $peer will be replaced with the actual contact full name if added. Similarly $cmd and $result will be replaced with the cmd and the execution result. If the result is a response with just spaces, or other separator characters the result will be not sent at all (i.e. a values of "\n") will result in no message at all.
     </li> 
     <li><code>textResponseUnauthorized &lt;UNAUTHORIZED: TelegramBot FHEM request from user :$peer\n  Msg: $msg&gt;</code><br>Text to be sent as warning for unauthorized command requests. Default is shown here and $peer will be replaced with the actual contact full name and id if added. $msg will be replaced with the sent message.
     </li> 

@@ -188,13 +188,16 @@
 #   FIX: trim $ret avoiding empty msg error from telegram also with control characters in 2 chars
 #   rename callback... readings to query... for consistency
 #   value 0 for queryAnswerText means no text sent but still answer
+#   FIX: corrected documentation - unbalanced li
 
-#   
+#   Run set magic on all comands before execution
+#   add new reading sentMsgPeerId
+#   add edit message for inline keyboards?
+#   document queryEditInline
 #   
 #   
 ##############################################################################
 # TASKS 
-#   
 #   
 #   
 ##############################################################################
@@ -257,6 +260,7 @@ my %sets = (
 
   "queryAnswer" => "textField",
   "queryInline" => "textField",
+  "queryEditInline" => "textField",
 
   "sendImage" => "textField",
   "sendPhoto" => "textField",
@@ -473,7 +477,7 @@ sub TelegramBot_Set($@)
 
   my $ret = undef;
   
-  if( ($cmd eq 'message') || ($cmd eq 'queryInline') || ($cmd eq 'queryAnswer') || ($cmd eq 'msg') || ($cmd eq '_msg') || ($cmd eq 'reply') || ($cmd eq 'msgEdit') || ($cmd eq 'msgForceReply') || ($cmd =~ /^send.*/ ) ) {
+  if( ($cmd eq 'message') || ($cmd eq 'queryInline') || ($cmd eq 'queryEditInline') || ($cmd eq 'queryAnswer') || ($cmd eq 'msg') || ($cmd eq '_msg') || ($cmd eq 'reply') || ($cmd eq 'msgEdit') || ($cmd eq 'msgForceReply') || ($cmd =~ /^send.*/ ) ) {
 
     my $msgid;
     my $msg;
@@ -482,10 +486,11 @@ sub TelegramBot_Set($@)
     my $peers;
     my $inline = 0;
     
-    if ( ($cmd eq 'reply') || ($cmd eq 'msgEdit' ) ) {
+    if ( ($cmd eq 'reply') || ($cmd eq 'msgEdit' ) || ($cmd eq 'queryEditInline' ) ) {
       return "TelegramBot_Set: Command $cmd, no peer, msgid and no text/file specified" if ( $numberOfArgs < 3 );
       $msgid = shift @args; 
       $numberOfArgs--;
+      $inline = 1 if ($cmd eq 'queryEditInline');
     } elsif ($cmd eq 'msgForceReply')  {
       $addPar = "{\"force_reply\":true}";
     } elsif ($cmd eq 'queryInline')  {
@@ -519,7 +524,7 @@ sub TelegramBot_Set($@)
       $sendType = 2;
     } elsif ( ($cmd eq 'sendDocument') || ($cmd eq 'sendMedia') ) {
       $sendType = 3;
-    } elsif ($cmd eq 'msgEdit')  {
+    } elsif ( ($cmd eq 'msgEdit') || ($cmd eq 'queryEditInline') )  {
       $sendType = 10;
     } elsif ($cmd eq 'sendLocation')  {
       $sendType = 11;
@@ -1082,6 +1087,17 @@ sub TelegramBot_ExecuteCommand($$$) {
   my $isMediaStream = 0;
   
   if ( ! defined( $ret ) ) {
+    # run replace set magic on command - first
+    my %dummy; 
+    my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $cmd ) );
+      
+    if ( $err ) {
+      Log3 $name, 1, "TelegramBot_ExecuteCommand $name: parse cmd failed on ReplaceSetmagic with :$err: on  :$cmd:";
+    } else {
+      $cmd = join(" ", @a);
+      Log3 $name, 4, "TelegramBot_ExecuteCommand $name: parse cmd returned :$cmd:";
+    } 
+  
     $ret = AnalyzeCommand( $hash, $cmd );
 
     # Check for image/doc/audio stream in return (-1 image
@@ -1471,7 +1487,7 @@ sub TelegramBot_SendIt($$$$$;$$)
       
     } elsif ( $isMedia == 12 ) {
       # answer Inline query
-      $hash->{sentMsgText} = "Location: ".TelegramBot_MsgForLog($msg, ($isMedia<0) ).
+      $hash->{sentMsgText} = "AnswerInline: ".TelegramBot_MsgForLog($msg, ($isMedia<0) ).
           (( defined( $addPar ) )?" - ".$addPar:"");
 
       $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."answerCallbackQuery";
@@ -2008,6 +2024,7 @@ sub TelegramBot_Callback($$$)
     readingsBeginUpdate($hash);
     readingsBulkUpdate($hash, "sentMsgResult", $ret);        
     readingsBulkUpdate($hash, "sentMsgId", ((defined($msgId))?$msgId:"") );        
+    readingsBulkUpdate($hash, "sentMsgPeerId", ((defined($hash->{sentMsgPeerId}))?$hash->{sentMsgPeerId}:"") );        
     readingsEndUpdate($hash, 1);
 
     if ( scalar( @{ $hash->{sentQueue} } ) ) {
@@ -3022,10 +3039,16 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>msgEdit &lt;msgid&gt; [ @&lt;peer1&gt; ] &lt;text&gt;</code><br>Changes the given message on the recipients clients. The msgid of the message to be changed must match a valid msgId and the peers need to match the original recipient, so only a single peer can be given or if peer is ommitted the defined default peer user is used. Beside the handling of a change of an existing message, the peer and message handling is otherwise identical to the msg command. 
     </li>
 
+
     <li><code>queryInline [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) &lt;text&gt;</code><br>Sends the given message to the recipient(s) with an inline keyboard allowing direct response <br>
     IMPORTANT: The response coming from the keyboard will be provided in readings and a corresponding answer command with the query id is required, sicne the client is frozen otherwise waiting for the response from the bot!
     REMARK: inline queries are only accepted from contacts/peers that are authorized (i.e. as for executing commands, see cmdKeyword and cmdRestrictedPeer !)
     </li>
+    <li><code>queryEditInline &lt;msgid&gt; [ @&lt;peer&gt; ] (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) &lt;text&gt;</code><br>Updates the original message specified with msgId with the given message to the recipient(s) with an inline keyboard allowing direct response <br>
+    With this method interactive inline dialogs are possible, since the edit of message or inline keyboard can be done multiple times.
+    </li>
+    
+
     <li><code>queryAnswer &lt;queryid&gt; [ &lt;text&gt; ] </code><br>Sends the response to the inline query button press. The message is optional, the query id can be collected from the reading "callbackID". This call is mandatory on reception of an inline query from the inline command above
     </li>
 

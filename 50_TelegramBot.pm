@@ -189,15 +189,20 @@
 #   rename callback... readings to query... for consistency
 #   value 0 for queryAnswerText means no text sent but still answer
 #   FIX: corrected documentation - unbalanced li
-
 #   Run set magic on all comands before execution
 #   add new reading sentMsgPeerId
 #   add edit message for inline keyboards?
 #   document queryEditInline
+
+#   "0" message still sent on queryanswer
+#   
+#   
+#   
 #   
 #   
 ##############################################################################
 # TASKS 
+#   
 #   
 #   
 ##############################################################################
@@ -1494,7 +1499,7 @@ sub TelegramBot_SendIt($$$$$;$$)
       
       $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "callback_query_id", undef, $addPar, 0 ) if ( ! defined( $ret ) );
 
-      $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "text", undef, $msg, 0 ) if ( ! defined( $ret ) );
+      $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "text", undef, $msg, 0 ) if ( ( ! defined( $ret ) ) && ( $msg ) );
       
     } elsif ( abs($isMedia) == 1 ) {
       # Photo send    

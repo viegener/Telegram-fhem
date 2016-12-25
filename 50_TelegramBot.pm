@@ -193,8 +193,9 @@
 #   add new reading sentMsgPeerId
 #   add edit message for inline keyboards?
 #   document queryEditInline
-
 #   "0" message still sent on queryanswer
+# 2.1 2016-12-25  msgForceReply, disable, keyboards in messages, inline keyboards and dialogs
+
 #   
 #   
 #   
@@ -202,6 +203,9 @@
 #   
 ##############################################################################
 # TASKS 
+#   
+#   allow setting one time keyboard through set - how to connect to set?
+#   
 #   
 #   
 #   

@@ -19,7 +19,7 @@
 #
 ##############################################################################
 #
-# $Id: 10_SOMFY.pm 12471 2016-10-30 11:54:15Z viegener $
+# $Id: 10_SOMFY.pm 12597 2016-11-17 21:32:22Z viegener $
 #  
 # SOMFY RTS / Simu Hz protocol module for FHEM
 # (c) Thomas Dankert <post@thomyd.de>
@@ -88,6 +88,7 @@
 #  2016-10-30 viegener - FIX: remove wrong attribute up-time-to-close - typo in attr setter
 #  2016-10-14 viegener - FIX: Use of uninitialized value $updateState in concatenation
 # 
+#  2016-12-30 viegener - New sets / code-commands 9 / a  - wind_sun_9 / wind_only_a
 #  
 #  
 ###############################################################################
@@ -121,6 +122,8 @@ my %codes = (
 	"20" => "off",      # go "up"
 	"40" => "on",       # go "down"
 	"80" => "prog",     # finish pairing
+	"90" => "wind_sun_9",     # wind and sun (sun + flag)
+	"A0" => "wind_only_a",     # wind only (flag)
 	"100" => "on-for-timer",
 	"101" => "off-for-timer",
 	"XX" => "z_custom",	# custom control code
@@ -135,6 +138,8 @@ my %sets = (
 	"on-for-timer" => "textField",
 	"off-for-timer" => "textField",
 	"z_custom" => "textField",
+  "wind_sun_9" => "noArg",
+  "wind_only_a" => "noArg",
 	"pos" => "0,10,20,30,40,50,60,70,80,90,100"
 );
 
@@ -144,7 +149,9 @@ my %sendCommands = (
 	"on" => "on",
 	"close" => "on",
 	"prog" => "prog",
-	"stop" => "stop"
+	"stop" => "stop",
+  "wind_sun_9" => "wind_sun_9",
+  "wind_only_a" => "wind_only_a",
 );
 
 my %inverseCommands = (

@@ -104,14 +104,16 @@
 #   first commandref version
 #   new File reading for thumbnails
 
+#   reading for camera battery status - msg539729
+#   reading for camera temperature - msg539729
+#   thumbnail org name / timestamp sa reading
 #   
 #   
 #   
 ##############################################################################
 # TASKS 
 #   
-#   reading for camera battery status - msg539729
-#   reading for camera temperature - msg539729
+#   
 #   
 #   live video - msg539729
 #
@@ -948,6 +950,9 @@ sub BlinkCamera_ParseHomescreen($$$)
                 BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $device->{device_id}, $name ); 
           }
         }
+        $readUpdates->{"networkCamera".$device->{device_id}."Thumbnail"} = $device->{thumbnail}; 
+        $readUpdates->{"networkCamera".$device->{device_id}."Batt"} = $device->{battery}; 
+        $readUpdates->{"networkCamera".$device->{device_id}."Temp"} = $device->{temp}; 
       } elsif ( $device->{device_type} eq "sync_module" ) {
         if ( length( $readUpdates->{networkSyncModule} ) > 0 ) {
           Log3 $name, 2, "BlinkCamera_ParseHomescreen $name: found multiple syncModules ";
@@ -1241,7 +1246,7 @@ sub BlinkCamera_Callback($$$)
       $maxRetries =  AttrVal($name,'maxRetries',0) if ( ! defined( $maxRetries ) );
       if ( $wait <= $maxRetries ) {
         # calculate wait time 10s / 100s / 1000s ~ 17min / 10000s ~ 3h / 100000s ~ 30h
-        $wait = 10**$wait;
+        $wait = 3**$wait;
         
         Log3 $name, 4, "BlinkCamera_Callback $name: do retry ".$param->{args}[3]." timer: $wait (ret: $ret) for cmd ".
               $param->{args}[0];

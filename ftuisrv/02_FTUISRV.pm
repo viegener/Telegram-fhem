@@ -68,9 +68,11 @@
 #   add loopinc for looping include multiple times loopinc="<path>" <key>=( <expr> )  <keyvalues> 
 #   summary for commandref
 #   added if and loopinc to commandref
+#   add new attribute for defining special template urls templateFiles
 #   
 ################################################################
 #TODO:
+#
 #
 # deepcopy only if new keys found
 #
@@ -167,7 +169,7 @@ FTUISRV_Initialize($) {
     my ($hash) = @_;
     $hash->{DefFn}     = "FTUISRV_Define";
     $hash->{UndefFn}   = "FTUISRV_Undef";
-    $hash->{AttrList}  = "directoryindex " .
+    $hash->{AttrList}  = "directoryindex templateFiles ".
                         "readings validateFiles:0,1,2 validateResult:0,1,2 ";
     $hash->{AttrFn}    = "FTUISRV_Attr";                    
     #$hash->{SetFn}     = "FTUISRV_Set";
@@ -247,8 +249,7 @@ sub FTUISRV_CGI() {
 
 #  Debug "request= $request";
   Log3 undef, 4, "FTUISRV: Request to FTUISRV :$request:";
-  
-  
+ 
   # Match request first without trailing / in the link part 
   if($request =~ m,^(/[^/]+)(/([^\?]*)?)?(\?([^#]*))?$,) {
     my $link= $1;
@@ -265,6 +266,17 @@ sub FTUISRV_CGI() {
     # get device name
     $name= $data{FWEXT}{$link}{deviceName}; 
 
+    # check system / device loglevel
+    my $logLevel = $attr{global}{verbose};
+    $logLevel = $attr{$name}{verbose} if ( defined( $attr{$name}{verbose} ) );
+    
+#     Log3 undef, 3, "FTUISRV: Request to FTUISRV :$request:";
+    if ( 4 <= $logLevel ) {
+      if ( ( $request =~ /index.html/ ) || ( $request =~ /\/$/ ) ) {
+        Log3 $name, 4, "FTUISRV: request to FTUISRV :$request:  Header :".join("\n",@FW_httpheader).":";
+      }
+    }
+  
 #    Debug "link= ".((defined($link))?$link:"<undef>");
 #    Debug "filename= ".((defined($filename))?$filename:"<undef>");
 #    Debug "qparams= ".((defined($qparams))?$qparams:"<undef>");
@@ -927,7 +939,7 @@ sub FTUISRV_handletemplatefile( $$$$ ) {
   }
     
   
-  if ( $filename =~ /$FTUISRV_matchtemplatefile/ ) {
+  if ( ( $filename =~ /$FTUISRV_matchtemplatefile/ ) || ( index( ":".AttrVal($name,"templateFiles","").":", ":".$filename.":" ) != -1 ) ) {
     Log3 $name, 4, "$name: is real template :$filename:";
     $validated = 0;
 
@@ -1188,7 +1200,13 @@ sub FTUISRV_BinaryFileRead($) {
       Allows basic validation of HTML content on correct opening/closing tags etc. Here the resulting content provided to the browser 
       (after parsing) are validated (setting to 1 means validation is done / 2 means also the full parsing is logged (Attention very verbose !) 
     </li> 
-  </ul>
+    <li><code>templateFiles &lt;relative paths separated by :&gt;</code><br>
+      specify specific files / urls to be handled as templates even if not containing the ftui in the filename. Multiple files can be separated by colon.
+    </li> 
+
+
+
+    </ul>
   <br><br>
 
 </ul>

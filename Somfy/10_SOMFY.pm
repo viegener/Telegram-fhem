@@ -441,18 +441,28 @@ sub SOMFY_SendCommand($@)
 	# Ys_key_ctrl_cks_rollcode_a0_a1_a2
 	# Ys ad 20 0ae3 a2 98 42
 
-	my $enckey = uc(ReadingsVal($name, "enc_key", "A0"));
-	my $rollingcode = uc(ReadingsVal($name, "rolling_code", "0000"));
-
 	if($command eq "XX") {
 		# use user-supplied custom command
 		$command = $args[1];
 	}
 
+	# increment before sending
+	my $enckey = uc(ReadingsVal($name, "enc_key", "F"));	# get 0 by increment 
+	my $rollingcode = uc(ReadingsVal($name, "rolling_code", "FFFF"));	# get 0000 by increment 
+	
+	my $enc_key_increment = hex( substr($enckey, 1, 1) );
+	my $new_enc_key = sprintf( "A%1X", ( ++$enc_key_increment ) );
+	my $rolling_code_increment = hex( $rollingcode );
+	my $new_rolling_code = sprintf( "%04X", ( ++$rolling_code_increment ) );
+
+	# update the readings, but do not generate an event
+	setReadingsVal($hash, "enc_key", $new_enc_key, $timestamp);
+	setReadingsVal($hash, "rolling_code", $new_rolling_code, $timestamp);
+
 	$message = "s"
-	  . $enckey
+	  . $new_enc_key
 	  . $command
-	  . $rollingcode
+	  . $new_rolling_code
 	  . uc( $hash->{ADDRESS} );
 
 	## Log that we are going to switch Somfy
@@ -473,17 +483,6 @@ sub SOMFY_SendCommand($@)
 		Log3($name,5,"SOMFY_sendCommand: $name -> message :$message: ");
 		IOWrite( $hash, "Y", $message );
 	}
-
-	# increment encryption key and rolling code
-	my $enc_key_increment      = hex( $enckey );
-	my $rolling_code_increment = hex( $rollingcode );
-
-	my $new_enc_key = sprintf( "%02X", ( ++$enc_key_increment & hex("0xAF") ) );
-	my $new_rolling_code = sprintf( "%04X", ( ++$rolling_code_increment ) );
-
-	# update the readings, but do not generate an event
-	setReadingsVal($hash, "enc_key", $new_enc_key, $timestamp);
-	setReadingsVal($hash, "rolling_code", $new_rolling_code, $timestamp);
 
 	# CUL specifics
 	if ($ioType ne "SIGNALduino") {
@@ -586,6 +585,7 @@ sub SOMFY_Parse($$) {
 	if ($ioType eq "SIGNALduino") {
 		my $encData = substr($msg, 2);
 		return "Somfy RTS message format error!" if ($encData !~ m/A[0-9A-F]{13}/);
+		return "Somfy RTS message format error (length)!" if (length($encData) != 14);
 	
 		my $decData = SOMFY_RTS_Crypt("d", $name, $encData);
 		my $check = SOMFY_RTS_Check($name, $decData);
@@ -609,8 +609,10 @@ sub SOMFY_Parse($$) {
   # Check for correct length
   return "SOMFY incorrect length for command (".$msg.") / length should be 16" if ( length($msg) != 16 );
   
-  # get address
-  my $address = uc(substr($msg, 14, 2).substr($msg, 12, 2).substr($msg, 10, 2));
+    # get encKey, rolling code and address
+	my $encKey = substr($msg, 2, 2);
+	my $rolling = substr($msg, 6, 4);
+    my $address = uc(substr($msg, 14, 2).substr($msg, 12, 2).substr($msg, 10, 2));
 
     # get command and set new state
 	my $cmd = sprintf("%X", hex(substr($msg, 4, 2)) & 0xF0);
@@ -633,23 +635,22 @@ sub SOMFY_Parse($$) {
       		# update the state and log it
 					### NEEDS to be deactivated due to the state being maintained by the timer
 					# readingsSingleUpdate($lh, "state", $newstate, 1);
+					readingsSingleUpdate($lh, "enc_key", $encKey, 1);
+					readingsSingleUpdate($lh, "rolling_code", $rolling, 1);
 					readingsSingleUpdate($lh, "parsestate", $newstate, 1);
 
 			Log3 $name, 4, "SOMFY $name $newstate";
 
 			push(@list, $name);
 		}
-		# return list of affected devices
-		return @list;
 
-	} else {
-		# rolling code and enckey
-		my $rolling = substr($msg, 6, 4);
-		my $encKey = substr($msg, 2, 2);
-		
-		Log3 $hash, 1, "SOMFY Unknown device $address ($encKey $rolling), please define it";
-		return "UNDEFINED SOMFY_$address SOMFY $address $encKey $rolling";
+		# return list of affected devices
+		# otherwise goto autocreate
+		return @list if scalar(@list) > 0;
 	}
+	
+	# autocreate
+	return "UNDEFINED SOMFY_$address SOMFY $address $encKey $rolling";
 }
 ##############################
 sub SOMFY_Attr(@) {

@@ -19,7 +19,7 @@
 #
 ##############################################################################
 #
-# $Id: 10_SOMFY.pm 12597 2016-11-17 21:32:22Z viegener $
+# $Id: 10_SOMFY.pm 12918 2016-12-31 10:10:47Z viegener $
 #  
 # SOMFY RTS / Simu Hz protocol module for FHEM
 # (c) Thomas Dankert <post@thomyd.de>
@@ -89,6 +89,7 @@
 #  2016-10-14 viegener - FIX: Use of uninitialized value $updateState in concatenation
 # 
 #  2016-12-30 viegener - New sets / code-commands 9 / a  - wind_sun_9 / wind_only_a
+#  2017-01-08 viegener - Handle fixed encryption A0 for switches - switchable fixed_enckey
 #  
 #  
 ###############################################################################
@@ -100,7 +101,9 @@
 # Somfy Modul - OPEN
 ###############################################################################
 # 
-# - 
+# - Handle fixed encryption A0 for switches - switchable
+# - add queuing for commands
+# - signalduino modifications - to be adapted to not change existing behavior
 # - Autocreate 
 # - Complete shutter / blind as different model
 # - Make better distinction between different IoTypes - CUL+SCC / Signalduino
@@ -256,6 +259,7 @@ sub SOMFY_Initialize($) {
 	  . " rolling-code"
 	  . " repetition"
 	  . " switch_rfmode:1,0"
+	  . " fixed_enckey:1,0"
 	  . " do_not_notify:1,0"
 	  . " ignore:0,1"
 	  . " dummy:1,0"
@@ -475,14 +479,18 @@ sub SOMFY_SendCommand($@)
 	}
 
 	# increment encryption key and rolling code
-	my $enc_key_increment      = hex( $enckey );
+  my $new_enc_key = $enckey;
+  if (! AttrVal( $name, "fixed_enckey", 0 ) ) {
+    my $enc_key_increment      = hex( $enckey );
+    $new_enc_key = sprintf( "%02X", ( ++$enc_key_increment & hex("0xAF") ) );
+  }
+    
 	my $rolling_code_increment = hex( $rollingcode );
-
-	my $new_enc_key = sprintf( "%02X", ( ++$enc_key_increment & hex("0xAF") ) );
 	my $new_rolling_code = sprintf( "%04X", ( ++$rolling_code_increment ) );
 
 	# update the readings, but do not generate an event
-	setReadingsVal($hash, "enc_key", $new_enc_key, $timestamp);
+	setReadingsVal($hash, "enc_key", $new_enc_key, $timestamp); 
+
 	setReadingsVal($hash, "rolling_code", $new_rolling_code, $timestamp);
 
 	# CUL specifics
@@ -535,7 +543,7 @@ sub SOMFY_SendCommand($@)
 	
 	return $ret;
 } # end sub SOMFY_SendCommand
-
+  
 
 ###################################
 sub SOMFY_Runden($) {
@@ -1624,6 +1632,11 @@ sub SOMFY_CalcCurrentPos($$$$) {
         This requires also setting rolling-code: only with bot attributes set the value will be accepted for the internal reading
 		</li><br>
 
+    <a name="fixed_enckey"></a>
+    <li>fixed_enckey 1|0<br>
+        If set to 1 the enc-key is not changed after a command sent to the device. Default is value 0 meaning enc-key is changed normally for the RTS protocol.
+		</li><br>
+    
     <a name="eventMap"></a>
     <li>eventMap<br>
         Replace event names and set arguments. The value of this attribute

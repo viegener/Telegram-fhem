@@ -198,11 +198,16 @@
 
 #   allow response for commands being sent in chats - new attribute cmdRespondChat to configure
 #   new reading msgChatId
-#   
+#   exclamation mark in favorites to allow empty results also being sent
 #   
 #   
 ##############################################################################
 # TASKS 
+#   
+#   
+#   add an option to make sure that a command sends confirmations 
+#   
+#   add an option to send silent messages - msg556631
 #   
 #   document cmdRespondChat / msgChatId
 #   
@@ -259,6 +264,7 @@ sub TelegramBot_PutToUTF8( $ );
 sub TelegramBot_AttrNum($$$);
 
 sub TelegramBot_MakeKeyboard($$$@);
+sub TelegramBot_ExecuteCommand($$$$;$);
 
 #########################
 # Globals
@@ -759,7 +765,7 @@ sub TelegramBot_Attr(@) {
       my @clist = split( /;/, $aVal);
 
       foreach my $cs (  @clist ) {
-        my ( $alias, $desc, $parsecmd, $needsConfirm ) = TelegramBot_SplitFavoriteDef( $hash, $cs );
+        my ( $alias, $desc, $parsecmd, $needsConfirm, $needsResult ) = TelegramBot_SplitFavoriteDef( $hash, $cs );
         if ( $alias ) {
           my $alx = $alias;
           my $alcmd = $parsecmd;
@@ -879,20 +885,21 @@ sub TelegramBot_SplitFavoriteDef($$) {
   #   /rolladen[Liste Rolladen]=list TYPE=SOMFY
   #   /rolladen[Liste Rolladen]=list TYPE=SOMFY
   
-  my ( $alias, $desc, $parsecmd, $confirm );
+  my ( $alias, $desc, $parsecmd, $confirm, $result  );
 
-  if ( $cmd =~ /^\s*((\/[^\[=]*)?(\[([^\]]+)\])?=)?(\??)(.*?)$/ ) {
+  if ( $cmd =~ /^\s*((\/[^\[=]*)?(\[([^\]]+)\])?=)?(\??)(\!?)(.*?)$/ ) {
     $alias = $2;
     $alias = undef if ( $alias && ( $alias eq "/" ) );
     $desc = $4;
     $confirm = $5;
-    $parsecmd = $6;
+    $result = $6;
+    $parsecmd = $7;
 #    Debug "Parse 1  a:".$alias.":  d:".$desc.":  c:".$parsecmd.":";
   } else {
     Log3 $name, 1, "TelegramBot_SplitFavoriteDef invalid favorite definition :$cmd: ";
   }
   
-  return ( $alias, $desc, $parsecmd, (($confirm eq "?")?1:0) );
+  return ( $alias, $desc, $parsecmd, (($confirm eq "?")?1:0), (($result eq "!")?1:0) );
 }
     
 #####################################
@@ -915,7 +922,7 @@ sub TelegramBot_SentFavorites($$$$$) {
   my $resppeer = $mpeernorm;
   $resppeer .= "(".$mchatnorm.")" if ( $mchatnorm ); 
 
-          if ( $cmd =~ /^\s*([0-9]+)(\??)\s*=.*$/ ) {
+  if ( $cmd =~ /^\s*([0-9]+)(\??)\s*=.*$/ ) {
     $cmd = $1;
     $isConfirm = ($2 eq "?")?1:0; 
   }
@@ -928,7 +935,7 @@ sub TelegramBot_SentFavorites($$$$$) {
     if ( ( $cmdId >= 0 ) && ( $cmdId < scalar( @clist ) ) ) { 
       my $ecmd = $clist[$cmdId];
       
-      my ( $alias, $desc, $parsecmd, $needsConfirm ) = TelegramBot_SplitFavoriteDef( $hash, $ecmd );
+      my ( $alias, $desc, $parsecmd, $needsConfirm, $needsResult ) = TelegramBot_SplitFavoriteDef( $hash, $ecmd );
       return "Alias could not be parsed :$ecmd:" if ( ! $parsecmd );
 
       $ecmd = $parsecmd;
@@ -966,7 +973,7 @@ sub TelegramBot_SentFavorites($$$$$) {
         
       } else {
         $ecmd = $1 if ( $ecmd =~ /^\s*\?(.*)$/ );
-        return TelegramBot_ExecuteCommand( $hash, $mpeernorm, $mchatnorm, $ecmd );
+        return TelegramBot_ExecuteCommand( $hash, $mpeernorm, $mchatnorm, $ecmd, $needsResult );
       }
     } else {
       Log3 $name, 3, "TelegramBot_SentFavorites cmd id not defined :($cmdId+1): ";
@@ -982,7 +989,7 @@ sub TelegramBot_SentFavorites($$$$$) {
       
       foreach my $cs (  @clist ) {
         $cnt += 1;
-        my ( $alias, $desc, $parsecmd, $needsConfirm ) = TelegramBot_SplitFavoriteDef( $hash, $cs );
+        my ( $alias, $desc, $parsecmd, $needsConfirm, $needsResult ) = TelegramBot_SplitFavoriteDef( $hash, $cs );
         if ( defined($parsecmd) ) { 
           my @tmparr = ( $fcmd.$cnt." = ".($alias?$alias." = ":"").(($desc)?$desc:$parsecmd) );
           push( @keys, \@tmparr );
@@ -1088,11 +1095,13 @@ sub TelegramBot_ReadHandleCommand($$$$$) {
 #####################################
 #####################################
 # INTERNAL: execute command and sent return value 
-sub TelegramBot_ExecuteCommand($$$$) {
-  my ($hash, $mpeernorm, $mchatnorm, $cmd ) = @_;
+sub TelegramBot_ExecuteCommand($$$$;$) {
+  my ($hash, $mpeernorm, $mchatnorm, $cmd, $sentemptyresult ) = @_;
   my $name = $hash->{NAME};
 
   my $ret;
+  
+  $sentemptyresult = AttrVal($name,'cmdReturnEmptyResult',1) if ( ! $sentemptyresult );
   
   # get human readble name for peer
   my $pname = TelegramBot_GetFullnameForContact( $hash, $mpeernorm );
@@ -1144,7 +1153,7 @@ sub TelegramBot_ExecuteCommand($$$$) {
 
   if ( ( ! defined( $ret ) ) || ( length( $ret) == 0 ) ) {
     $retMsg =~ s/\$result/OK/g;
-    $ret = $retMsg if ( AttrVal($name,'cmdReturnEmptyResult',1) );
+    $ret = $retMsg if ( $sentemptyresult );
   } elsif ( ! $isMediaStream ) {
     $retMsg =~ s/\$result/$ret/g;
     $ret = $retMsg;
@@ -3160,7 +3169,14 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <br>
         Examples: <code>get lights status; /light=?set lights on; /dark=set lights off; ?set heater;</code> <br>
     <br>
-    Meaning the full format for a single favorite is <code>/alias[description]=command</code> where the alias can be empty or <code>/alias=command</code> or just the <code>command</code>. In any case the command can be also prefixed with a '?'. Spaces are only allowed in the description and the command, usage of spaces in other areas might lead to wrong interpretation of the definition. Spaces and also many other characters are not supported in the alias commands by telegram, so if you want to have your favorite/alias directly recognized in then telegram app, restriction to letters, digits and underscore is required.  
+    <br>
+    Favorite commands can also be prefixed with a exclamation mark ('!') to ensure an ok-result message is sent even when the attribute cmdReturnEmptyResult is set to 0. 
+    <br>
+        Examples: <code>get lights status; /light=!set lights on; /dark=set lights off; !set heater;</code> <br>
+    <br>
+    The question mark needs to be before the exclamation mark if both are given.
+    <br>
+    Meaning the full format for a single favorite is <code>/alias[description]=command</code> where the alias can be empty or <code>/alias=command</code> or just the <code>command</code>. In any case the command can be also prefixed with a '?' or a '!' (or both). Spaces are only allowed in the description and the command, usage of spaces in other areas might lead to wrong interpretation of the definition. Spaces and also many other characters are not supported in the alias commands by telegram, so if you want to have your favorite/alias directly recognized in then telegram app, restriction to letters, digits and underscore is required.  
     </li> 
 
   <br>

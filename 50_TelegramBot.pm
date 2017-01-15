@@ -199,13 +199,16 @@
 #   allow response for commands being sent in chats - new attribute cmdRespondChat to configure
 #   new reading msgChatId
 #   exclamation mark in favorites to allow empty results also being sent
+
+#   new get peerID for onverting a named peer into an id (same syntax as in msg)
+#   document get commands
+#   
 #   
 #   
 ##############################################################################
 # TASKS 
 #   
-#   
-#   add an option to make sure that a command sends confirmations 
+#   "bad request:.*" should not result in retry
 #   
 #   add an option to send silent messages - msg556631
 #   
@@ -308,7 +311,9 @@ my %deprecatedsets = (
 my %gets = (
   "urlForFile" => "textField",
 
-  "update" => undef
+  "update" => undef,
+  
+  "peerId" => "textField",
 );
 
 my $TelegramBot_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0\r\nAccept: application/json\r\nAccept-Charset: utf-8";
@@ -723,7 +728,16 @@ sub TelegramBot_Get($@)
 
   } elsif ( $cmd eq "update" ) {
     $ret = TelegramBot_UpdatePoll( $hash, "doOnce" );
+
+  } elsif ( $cmd eq "peerId" ) {
+    if ( $numberOfArgs != 2 ) {
+      return "TelegramBot_Get: Command $cmd, peer specified";
+    }
+    $ret = TelegramBot_GetIdForPeer( $hash, $arg );
   }
+  
+  
+  
   
   Log3 $name, 5, "TelegramBot_Get $name: done with ".( defined($ret)?$ret:"<undef>").": ";
 
@@ -1456,6 +1470,9 @@ sub TelegramBot_SendIt($$$$$;$$)
       }
       
 #      $hash->{HU_DO_PARAMS}->{url} = "http://requestb.in";
+
+  # DEBUG OPTION
+  #  $hash->{HU_DO_PARAMS}->{url} = "http://requestb.in/1ibjnj81" if ( $msg =~ /^ZZZ/ );
 
       ## JVI
 #      Debug "send  org msg  :".$msg.":";
@@ -3112,7 +3129,20 @@ sub TelegramBot_BinaryFileWrite($$$) {
 
   <br><br>
 
-  <a name="TelegramBotattr"></a>
+  <a name="TelegramBotget"></a>
+  <b>Get</b>
+  <ul>
+    <li><code>urlForFile &lt;fileid&gt;</code><br>Get a URL for a file id that was returned in a message
+    </li>
+    <li><code>update </code><br>Execute a single update (instead of automatic polling) - manual polling
+    </li>
+    <li><code>peerId &lt;peer&gt;</code><br>Ask for a peerId for a given peer, the peer can be specified in the same form as in a message without the initial '@'
+    </li>
+  </ul>
+
+  <br><br>
+
+    <a name="TelegramBotattr"></a>
   <b>Attributes</b>
   <br><br>
   <ul>

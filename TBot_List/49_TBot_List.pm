@@ -48,27 +48,28 @@
 #   modify tbot to call handler with querydcata -- get routine - returns undef=nothandled 0=emptyanswerbuthandled other=answer
 # 0.1 2017-01-17 Initial Version - mostly tested
 
-#   
+#   Documentation
+#   changed log levels
 #   
 #   
 ##############################################################################
 # TASKS 
 #   
-#   BUG: after add/reply msgId not found in new inlinekeys - for full list
 #   
-#   remove Debugs
+#   Further testing of all multi liste
 #   
+#   internal value if waiting for msg or reply -- otherwise notify not looping through events
 #   
+#   add entry for messages sent accidentially - absed on dialog
+#   
+#   Further testing of end
 #   
 #   TODOs
 #
-#   internal value if waiting for msg or reply -- otherwise notify not looping through events
-#   
 #   setters - start list / add new entry with question
 ##############################################################################
 # Ideas
 #   
-#   allow to react on keywords and start dialog
 #
 ##############################################################################
 
@@ -209,7 +210,7 @@ sub TBot_List_Set($@)
 
   my $addArg = ($args[0] ? join(" ", @args ) : undef);
 
-  Log3 $name, 5, "TBot_List_Set $name: Processing TBot_List_Set( $cmd ) - args :".(defined($addArg)?$addArg:"<undef>").":";
+  Log3 $name, 4, "TBot_List_Set $name: Processing TBot_List_Set( $cmd ) - args :".(defined($addArg)?$addArg:"<undef>").":";
 
   # check cmd / handle ?
   my $ret = TBot_List_CheckSetGet( $hash, $cmd, $hash->{setoptions} );
@@ -219,7 +220,7 @@ sub TBot_List_Set($@)
     # do nothing if error/ret is defined
 
   } elsif ($cmd eq 'start')  {
-    Log3 $name, 3, "TBot_List_Set $name: start of dialog requested ";
+    Log3 $name, 4, "TBot_List_Set $name: start of dialog requested ";
     $ret = "start requires a telegrambot and optionally a peer" if ( ( $numberOfArgs < 2 ) && ( $numberOfArgs > 3 ) );
     
     my $tbot;
@@ -273,7 +274,7 @@ sub TBot_List_Set($@)
     $ret = TBot_List_handler( $hash, "list", $tbot, $tpeer ) if ( ! $ret );
 
   } elsif($cmd eq 'end') {
-    Log3 $name, 3, "TBot_List_Set $name: end of dialog requested ";
+    Log3 $name, 4, "TBot_List_Set $name: end of dialog requested ";
     $ret = "end requires a telegrambot and optionally a peer" if ( $numberOfArgs != 3 );
     
     my $tbot;
@@ -292,7 +293,7 @@ sub TBot_List_Set($@)
     $ret = TBot_List_handler( $hash, "end", $tbot, $tpeer ) if ( ! $ret );
   }
 
-  Log3 $name, 5, "TBot_List_Set $name: $cmd ".((defined( $ret ))?"failed with :$ret: ":"done succesful ");
+  Log3 $name, 4, "TBot_List_Set $name: $cmd ".((defined( $ret ))?"failed with :$ret: ":"done succesful ");
   return $ret
 }
 
@@ -324,7 +325,7 @@ sub TBot_List_Get($@)
     if ( $numberOfArgs != 4 ) {
       $ret = "queryAnswer requires a telegrambot peer and querydata to be specified";
     } else {
-      Log3 $name, 3, "TBot_List_Get $name: queryAnswer requested tbot:".$args[1].":   peer:".$args[2].":   qdata:".$args[3].":";
+      Log3 $name, 4, "TBot_List_Get $name: queryAnswer requested tbot:".$args[1].":   peer:".$args[2].":   qdata:".$args[3].":";
     }
     
     my $tbot;
@@ -357,7 +358,7 @@ sub TBot_List_Get($@)
 
   }
   
-  Log3 $name, 5, "TBot_List_Get $name: $cmd ".(($ret)?"failed with :$ret: ":"done succesful ");
+  Log3 $name, 4, "TBot_List_Get $name: $cmd ".(($ret)?"failed with :$ret: ":"done succesful ");
 
   return $ret
 }
@@ -585,7 +586,7 @@ sub TBot_List_handleEvents($$$)
     $event = "" if(!defined($event));
     
     if ( $event =~ /sentMsgId\:/ ) {
-      Log3 $name, 3, "TBot_List_handleEvents $name: found sentMsgId ". $event;
+      Log3 $name, 4, "TBot_List_handleEvents $name: found sentMsgId ". $event;
       my $msgPeer = InternalVal( $tbot, "sentMsgPeerId", "" );  
       my $msgWait = TBot_List_getMsgId( $hash, $tbot, $msgPeer, "textmsg" );
       my $msgSent = InternalVal( $tbot, "sentMsgText", "" );
@@ -615,7 +616,7 @@ sub TBot_List_handleEvents($$$)
       }
       
     } elsif ( $event =~ /msgReplyMsgId\:/ ) {
-      Log3 $name, 3, "TBot_List_handleEvents $name: found msgReplyMsgId ". $event;
+      Log3 $name, 4, "TBot_List_handleEvents $name: found msgReplyMsgId ". $event;
       my $msgPeer = ReadingsVal( $tbot, "msgPeerId", "" );  
       my $msgReplyId = ReadingsVal($tbot,"msgReplyMsgId","");
       $msgReplyId =~ s/\s//g;
@@ -652,7 +653,7 @@ sub TBot_List_handler($$$$;$)
 
   my $ret;
 
-  Log3 $name, 3, "JVLISTMGR_handler: $name - $tbot  peer :$peer:   cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
+  Log3 $name, 4, "JVLISTMGR_handler: $name - $tbot  peer :$peer:   cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
 
   my $lname = TBot_List_getConfigListname($hash);
   my $msgId;
@@ -1092,124 +1093,81 @@ sub TBot_List_Setup($) {
 =item summary_DE Dialoge über TelegramBot für PostMe-Listen
 =begin html
 
-<a name="BlinkCamera"></a>
-<h3>BlinkCamera</h3>
+<a name="TBot_List"></a>
+<h3>TBot_List</h3>
 <ul>
 
-  This module connects remotely to a system of Blink Home Cameras 
-  
-  <a href="https://blinkforhome.com">Blink Home Cameras</a> are relatively inexpensive wire-free video home security & monitoring system
-
-  The blink device contains the possibility to regular poll for updates (i.e. specifically for notificatio0ns/alerts) 
-  MOst commands that change configurations are not synchronous, but the result will be returned after polling for status information. This is automatically handled in the device and the result of the cmd is marked in the reading <code>cmdResult</code> with the value "SUCCESS".
-  <br>
-  The blink device also contains a proxy for retrieving videos and thumbnails throug an FHEMweb extension in the form of http://&lt;fhem&gt;:&lt;fhemwebport&gt;/fhem/BlinkCamera/&lt;name of the blink device&gt;/...
+  This module connects for allowing inline keyboard interactions between a telegramBot and PostMe lists.
   
   <br><br>
-  <a name="BlinkCameradefine"></a>
+  <a name="TBot_Listdefine"></a>
   <b>Define</b>
   <ul>
-    <code>define &lt;name&gt; BlinkCamera &lt;email&gt; &lt;password&gt; </code>
+    <code>define &lt;name&gt; TBot_List &lt;PostMe device&gt; &lt;listname&gt; </code>
     <br><br>
-    Defines a BlinkCamera devic, which connects to the cloud servers with the given user name and password (as provided during registration / setup)
+    Defines a TBot_List device, which will allow interaction between the telegrambot and the postme device
     <br><br>
-    Example: <code>define blink BlinkCamera ichbins@nicht.de abc123</code><br>
+    Example: <code>define testtbotlist TBot_List testposteme testlist</code><br>
     <br>
   </ul>
   <br><br>   
   
-  <a name="BlinkCameraset"></a>
+  <a name="TBot_Listset"></a>
   <b>Set</b>
   <ul>
     <code>set &lt;name&gt; &lt;what&gt; [&lt;value&gt;]</code>
-    <br><br>
+    <br>
     where &lt;what&gt; / &lt;value&gt; is one of
 
   <br><br>
-    <li><code>login</code><br>Initiate a login to the blink servers. This is usually done automatically when needed or when the login is expired
+    <li><code>start &lt;telegrambot name&gt; [ &lt;peerid&gt; ]</code><br>Initiate a new dialog for the given peer (or the last peer sending a message on the given telegrambot)
     </li>
-    <li><code>arm</code> or <code>disarm</code><br>All enabled cameras in the system will be armed (i.e. they will be set to a mode where alarms/videos are automatically created based on the current settings) / disarmed (set to inactive mode where no video is recorded.
-    </li>
-    <li><code>camEnable &lt;camera name or number or "all"&gt;</code> or <code>camDisable &lt;camera name or number&gt;</code><br>The specified camera will be enabled (i.e. so that it is included in the arm / disarm commands) / disabled (excluded from arm/disarm).
-    </li>
-    
-    <li><code>reset</code><br>Reset the FHEM device (only used in case of something gets into an unknown or strange state)
-    </li>
-    
-    <li><code>videoDelete &lt;video id&gt;</code><br>The video with the given id will be removed (both from the local filesystem and from the blink servers)
+    <li><code>end &lt;telegrambot name&gt; &lt;peerid&gt;</code><br>Finalize a new dialog for the given peer  on the given telegrambot
     </li>
     
   </ul>
 
   <br><br>
 
-  <a name="BlinkCameraget"></a>
-  <b>Set</b>
+  <a name="TBot_Listget"></a>
+  <b>Get</b>
   <ul>
     <code>get &lt;name&gt; &lt;what&gt; [&lt;value&gt;]</code>
-    <br><br>
+    <br>
     where &lt;what&gt; / &lt;value&gt; is one of
 
   <br><br>
-    <li><code>getInfo</code><br>Get information about the system from the blink servers (including cameras and state) . This is usually done automatically based on the reular interval specified in attribute <code>pollingTimeout</code>
-    </li>
-    <li><code>getInfoCamera &lt;camera name or number or "all"&gt;</code><br>Get the information about the specified camera from the blink system. Currently the information about the camera is just stored in raw json format in a single reading <code>cameraConfig&lt;camera id&gt;</code>
-    </li>
-    <li><code>getThumbnail &lt;camera name or number or "all"&gt;</code><br>Request a new thumbnail being taken from the specified camera in the blink system. The thumbnail is not automatically retrieved, this can be done using <code>getInfoCamera</code>
-    </li>
-    
-    
-    <li><code>getVideoAlert [ &lt;video id&gt; ]</code><br>Retrieve the video for the corresponding id (or if ommitted as specified in the reading <code>alertID</code>) and store the video in a local file in the directory given in the attribute <code>proxyDir</code>
+    <li><code>querAnswer &lt;telegrambot name&gt; &lt;peerid&gt; &lt;queryData&gt; </code><br>Get the queryAnswer for the given query data in the dialog (will be called internally by the telegramBot on receiving querydata) 
     </li>
     
   </ul>
 
   <br><br>
 
-  <a name="BlinkCameraattr"></a>
+  <a name="TBot_Listattr"></a>
   <b>Attributes</b>
   <br><br>
   <ul>
-    <li><code>network &lt;network id&gt;</code><br>This attribute is needed if your blink system contains more than one network. If not specified the first netowrk defined in the account is used
+    <li><code>telegramBots &lt;list of telegramBot names separated by space&gt;</code><br>This attribute takes the names of telegram bots, that are monitored by this Tbot_List device
     </li> 
 
-    <li><code>proxyDir &lt;directory path&gt;</code><br>Specify the path where temporary files (videos, thumbnails) are stored to be access via the proxy server built into the device as an fhemweb extension
+    <li><code>optionDouble &lt;1 or 0&gt;</code><br>Specify if the list shall be done in two columns (double=1) or in a single column (double=0 or not set).
     </li> 
-
-    <li><code>pollingTimeout &lt;interval&gt;</code><br>Interval in which the system is checking for status updates from the blink servers (given in seconds - value 0 means no polling). This is the frequency in which new alerts can be received
+    
+    <li><code>allowedPeers &lt;list of peer ids&gt;</code><br>If specifed further restricts the users for the given list to these peers. It can be specifed in the same form as in the telegramBot msg command but without the leading @ (so ids will be just numbers).
     </li> 
-
-    <li><code>imgTemplate &lt;HTML template for reading&gt;</code><br>Give an HTML template for the image reading that shows the thumbnail of a camera. Default is a template which shows the image a link to the image and also the url as text. In the template the string #URL# will be replaced with the actual URL
-    </li> 
-
-    <li><code>vidTemplate &lt;HTML template for reading&gt;</code><br>Give an HTML template for the video reading that shows the video of a notification from the camera. Default is a template which shows the video a link to the video and also the url and id as text. In the template the string #URL# will be replaced with the actual URL of the video and #ID# will be replaced by the video ID.
-    </li> 
-
   </ul>
 
   <br><br>
 
 
-    <a name="BlinkCamerareadings"></a>
+    <a name="TBot_Listreadings"></a>
   <b>Readings</b>
   
   <ul>
-    <li><code>cmd &lt;internal name of the last executed command&gt;</code><br>Used to identify the cmd that was last executed and where the result is given in cmdResult </li> 
-    <li><code>cmdResult &lt;error message or SUCCESS&gt;</code><br>Used to identify success or failure of a command </li> 
+    <li>currently none</li> 
     
     <br>
-    
-    <li><code>networks &lt;list of networks&gt;</code><br>Lists the defined networks for the account at blink in the form networkid:networkname </li> 
-    <li><code>networkName &lt;name&gt;</code><br>Name of the network that is currently used to fill the readings </li> 
-    <li><code>networkArmed &lt;status&gt;</code><br>Network arm status (true or false)</li> 
-    <li><code>networkStatus &lt;ok or failure&gt;</code><br>Basic status of the current network</li> 
-    <li><code>networkCameras &lt;number&gt;</code><br>Lists the defined cameras in the current network in the form cameraid:cameraname </li> 
-    <li><code>networkSyncModule &lt;id and status&gt;</code><br>Information about the syncmodule in the current network in the form syncid:syncmodulestatus </li> 
-    
-    <br>
-    
-    <li><code>networkCamera... </code><br>Set of readings specific for each camera (identified by the cameraID in the reading name). Providing status and name of the camera / most recent thumbnail / url for the thumbnail to the proxy </li> 
-    
     
   </ul> 
 

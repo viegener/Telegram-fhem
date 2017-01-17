@@ -199,10 +199,10 @@
 #   allow response for commands being sent in chats - new attribute cmdRespondChat to configure
 #   new reading msgChatId
 #   exclamation mark in favorites to allow empty results also being sent
-
 #   new get peerID for onverting a named peer into an id (same syntax as in msg)
 #   document get commands
-#   
+
+#   communication with TBot_List Module -> queryAnswer
 #   
 #   
 ##############################################################################
@@ -2344,7 +2344,6 @@ sub TelegramBot_ParseCallbackQuery($$$)
 
     Log3 $name, 4, "TelegramBot_ParseCallback $name: ".$mtext;
 
-
     # contacts handled separately since readings are updated in here
     TelegramBot_ContactUpdate($hash, @contacts) if ( scalar(@contacts) > 0 );
     
@@ -2362,6 +2361,18 @@ sub TelegramBot_ParseCallbackQuery($$$)
     
     $answerData = AttrVal($name,'queryAnswerText',undef); 
     
+    # special handling for TBot_List
+    if ( defined( $data ) ) {
+      my @ltbots = devspec2array( "TYPE=TBot_List" );
+      my $ltbotresult;
+      foreach my $ltbot ( @ltbots ) {
+        $ltbotresult = fhem( "get $ltbot queryAnswer $name $mpeernorm $data" );
+        if ( defined( $ltbotresult ) ) {
+          $answerData = $ltbotresult;
+          last;
+        }
+      }
+    }
   } 
   
   # sent answer if not undef 

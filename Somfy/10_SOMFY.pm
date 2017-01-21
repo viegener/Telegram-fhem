@@ -90,6 +90,7 @@
 # 
 #  2016-12-30 viegener - New sets / code-commands 9 / a  - wind_sun_9 / wind_only_a
 #  2017-01-08 viegener - Handle fixed encryption A0 for switches - switchable fixed_enckey
+#  2017-01-21 viegener - updatestate also called in non virtual mode to sent events
 #  
 #  
 ###############################################################################
@@ -101,7 +102,8 @@
 # Somfy Modul - OPEN
 ###############################################################################
 # 
-# - Handle fixed encryption A0 for switches - switchable
+# - Check readings set
+# - Check if modify can replace the strange attr - reading operation
 # - add queuing for commands
 # - signalduino modifications - to be adapted to not change existing behavior
 # - Autocreate 
@@ -171,7 +173,7 @@ my $somfy_defrepetition = 6;	# Default Somfy frame repeat counter
 
 my $somfy_updateFreq = 3;	# Interval for State update
 
-my %models = ( somfyblinds => 'blinds', somfyshutter => 'shutter', ); # supported models (blinds  and shutters)
+my %models = ( somfyblinds => 'blinds', somfyshutter => 'shutter', somfyswitch2 => 'switch2', somfyswitch4 => 'switch4', ); # supported models (blinds  and shutters)
 
 
 ######################################################
@@ -213,6 +215,7 @@ my %translations100To0 = (
 # Forward declarations
 #
 sub SOMFY_CalcCurrentPos($$$$);
+sub SOMFY_isSwitch($);
 
 
 
@@ -263,7 +266,7 @@ sub SOMFY_Initialize($) {
 	  . " do_not_notify:1,0"
 	  . " ignore:0,1"
 	  . " dummy:1,0"
-	  . " model:somfyblinds,somfyshutter"
+	  . " model:somfyblinds,somfyshutter,somfyswitch2,somfyswitch4"
 	  . " loglevel:0,1,2,3,4,5,6"
 	  . " $readingFnAttributes";
 
@@ -480,7 +483,7 @@ sub SOMFY_SendCommand($@)
 
 	# increment encryption key and rolling code
   my $new_enc_key = $enckey;
-  if (! AttrVal( $name, "fixed_enckey", 0 ) ) {
+  if ( (! AttrVal( $name, "fixed_enckey", 0 ) ) && ( ! SOMFY_isSwitch($hash) ) ) {
     my $enc_key_increment      = hex( $enckey );
     $new_enc_key = sprintf( "%02X", ( ++$enc_key_increment & hex("0xAF") ) );
   }
@@ -545,6 +548,23 @@ sub SOMFY_SendCommand($@)
 } # end sub SOMFY_SendCommand
   
 
+#############################
+# 0 blinds / 2 or 4 for switches
+sub SOMFY_isSwitch($) {
+	my ($hash) = @_;
+	my $name = $hash->{NAME};
+ 
+  my $model = AttrVal( $name, "model", "" );
+  
+  if ( $model =~ /switch(\d)$/ ) {
+    $model = $1;
+  } else {
+    $model = 0;
+  }
+  
+  return $model;
+}
+  
 ###################################
 sub SOMFY_Runden($) {
 	my ($v) = @_;
@@ -659,6 +679,8 @@ sub SOMFY_Parse($$) {
 		return "UNDEFINED SOMFY_$address SOMFY $address $encKey $rolling";
 	}
 }
+
+
 ##############################
 sub SOMFY_Attr(@) {
 	my ($cmd,$name,$aName,$aVal) = @_;
@@ -826,7 +848,11 @@ sub SOMFY_InternalSet($@) {
 		$arg1 = $args[1];
 	}
 	
+  my $isSwitch = SOMFY_isSwitch( $hash );
+  
 	return "SOMFY_set: Bad time spec" if($cmd =~m/(on|off)-for-timer/ && $numberOfArgs == 2 && $arg1 !~ m/^\d*\.?\d+$/);
+
+	return "SOMFY_set: Switch: only on/off supported" if($cmd !~ m/(on|off)/ && $isSwitch );
 
 	# read timing variables
   my ($t1down100, $t1downclose, $t1upopen, $t1up100) = SOMFY_getTimingValues($hash);
@@ -896,9 +922,20 @@ sub SOMFY_InternalSet($@) {
 
 	# calc posRounded
 	my $posRounded = SOMFY_RoundInternal( $pos );
-
+  
 	### handle commands
-	if(!defined($t1downclose) || !defined($t1down100) || !defined($t1upopen) || !defined($t1up100)) {
+  
+  if ( $isSwitch ) {
+  
+		if($cmd eq 'on') {
+			$newState = 'closed';
+		} elsif($cmd eq 'off') {
+			$newState = 'open';
+    } else {
+    }
+
+  
+	} elsif(!defined($t1downclose) || !defined($t1down100) || !defined($t1upopen) || !defined($t1up100)) {
 		#if timings not set 
 
 		if($cmd eq 'on') {
@@ -1071,7 +1108,8 @@ sub SOMFY_InternalSet($@) {
 	}
 			
 	# bulk update should do trigger if virtual mode
-	SOMFY_UpdateState( $hash, $newState, $move, $updateState, ( $mode eq 'virtual' ) );
+#	SOMFY_UpdateState( $hash, $newState, $move, $updateState, ( $mode eq 'virtual' ) );
+	SOMFY_UpdateState( $hash, $newState, $move, $updateState, 1 );
 	
 	### send command
 	if ( $mode ne 'virtual' ) {

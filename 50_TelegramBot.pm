@@ -32,136 +32,6 @@
 ##############################################################################
 # 0.0 2015-09-16 Started
 # 1.0 2015-10-17 Initial SVN-Version 
-#   
-#   INTERNAL: sendIt allows providing a keyboard json
-#   Favorites sent as keyboard
-#   allow sending to contacts not in the contacts list (by giving id of user)
-#   added comment on save (statefile) for correct operation in documentation
-#   contacts changed on new contacts found
-#   saveStateOnContactChange attribute to disaloow statefile save on contact change
-#   writeStatefile on contact change
-#   make contact restore simpler --> whenever new contact found write all contacts into log with loglevel 1
-#   Do not allow shutdown as command for execution
-#   ret from command handlings logged
-#   maxReturnSize for command results
-#   limit sentMsgTxt internal to 1000 chars (even if longer texts are sent)
-#   contact reading now written in contactsupdate before statefile written
-#   documentation corrected - forum#msg350873
-#   cleanup on comments 
-#   removed old version changes to history.txt
-#   add digest readings for error
-#   attribute to reduce logging on updatepoll errors - pollingVerbose:0_None,1_Digest,2_Log - (no log, default digest log daily, log every issue)
-#   documentation for pollingverbose
-#   reset / log polling status also in case of no error
-#   removed remark on timeout of 20sec
-#   LastCommands returns keyboard with commands 
-#   added send / image command for compatibility with yowsup
-#   image not in cmd list to avoid this being first option
-#   FIX: Keyboard removed after fac execution
-#   Do not use contacts from msg since this might be NON-Telegram contact
-#   cmdReturnEmptyResult - to suppress empty results from command execution
-#   prev... Readings do not trigger events (to reduce log content)
-#   Contacts reading only changed if string is not equal
-#   Need to replace \n again with Chr10 - linefeed due to a telegram change - FORUM #msg363825
-# 1.1 2015-11-24 keyboards added, log changes and multiple smaller enhancements
-#   
-#   Prepared for allowing multiple contacts being given for msg/image commands
-#   Prepare for defaultpeer specifying multiple peers as a list
-#   Allow multiple peers specified for send/msg/image etc
-#   Remove deprecated commands messageTo sendImageTo sendPhotoTo
-#   Minor fixes on lineendings for cmd results and log messages
-#   pollingVerbose attribute checked on set
-#   allowUnknownContacts attribute added default 1
-# 1.2 2015-12-20 multiple contacts for send etc/removed depreacted messageTo,sendImageTo,sendPhotoTo/allowunknowncontacts
-#
-#   modified cmd handling in preparation for alias (and more efficient)
-#   allow alias to be defined for favorites: /aliasx=cmdx;
-#   docu for alias
-#   correction for keyboard (no abbruch)
-#   added sentMsgId on sentMsgs
-#   Also set sentMsg Id and result in Readings (when finished)
-#   add docu for new readings on sentMsg
-#   fix for checkCmdKeyword to not sent unauthorized on every message
-#   avoid unauthorized messages to be sent multiple times 
-#   added sendVoice for Voice messages
-#   added sendMedia / sendDocument for arbitrary media files
-#   specified a longer description in the doc for gaining telegramBot tokens
-#   fix: allowunknowncontacts for known contacts
-# 1.3 2016-01-02 alias for commands, new readings, support for sending media files plus fixes
-#   
-#   receiving media files is possible --> file id is stored in msgFileId / msgText starting with "received..."
-#     additional info from message (type, name, etc) is contained in msgText 
-#   added get function to return url for file ids on media messages "urlForFile"
-#     writes returned url into internal: fileUrl
-#   INT: switch command result sending to direct _sendIt call
-#   forum msg396189
-#     favorite commands can be used also to send images back if the result of the command is an image 
-#     e.g. { plotAsPng('SVG_FileLog_something') } --> returns PNG if used in favorite the result will be send as photo
-#   Forbid all commands starting with shutdown
-#   Recognize MP3 also with ID3v2 tag (2.2 / 2.3 / 2.4)
-# 1.4 2016-02-07 receive media files, send media files directly from parameter (PNG, JPG, MP3, PDF, etc)
-
-#   Retry-Preparation: store arsg in param array / delete in case of error before sending
-#   added maxRetries for Retry send with wait time 1=10s / 2=100s / 3=1000s ~ 17min / 4=10000s ~ 3h / 5=100000s ~ 30h
-#   tested Retry of send in case of errors (after finalizing message)
-#   attr returns text to avoid automatic attr setting in fhem.pl
-#   documented maxRetries
-#   fixed attributehandling to normalize and correct attribute values
-#   fix for perl "keys on reference is experimental" forum#msg417968
-#   allow confirmation for favorite commands by prefixing with question ark (?)
-#   fix contact update 
-# 1.5 2016-03-19 retry for send / confirmation 
-
-#   supergroups added now also to contacts
-#   fix for first name of contacts undefined
-#   remove stale/duplicate contacts (based on username) on update of contacts (supergroups get new ids)
-#   Allow localization outward facing messages -> templates with replacements (German as default)
-#     New attributes for visible telegram responses: 
-#       textResponseConfirm, textResponseFavorites, textResponseCommands, textResponseResult, textResponseUnauthorized
-#   descriptions for favorites can be specified (enclosed in [])
-#   descriptions are shown in favorite list and confirmation dialogue
-#   texts are converted to UTF8 also for keyboards
-#   favorite list corrected
-# 1.6 2016-04-08 text customization for replies/messages and favorite descriptions 
-
-#   Fix: contact handling failed (/ in contact names ??)
-#   Reply keyboards also for sendVoice/sendDocument ect
-#   reply msg id in sendit - new set cmd reply
-#   Fix: reset also removes retry timer 
-#   TEMP: SNAME in hash is needed for allowed (SNAME reflects if the TCPServer device name) 
-#   Remove unnecessary attribute setters
-#   added allowedCommands and doc (with modification of allowed_... device)
-#   allowedCommands only modified on the allowed_... device
-# 1.7 2016-05-05 reply set command / allowedCommands as restriction
-
-#   fix for addPar (Caption) on photos in SendIt
-#   fix for contact list UTF8 encoding on restart
-#   fix: encoding problem in some environments leading to wrong length calc in httputils (msg457443)
-#
-#   fix: Favorite description without alias name was not parsed correctly
-#   fix: Favorite alias only handled if really contains more than the /
-#   
-#   Complete rework of JSON/UTF8 code to solve timeout and encoding issues
-#   Add \t for messages texts - will be a single space in the message
-# 1.8 2016-05-05 UNicode / Umlaute handling changed, \t added 
-
-#   Add unescaping of filenames for send - this allows also spaces (%20)
-#   Attribut filenameUrlEscape allows switching on urlescaping for filenames
-#   Caption also for documents
-#   Location and venue received as message type
-#   sendLocation command
-#   add attribute for timeout on do execution (similar to polling) --> cmdTimeout - timeout in do_params / Forum msg480844
-#   fix for timeout on sent and addtl log - forum msg497239
-#   change log levels for deep encoding
-#   add summary for fhem commandref
-# 1.9 2016-10-06 urlescaped filenames / location send-receive / timeout for send 
-
-#   fix: multibot environment - localize global hashes
-#   markup - per Attribute "parseModeSend" - None / InMsg / Markdown / HTML 
-#   Log unnknown contacts and messages - msg505210
-#   replykeyboardhide - test - msg505012 - not possible to remove keyboard
-#   edit_message - msg504659 - new command msgEdit
-#   msgEdit documented
 # 2.0 2016-10-19 multibot support / markup on send text / msgEdit 
 
 #   disable_web_page_preview - attribut webPagePreview - msg506924
@@ -202,21 +72,22 @@
 #   new get peerID for onverting a named peer into an id (same syntax as in msg)
 #   document get commands
 #   communication with TBot_List Module -> queryAnswer
-
 #   document cmdRespondChat / msgChatId
+
+#   "Bad Request:" or "Unauthorized" do not result in retry
+#   cleaned up done list
+#   
+#   
 #   
 #   
 ##############################################################################
 # TASKS 
 #   
-#   "bad request:.*" should not result in retry
-#   
 #   add an option to send silent messages - msg556631
 #   
-#   
-#   
-#   
 #   allow setting one time keyboard through set - how to connect to set?
+#   
+#   
 #   
 #   
 #   
@@ -629,7 +500,9 @@ sub TelegramBot_Set($@)
     # for internal testing only
     Log3 $name, 5, "TelegramBot_Set $name: start debug option ";
 #    delete $hash->{sentMsgPeer};
-    $ret = TelegramBot_SendIt( $hash, AttrVal($name,'defaultPeer',undef), "abc     def\n   def    ghi", undef, 0, undef );
+#    $ret = TelegramBot_SendIt( $hash, AttrVal($name,'defaultPeer',undef), "abc     def\n   def    ghi", undef, 0, undef );
+  $hash->{HU_UPD_PARAMS}->{callback} = \&TelegramBot_Callback;
+  $hash->{HU_DO_PARAMS}->{callback} = \&TelegramBot_Callback;
 
     
   # BOTONLY
@@ -1469,14 +1342,9 @@ sub TelegramBot_SendIt($$$$$;$$)
         $replyid = undef;
       }
       
-#      $hash->{HU_DO_PARAMS}->{url} = "http://requestb.in";
-
   # DEBUG OPTION
   #  $hash->{HU_DO_PARAMS}->{url} = "http://requestb.in/1ibjnj81" if ( $msg =~ /^ZZZ/ );
 
-      ## JVI
-#      Debug "send  org msg  :".$msg.":";
-  
       my $parseMode = TelegramBot_AttrNum($name,"parseModeSend","0" );
       if ( $parseMode == 1 ) {
         $parseMode = "Markdown";
@@ -1883,6 +1751,7 @@ sub TelegramBot_Callback($$$)
   my $name = $hash->{NAME};
 
   my $ret;
+  my $doRetry = 1;   # will be set to zero if error is found that should lead to no retry
   my $result;
   my $msgId;
   my $ll = 5;
@@ -1929,7 +1798,10 @@ sub TelegramBot_Callback($$$)
       $ret = "Callback returned no valid JSON !";
     } elsif ( ! $jo->{ok} ) {
       if ( defined( $jo->{description} ) ) {
-        $ret = "Callback returned error:".$jo->{description}.":";
+        $ret = "Callback returned error :".$jo->{description}.":";
+        $doRetry = 0 if ($jo->{description} =~ /^Bad Request\:/);
+        Debug "description :".$jo->{description}.":";
+        $doRetry = 0 if ($jo->{description} =~ /^Unauthorized/);
       } else {
         $ret = "Callback returned error without description";
       }
@@ -2033,14 +1905,14 @@ sub TelegramBot_Callback($$$)
   }
 
   $ret = "SUCCESS" if ( ! defined( $ret ) );
-  Log3 $name, $ll, "TelegramBot_Callback $name: resulted in :$ret: from ".(( defined( $param->{isPolling} ) )?"Polling":"SendIt");
+  Log3 $name, $ll, "TelegramBot_Callback $name: resulted in $ret from ".(( defined( $param->{isPolling} ) )?"Polling":"SendIt");
 
   if ( ! defined( $param->{isPolling} ) ) {
     $hash->{sentLastResult} = $ret;
 
     # handle retry
     # ret defined / args defined in params 
-    if ( ( $ret ne  "SUCCESS" ) && ( defined( $param->{args} ) ) ) {
+    if ( ( $ret ne  "SUCCESS" ) && ( $doRetry ) && ( defined( $param->{args} ) ) ) {
       my $wait = $param->{args}[5];
       
       my $maxRetries =  AttrVal($name,'maxRetries',0);
@@ -2060,7 +1932,9 @@ sub TelegramBot_Callback($$$)
 
       Log3 $name, 3, "TelegramBot_Callback $name: Reached max retries (ret: $ret) for msg ".$param->{args}[0]." : ".$param->{args}[1];
       
-    } 
+    } elsif ( ( $ret ne  "SUCCESS" ) && ( ! $doRetry ) ) {
+      Log3 $name, 3, "TelegramBot_Callback $name: No retry for (ret: $ret) for msg ".$param->{args}[0]." : ".$param->{args}[1];
+    }
     
     $hash->{sentMsgResult} = $ret;
     $hash->{sentMsgId} = ((defined($msgId))?$msgId:"");

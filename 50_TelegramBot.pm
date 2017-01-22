@@ -201,8 +201,9 @@
 #   exclamation mark in favorites to allow empty results also being sent
 #   new get peerID for onverting a named peer into an id (same syntax as in msg)
 #   document get commands
-
 #   communication with TBot_List Module -> queryAnswer
+
+#   document cmdRespondChat / msgChatId
 #   
 #   
 ##############################################################################
@@ -212,7 +213,6 @@
 #   
 #   add an option to send silent messages - msg556631
 #   
-#   document cmdRespondChat / msgChatId
 #   
 #   
 #   
@@ -3225,6 +3225,10 @@ sub TelegramBot_BinaryFileWrite($$$) {
     (specified in the form of contact id, username or full name, multiple peers to be separated by a space). 
     A message with the cmd and sender is sent to the default peer in case of another peer trying to sent messages<br>
     It is recommended to use only peer ids for this restriction to reduce spoofing risk!
+
+    </li> 
+    <li><code>cmdRespondChat &lt;1 or 0&gt;</code><br>Results / Responses from Commands will be sent to a group chat (1 = default) if originating from this chat. Otherwise responses will be sent only to the person initiating the command (personal chat) if set to value 0. <br>
+    Note: Group chats also need to be allowed as restricted Peer in cmdRestrictedPeer if this is set. 
     </li> 
     <li><code>allowUnknownContacts &lt;1 or 0&gt;</code><br>Allow new contacts to be added automatically (1 - Default) or restrict message reception only to known contacts and unknwown contacts will be ignored (0).
     </li> 
@@ -3299,6 +3303,8 @@ sub TelegramBot_BinaryFileWrite($$$) {
     For secret chats a value of -1 will be given, since the msgIds of secret messages are not part of the consecutive numbering</li> 
     <li>msgPeer &lt;text&gt;<br>The sender name of the last received message (either full name or if not available @username)</li> 
     <li>msgPeerId &lt;text&gt;<br>The sender id of the last received message</li> 
+    <li>msgChat &lt;text&gt;<br>The name of the Chat in which the last message was received</li> 
+    <li>msgChatId &lt;ID&gt;<br>The id of the chat of the last message, if not identical to the private peer chat</li> 
     <li>msgText &lt;text&gt;<br>The last received message text is stored in this reading. Information about special messages like documents, audio, video, locations or venues will be also stored in this reading</li> 
     <li>msgFileId &lt;fileid&gt;<br>The last received message file_id (Audio, Photo, Video, Voice or other Document) is stored in this reading.</li> 
     <li>msgReplyMsgId &lt;text&gt;<br>Contains the message id of the original message, that this message was a reply to</li> 

@@ -103,11 +103,11 @@
 #   get new thumbnail for camera
 #   first commandref version
 #   new File reading for thumbnails
-
 #   reading for camera battery status - msg539729
 #   reading for camera temperature - msg539729
 #   thumbnail org name / timestamp sa reading
-#   
+
+#   get liveview - live video - msg539729
 #   
 #   
 ##############################################################################
@@ -115,8 +115,6 @@
 #   
 #   
 #   
-#   live video - msg539729
-#
 #   store poll failures / digest?
 #   
 #   allow thumbnailreset
@@ -361,7 +359,7 @@ sub BlinkCamera_Set($@)
     
   } elsif($cmd eq 'zDebug') {
     Log3 $name, 5, "BlinkCamera_Set $name: zDebug requested ";
-    $hash->{AuthToken} = "ABCDEF";
+#    $hash->{AuthToken} = "ABCDEF";
 #    Debug "-------------------------";
 #    Debug Dumper( $hash->{alertResults} );
 #    Debug "-------------------------";
@@ -400,14 +398,16 @@ sub BlinkCamera_Get($@)
     $ret = BlinkCamera_DoCmd( $hash, "homescreen" );
   
   } elsif ($cmd eq 'getInfoCamera') {
-    $ret = BlinkCamera_CameraDoCmd( $hash, "cameraConfig", $arg )
+    $ret = BlinkCamera_CameraDoCmd( $hash, "cameraConfig", $arg );
 
   } elsif ($cmd eq 'getThumbnail') {
-    $ret = BlinkCamera_CameraDoCmd( $hash, "cameraThumbnail", $arg )
+    $ret = BlinkCamera_CameraDoCmd( $hash, "cameraThumbnail", $arg );
 
   } elsif($cmd eq 'getVideoAlert') {
     $ret = BlinkCamera_DoCmd( $hash, "video", $arg );
     
+  } elsif($cmd eq 'liveview') {
+    $ret = BlinkCamera_CameraDoCmd( $hash, "liveview", $arg );
   }
   
   Log3 $name, 5, "BlinkCamera_Get $name: $cmd ".((defined( $ret ))?"failed with :$ret: ":"done succesful ");
@@ -764,6 +764,21 @@ sub BlinkCamera_DoCmd($$;$$$)
         $ret = "BlinkCamera_DoCmd $name: no video id for deletion found (".(defined($vid)?$vid:"<undef>").")"; 
       }
       
+    #######################
+    } elsif ( ($cmd eq "liveview" ) ) {
+
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      
+      $hash->{HU_DO_PARAMS}->{method} = "POST";
+
+      my $net =  BlinkCamera_GetNetwork( $hash );
+      if ( defined( $net ) ) {
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/camera/".$par1."/liveview";
+
+      } else {
+        $ret = "BlinkCamera_DoCmd $name: no network identifier found for $cmd - set attribute";
+      }
+
     }
 
   }
@@ -964,6 +979,7 @@ sub BlinkCamera_ParseHomescreen($$$)
       }
     }
     $cameraGets .= "all";
+    $hash->{getoptions}->{liveview} = $cameraGets;
     $hash->{getoptions}->{getThumbnail} = $cameraGets;
     $hash->{getoptions}->{getInfoCamera} = $cameraGets;
     $hash->{setoptions}->{camEnable} = $cameraGets;
@@ -1217,6 +1233,9 @@ sub BlinkCamera_Callback($$$)
     } elsif ($cmd eq "alerts" ) {
       $ret = BlinkCamera_ParseStartAlerts( $hash, $result, $par1, \%readUpdates );
     
+    } elsif ($cmd eq "liveview" ) {
+      $readUpdates{liveVideo} = $result->{server};
+
     } else {
       
     }
@@ -1234,6 +1253,8 @@ sub BlinkCamera_Callback($$$)
       if ( defined( $filename ) ) {
         $hash->{cmdJson} = (defined($data)?"length :".length($data):"<undef>");
       } else {
+        Debug "Result :".$data.":";
+        
         $hash->{cmdJson} = (defined($data)?$data:"<undef>");
       }
     }
@@ -1496,6 +1517,8 @@ sub BlinkCamera_Setup($) {
     "getThumbnail" => undef,
     
     "getVideoAlert" => undef,
+
+    "liveview" => undef,
 
   );
 
@@ -2015,6 +2038,12 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
     
     <li><code>getVideoAlert [ &lt;video id&gt; ]</code><br>Retrieve the video for the corresponding id (or if ommitted as specified in the reading <code>alertID</code>) and store the video in a local file in the directory given in the attribute <code>proxyDir</code>
     </li>
+    
+    <li><code>liveview &lt;camera name or number or "all"&gt;</code><br>Request a link to the live video stream. The live video stream access (URL) will be stored in the reading liveVideo. The link to the video is an rtsp - which can be shown in video players like VLC.
+    <br>
+    Note: Live video streaming might have a substantially negative effect on battery life<br>
+    </li>
+    
     
   </ul>
 

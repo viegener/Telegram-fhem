@@ -69,6 +69,11 @@
 #   summary for commandref
 #   added if and loopinc to commandref
 #   add new attribute for defining special template urls templateFiles
+
+#   allow spaces around = and after <? for more tolerance
+#   do not require space at end of tag before ?> for more tolerance
+#   
+#   
 #   
 ################################################################
 #TODO:
@@ -96,23 +101,21 @@ my $FTUISRV_matchlink = "^\/?(([^\/]*(\/[^\/]+)*)\/?)\$";
 
 my $FTUISRV_matchtemplatefile = "^.*\.ftui\.[^\.]+\$";
 
-#my $FTUISRV_ftuimatch_header = '<\?ftui-header="([^"\?]*)"\s+([^\?]*)\?>';
-my $FTUISRV_ftuimatch_header = '<\?ftui-header="([^"\?]*)"\s+(.*?)\?>';
+my $FTUISRV_ftuimatch_header = '<\?\s*ftui-header\s*=\s*"([^"\?]*)"\s+(.*?)\?>';
 
 my $FTUISRV_ftuimatch_keysegment = '^\s*([^=\s]+)(="([^"]*)")?\s*';
 
-my $FTUISRV_ftuimatch_keygeneric = '<\?ftui-key=([^\s]+)\s*\?>';
+my $FTUISRV_ftuimatch_keygeneric = '<\?\s*ftui-key\s*=\s*([^\s\?]+)\s*\?>';
 
-my $FTUISRV_ftuimatch_if_het = '^(.*?)<\?ftui-if=\((.*?)\)\s*\?>(.*)$';
+my $FTUISRV_ftuimatch_if_het = '^(.*?)<\?\s*ftui-if\s*=\s*\((.*?)\)\s*\?>(.*)$';
 
-my $FTUISRV_ftuimatch_else_ht = '^(.*?)<\?ftui-else\s*\?>(.*)$';
-my $FTUISRV_ftuimatch_endif_ht = '^(.*?)<\?ftui-endif\s*\?>(.*)$';
+my $FTUISRV_ftuimatch_else_ht = '^(.*?)<\?\s*ftui-else\s*\?>(.*)$';
+my $FTUISRV_ftuimatch_endif_ht = '^(.*?)<\?\s*ftui-endif\s*\?>(.*)$';
 
 
-my $FTUISRV_ftuimatch_inc_hfvt = '^(.*?)<\?ftui-inc="([^"\?]+)"\s+([^\?]*)\?>(.*?)$';
+my $FTUISRV_ftuimatch_inc_hfvt = '^(.*?)<\?\s*ftui-inc\s*=\s*"([^"\?]+)"\s+([^\?]*)\?>(.*?)$';
 
-#my $FTUISRV_ftuimatch_loopinc_hefvt = '^(.*?)<\?ftui-loopinc=\((.*?)\)\s+"([^"\?]+)"\s+([^\?]*)\?>(.*?)$';
-my $FTUISRV_ftuimatch_loopinc_hfkevt = '^(.*?)<\?ftui-loopinc="([^"\?]+)"\s+([^=\s]+)=\s*\((.+?)\)\s+([^\?]*)\?>(.*?)$';
+my $FTUISRV_ftuimatch_loopinc_hfkevt = '^(.*?)<\?\s*ftui-loopinc\s*=\s*"([^"\?]+)"\s+([^=\s]+)=\s*\((.+?)\)\s+([^\?]*)\?>(.*?)$';
 
 
 #########################
@@ -833,7 +836,7 @@ sub FTUISRV_handleLoopInc( $$$$$$ ) {
     my $values = $5;
     $rest = $6;
   
-    Log3 $name, 1, "$name: include loop found :$filename:   key :$key: expr:$expr:\n   inc :$incfile:   vals :$values:";
+    Log3 $name, 4, "$name: include loop found :$filename:   key :$key: expr:$expr:\n   inc :$incfile:   vals :$values:";
     return ("$name: Empty file name in loopinc :$filename:", $content) if ( length($incfile) == 0 );
 
     # Evaluate expression as command to get list of entries for loop ???
@@ -882,7 +885,7 @@ sub FTUISRV_handleLoopInc( $$$$$$ ) {
       # add loopvariable with current value
       $loopincparhash->{$key} = $loopvariable;
       
-      Log3 $name, 1, "$name: start handling include (rec) :$incfile: with value $key = :$loopvariable:";
+      Log3 $name, 4, "$name: start handling include (rec) :$incfile: with value $key = :$loopvariable:";
       my $inccontent;
       my $dummy;
       ($err, $dummy, $inccontent) = FTUISRV_handletemplatefile( $name, $incfile, $loopincparhash, $validatehash );

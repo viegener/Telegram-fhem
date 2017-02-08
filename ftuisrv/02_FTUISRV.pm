@@ -69,9 +69,9 @@
 #   summary for commandref
 #   added if and loopinc to commandref
 #   add new attribute for defining special template urls templateFiles
-
 #   allow spaces around = and after <? for more tolerance
 #   do not require space at end of tag before ?> for more tolerance
+
 #   
 #   
 #   
@@ -103,7 +103,7 @@ my $FTUISRV_matchtemplatefile = "^.*\.ftui\.[^\.]+\$";
 
 my $FTUISRV_ftuimatch_header = '<\?\s*ftui-header\s*=\s*"([^"\?]*)"\s+(.*?)\?>';
 
-my $FTUISRV_ftuimatch_keysegment = '^\s*([^=\s]+)(="([^"]*)")?\s*';
+my $FTUISRV_ftuimatch_keysegment = '^\s*([^=\s]+)(\s*=\s*"([^"]*)")?\s*';
 
 my $FTUISRV_ftuimatch_keygeneric = '<\?\s*ftui-key\s*=\s*([^\s\?]+)\s*\?>';
 
@@ -115,7 +115,7 @@ my $FTUISRV_ftuimatch_endif_ht = '^(.*?)<\?\s*ftui-endif\s*\?>(.*)$';
 
 my $FTUISRV_ftuimatch_inc_hfvt = '^(.*?)<\?\s*ftui-inc\s*=\s*"([^"\?]+)"\s+([^\?]*)\?>(.*?)$';
 
-my $FTUISRV_ftuimatch_loopinc_hfkevt = '^(.*?)<\?\s*ftui-loopinc\s*=\s*"([^"\?]+)"\s+([^=\s]+)=\s*\((.+?)\)\s+([^\?]*)\?>(.*?)$';
+my $FTUISRV_ftuimatch_loopinc_hfkevt = '^(.*?)<\?\s*ftui-loopinc\s*=\s*"([^"\?]+)"\s+([^=\s]+)\s*=\s*\((.+?)\)\s+([^\?]*)\?>(.*?)$';
 
 
 #########################

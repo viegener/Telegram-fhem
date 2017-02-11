@@ -73,15 +73,20 @@
 #   document get commands
 #   communication with TBot_List Module -> queryAnswer
 #   document cmdRespondChat / msgChatId
-
 #   "Bad Request:" or "Unauthorized" do not result in retry
 #   cleaned up done list
+
+#   ATTENTION: store api key in setkey value see patch from msg576714
 #   
 #   
 #   
 #   
 ##############################################################################
 # TASKS 
+#   
+#   allow multiple commands
+#   
+#   allow comma as separator for recipients
 #   
 #   add an option to send silent messages - msg556631
 #   
@@ -140,6 +145,9 @@ sub TelegramBot_AttrNum($$$);
 sub TelegramBot_MakeKeyboard($$$@);
 sub TelegramBot_ExecuteCommand($$$$;$);
 
+sub TelegramBot_readToken($);
+sub TelegramBot_storeToken($$);
+
 #########################
 # Globals
 my %sets = (
@@ -168,6 +176,8 @@ my %sets = (
   "reset" => undef,
 
   "reply" => "textField",
+
+  "token" => "textField",
 
   "zDebug" => "textField"
 
@@ -213,6 +223,7 @@ sub TelegramBot_Initialize($) {
   $hash->{UndefFn}    = "TelegramBot_Undef";
   $hash->{StateFn}    = "TelegramBot_State";
   $hash->{GetFn}      = "TelegramBot_Get";
+  $hash->{RenameFn}   = "TelegramBot_Rename";
   $hash->{SetFn}      = "TelegramBot_Set";
   $hash->{AttrFn}     = "TelegramBot_Attr";
   $hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 cmdKeyword cmdSentCommands favorites:textField-long cmdFavorites cmdRestrictedPeer ". "cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None ".
@@ -239,16 +250,20 @@ sub TelegramBot_Define($$) {
   my $errmsg = '';
   
   # Check parameter(s)
-  if( int(@a) != 3 ) {
-    $errmsg = "syntax error: define <name> TelegramBot <APIid> ";
+  
+  # Debug "Token : ".TelegramBot_readToken($hash);
+  
+  # If api token is given check for syntax and remove from hash
+  if ( ( int(@a) == 3 ) && ( $a[2] !~ /^([[:alnum:]]|[-:_])+[[:alnum:]]+([[:alnum:]]|[-:_])+$/ ) ) {
+    $errmsg = "specify valid API token containing only alphanumeric characters and -: characters: define <name> TelegramBot  [ <APItoken> ]";
     Log3 $name, 1, "TelegramBot $name: " . $errmsg;
     return $errmsg;
-  }
-  
-  if ( $a[2] =~ /^([[:alnum:]]|[-:_])+[[:alnum:]]+([[:alnum:]]|[-:_])+$/ ) {
-    $hash->{Token} = $a[2];
-  } else {
-    $errmsg = "specify valid API token containing only alphanumeric characters and -: characters: define <name> TelegramBot  <APItoken> ";
+  } elsif ( ( int(@a) == 2 ) && ( ! TelegramBot_readToken($hash) ) ){
+    $errmsg = "no predefined token found specify token in define: define <name> TelegramBot <APItoken>";
+    Log3 $name, 1, "TelegramBot $name: " . $errmsg;
+    return $errmsg;
+  } elsif( int(@a) > 3 || int(@a) < 2) {
+    $errmsg = "syntax error: define <name> TelegramBot [ <APIid> ]"; 
     Log3 $name, 1, "TelegramBot $name: " . $errmsg;
     return $errmsg;
   }
@@ -286,6 +301,11 @@ sub TelegramBot_Define($$) {
   $hash->{HU_UPD_PARAMS} = \%hu_upd_params;
   $hash->{HU_DO_PARAMS} = \%hu_do_params;
 
+  if (int(@a) == 3) {
+      TelegramBot_storeToken($hash, $a[2]);
+      $hash->{DEF} = undef; 
+  }
+
   TelegramBot_Setup( $hash );
 
   return $ret; 
@@ -313,6 +333,21 @@ sub TelegramBot_Undef($$)
   Log3 $name, 4, "TelegramBot_Undef $name: done ";
   return undef;
 }
+
+
+#############################################################################################
+# called when the device gets renamed,
+# in this case we then also need to rename the key in the token store
+sub TelegramBot_Rename($$) {
+    my ($new,$old) = @_;
+
+    my $index_old = "TelegramBot_" . $old . "_token";
+    my $index_new = "TelegramBot_" . $new . "_token";
+ 
+    setKeyValue($index_new, getKeyValue($index_old));
+    setKeyValue($index_old, undef);
+}
+
 
 ##############################################################################
 ##############################################################################
@@ -504,8 +539,13 @@ sub TelegramBot_Set($@)
   $hash->{HU_UPD_PARAMS}->{callback} = \&TelegramBot_Callback;
   $hash->{HU_DO_PARAMS}->{callback} = \&TelegramBot_Callback;
 
-    
-  # BOTONLY
+  } elsif($cmd eq 'token') {
+    if ( $numberOfArgs == 2 ) {
+      $ret = TelegramBot_storeToken ( $hash, $args[0] );
+      TelegramBot_Setup( $hash );
+    } else {
+      return "TelegramBot_Set: Command $cmd no token specified or addtl parameters given";
+    }
   } elsif($cmd eq 'reset') {
     Log3 $name, 5, "TelegramBot_Set $name: reset requested ";
     TelegramBot_Setup( $hash );
@@ -580,14 +620,15 @@ sub TelegramBot_Get($@)
     $hash->{fileUrl} = "";
     
     # return URL for file id
-    my $url = $hash->{URL}."getFile?file_id=".urlEncode($arg);
+    my $url = TelegramBot_getBaseURL($hash)."getFile?file_id=".urlEncode($arg);
     my $guret = TelegramBot_DoUrlCommand( $hash, $url );
+    my $token = TelegramBot_readToken( $hash );
 
     if ( ( defined($guret) ) && ( ref($guret) eq "HASH" ) ) {
       if ( defined($guret->{file_path} ) ) {
         # URL is https://api.telegram.org/file/bot<token>/<file_path>
         my $filePath = $guret->{file_path};
-        $hash->{fileUrl} = "https://api.telegram.org/file/bot".$hash->{Token}."/".$filePath;
+        $hash->{fileUrl} = "https://api.telegram.org/file/bot".$token."/".$filePath;
         $ret = $hash->{fileUrl};
       } else {
         $ret = "urlForFile failed: no file path found";
@@ -1335,9 +1376,9 @@ sub TelegramBot_SendIt($$$$$;$$)
 
     if ( ( $isMedia == 0 ) || ( $isMedia == 10 ) ) {
       if ( $isMedia == 0 ) {
-        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."sendMessage";
+        $hash->{HU_DO_PARAMS}->{url} = TelegramBot_getBaseURL($hash)."sendMessage";
       } else {
-        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."editMessageText";
+        $hash->{HU_DO_PARAMS}->{url} = TelegramBot_getBaseURL($hash)."editMessageText";
         $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "message_id", undef, $replyid, 0 ) if ( ! defined( $ret ) );
         $replyid = undef;
       }
@@ -1391,7 +1432,7 @@ sub TelegramBot_SendIt($$$$$;$$)
       $hash->{sentMsgText} = "Location: ".TelegramBot_MsgForLog($msg, ($isMedia<0) ).
           (( defined( $addPar ) )?" - ".$addPar:"");
 
-      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."sendLocation";
+      $hash->{HU_DO_PARAMS}->{url} = TelegramBot_getBaseURL($hash)."sendLocation";
 
       $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "latitude", undef, $msg, 0 ) if ( ! defined( $ret ) );
 
@@ -1403,7 +1444,7 @@ sub TelegramBot_SendIt($$$$$;$$)
       $hash->{sentMsgText} = "AnswerInline: ".TelegramBot_MsgForLog($msg, ($isMedia<0) ).
           (( defined( $addPar ) )?" - ".$addPar:"");
 
-      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."answerCallbackQuery";
+      $hash->{HU_DO_PARAMS}->{url} = TelegramBot_getBaseURL($hash)."answerCallbackQuery";
       
       $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "callback_query_id", undef, $addPar, 0 ) if ( ! defined( $ret ) );
 
@@ -1414,7 +1455,7 @@ sub TelegramBot_SendIt($$$$$;$$)
       $hash->{sentMsgText} = "Image: ".TelegramBot_MsgForLog($msg, ($isMedia<0) ).
           (( defined( $addPar ) )?" - ".$addPar:"");
 
-      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."sendPhoto";
+      $hash->{HU_DO_PARAMS}->{url} = TelegramBot_getBaseURL($hash)."sendPhoto";
 
       # add caption
       if ( defined( $addPar ) ) {
@@ -1431,7 +1472,7 @@ sub TelegramBot_SendIt($$$$$;$$)
       # Voicemsg send    == 2
       $hash->{sentMsgText} = "Voice: $msg";
 
-      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."sendVoice";
+      $hash->{HU_DO_PARAMS}->{url} = TelegramBot_getBaseURL($hash)."sendVoice";
 
       # add msg or file or stream
       Log3 $name, 4, "TelegramBot_SendIt $name: Filename for document file :".
@@ -1441,7 +1482,7 @@ sub TelegramBot_SendIt($$$$$;$$)
       # Media send    == 3
       $hash->{sentMsgText} = "Document: ".TelegramBot_MsgForLog($msg, ($isMedia<0) );
 
-      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."sendDocument";
+      $hash->{HU_DO_PARAMS}->{url} = TelegramBot_getBaseURL($hash)."sendDocument";
 
       # add msg (no file)
       Log3 $name, 4, "TelegramBot_SendIt $name: Filename for document file :$msg:";
@@ -1670,7 +1711,7 @@ sub TelegramBot_UpdatePoll($;$)
   $offset = 0 if ( ! defined($offset) );
   
   # build url 
-  my $url =  $hash->{URL}."getUpdates?offset=".$offset. ( ($timeout!=0)? "&limit=5&timeout=".$timeout : "" );
+  my $url =  TelegramBot_getBaseURL($hash)."getUpdates?offset=".$offset. ( ($timeout!=0)? "&limit=5&timeout=".$timeout : "" );
 
   $hash->{HU_UPD_PARAMS}->{url} = $url;
   $hash->{HU_UPD_PARAMS}->{timeout} = $timeout+$timeout+5;
@@ -2356,26 +2397,30 @@ sub TelegramBot_Setup($) {
   # remove timer for retry
   RemoveInternalTimer($hash->{HU_DO_PARAMS});
   
-  $hash->{URL} = "https://api.telegram.org/bot".$hash->{Token}."/";
-
   $hash->{STATE} = "Defined";
-
-  # getMe as connectivity check and set internals accordingly
-  my $url = $hash->{URL}."getMe";
-  my $meret = TelegramBot_DoUrlCommand( $hash, $url );
-  if ( ( ! defined($meret) ) || ( ref($meret) ne "HASH" ) ) {
-    # retry on first failure
-    $meret = TelegramBot_DoUrlCommand( $hash, $url );
-  }
-
-  if ( ( defined($meret) ) && ( ref($meret) eq "HASH" ) ) {
-    $hash->{me} = TelegramBot_userObjectToString( $meret );
-    $hash->{STATE} = "Setup";
+  
+  if ( ! TelegramBot_readToken($hash) ) {
+    Log3 $name, 1, "TelegramBot_Setup $name: no valid API token found, please call \"set $name token <token>\" (once)";
+    $hash->{STATE} = "NoValidToken";
 
   } else {
-    $hash->{me} = "Failed - see log file for details";
-    $hash->{STATE} = "Failed";
-    $hash->{FAILS} = 1;
+    # getMe as connectivity check and set internals accordingly
+    my $url = TelegramBot_getBaseURL($hash)."getMe";
+    my $meret = TelegramBot_DoUrlCommand( $hash, $url );
+    if ( ( ! defined($meret) ) || ( ref($meret) ne "HASH" ) ) {
+      # retry on first failure
+      $meret = TelegramBot_DoUrlCommand( $hash, $url );
+    }
+
+    if ( ( defined($meret) ) && ( ref($meret) eq "HASH" ) ) {
+      $hash->{me} = TelegramBot_userObjectToString( $meret );
+      $hash->{STATE} = "Setup";
+
+    } else {
+      $hash->{me} = "Failed - see log file for details";
+      $hash->{STATE} = "Failed";
+      $hash->{FAILS} = 1;
+    }
   }
   
   TelegramBot_InternalContactsFromReading( $hash);
@@ -2741,6 +2786,95 @@ sub TelegramBot_checkAllowedPeer($$$) {
 ##############################################################################
 ##############################################################################
 
+#####################################
+# stores Telegram API Token 
+sub TelegramBot_getBaseURL($)
+{
+  my ($hash) = @_;
+
+  my $token = TelegramBot_readToken( $hash );
+  
+  return "https://api.telegram.org/bot".$token."/";
+}
+
+
+
+
+#####################################
+# stores Telegram API Token 
+sub TelegramBot_storeToken($$)
+{
+    my ($hash, $token) = @_;
+     
+    if ( $token !~ /^([[:alnum:]]|[-:_])+[[:alnum:]]+([[:alnum:]]|[-:_])+$/ ) {
+      return "specify valid API token containing only alphanumeric characters and -: characters";
+    }
+
+    my $index = "TelegramBot_".$hash->{NAME}."_token";
+    my $key = getUniqueId().$index;
+    
+    my $enc_pwd = "";
+    
+    if(eval "use Digest::MD5;1")
+    {
+        $key = Digest::MD5::md5_hex(unpack "H*", $key);
+        $key .= Digest::MD5::md5_hex($key);
+    }
+    
+    for my $char (split //, $token)
+    {
+        my $encode=chop($key);
+        $enc_pwd.=sprintf("%.2x",ord($char)^ord($encode));
+        $key=$encode.$key;
+    }
+    my $err = setKeyValue($index, $enc_pwd);
+
+    return "error while saving the API token - $err" if(defined($err));
+    return "API token successfully saved";
+} # end storeToken
+
+#####################################
+# reads the Telegram API Token
+sub TelegramBot_readToken($)
+{
+   my ($hash) = @_;
+   my $name = $hash->{NAME};
+
+   my $index = "TelegramBot_" . $hash->{NAME} . "_token";
+   my $key = getUniqueId().$index;
+
+   my ($token, $err);
+
+   Log3 $hash, 5, "TelegramBot_readToken: Read Telegram API token from file";
+   ($err, $token) = getKeyValue($index);
+
+   if ( defined($err) ) {
+      Log3 $hash, 1, "TelegramBot_readToken: Error: unable to read API token from file: $err";
+      return "";
+   }  
+    
+   if ( defined($token) ) {
+      if ( eval "use Digest::MD5;1" ) {
+         $key = Digest::MD5::md5_hex(unpack "H*", $key);
+         $key .= Digest::MD5::md5_hex($key);
+      }
+
+      my $dec_pwd = '';
+     
+      for my $char (map { pack('C', hex($_)) } ($token =~ /(..)/g)) {
+         my $decode=chop($key);
+         $dec_pwd.=chr(ord($char)^ord($decode));
+         $key=$decode.$key;
+      }
+     
+      return $dec_pwd;
+   }
+   else {
+      Log3 $hash, 1, "TelegramBot_readToken: Error: No API token in file";
+      return "";
+   }
+} # end readToken
+
 
 #####################################
 #  INTERNAL: get only numeric part of a value (simple)
@@ -3009,6 +3143,10 @@ sub TelegramBot_BinaryFileWrite($$$) {
     internal contact handling, queue of send items and polling <br>
     ATTENTION: Messages that might be queued on the telegram server side (especially commands) might be then worked off afterwards immedately. 
     If in doubt it is recommened to temporarily deactivate (delete) the cmdKeyword attribute before resetting.</li>
+
+  <br>
+    <li><code>token &lt;apitoken&gt;</code><br>Specify a new APItoken to be stored for this bot
+    </li>
 
   </ul>
 

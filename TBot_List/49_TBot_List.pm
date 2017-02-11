@@ -50,19 +50,19 @@
 
 #   Documentation
 #   changed log levels
-#   
+#   corrected listNo calculation on dialog and define
 #   
 ##############################################################################
 # TASKS 
 #   
 #   
-#   Further testing of all multi liste
+#   
+#   
+#   Make texts and addtl buttons configurable
 #   
 #   internal value if waiting for msg or reply -- otherwise notify not looping through events
 #   
 #   add entry for messages sent accidentially - absed on dialog
-#   
-#   Further testing of end
 #   
 #   TODOs
 #
@@ -245,27 +245,12 @@ sub TBot_List_Set($@)
 
     if ( ! $ret ) {
       # listno will be calculated at start of new dialog
-      my $pcnt = ReadingsNum($hash->{postme},"postmeCnt",0);
-      my $curr = 0;
-      my $listNo;
-#      Debug "pcnt : ".$pcnt;
-  
-      while ( $curr < $pcnt ) {
-        $curr++;
-        my $rd = "postme".sprintf("%2.2d",$curr)."Name";
-#        Debug "rd : ".$rd;
-        if ( ReadingsVal($hash->{postme},$rd,"") eq $hash->{listname} ) {
-          $listNo = $curr;
-          last;
-        }
-      }
+      my $listNo = TBot_List_calcListNo($hash);
 
       if ( ! $listNo ) {
         $ret = "specify valid list for PostMe device ".$hash->{postme}." in $name :".$hash->{listname}.":";
         Log3 $name, 1, "TBot_List $name: " . $ret;
       }
-    
-      $hash->{listno} = $listNo;
     }
     
     Log3 $name, 1, "TBot_List_Set $name: Error :".$ret if ( $ret );
@@ -320,6 +305,10 @@ sub TBot_List_Get($@)
   if ( $ret ) {
     # do nothing if error/ret is defined
 
+
+  } elsif($cmd eq "textList") {
+    $ret = TBot_List_getTextList($hash);
+  
   } elsif($cmd eq 'queryAnswer') {
     # parameters cmd - queryAnswer <tbot> <peer> <querydata> 
     if ( $numberOfArgs != 4 ) {
@@ -526,7 +515,7 @@ sub TBot_List_getList($;$)
 ##############################################
 # list or specific entry number
 #
-sub TBot_List_getTextList($$)
+sub TBot_List_getTextList($)
 { 
   my ($hash) = @_;
 
@@ -583,7 +572,7 @@ sub TBot_List_handleEvents($$$)
 
   # events - look for sentMsgId / msgReplyMsgId
   foreach my $event ( @{$events} ) {
-    $event = "" if(!defined($event));
+    next if(!defined($event));
     
     if ( $event =~ /sentMsgId\:/ ) {
       Log3 $name, 4, "TBot_List_handleEvents $name: found sentMsgId ". $event;
@@ -1001,8 +990,31 @@ sub TBot_List_isTBot($$)
   return 0;
 }
 
+#####################################
+#  calculate listno where needed
+sub TBot_List_calcListNo($)
+{
+  my ($hash) = @_;
 
+  # listno will be calculated at start of new dialog
+  my $pcnt = ReadingsNum($hash->{postme},"postmeCnt",0);
+  my $curr = 0;
+  my $listNo;
 
+  while ( $curr < $pcnt ) {
+    $curr++;
+    my $rd = "postme".sprintf("%2.2d",$curr)."Name";
+#        Debug "rd : ".$rd;
+    if ( ReadingsVal($hash->{postme},$rd,"") eq $hash->{listname} ) {
+      $listNo = $curr;
+      last;
+    }
+  }
+
+  $hash->{listno} = $listNo;
+  
+  return $listNo;
+}
 
 
 #####################################
@@ -1058,6 +1070,7 @@ sub TBot_List_Setup($) {
 
   my %gets = (
     "queryAnswer" => undef,
+    "textList" => undef,
 
   );
 
@@ -1071,6 +1084,8 @@ sub TBot_List_Setup($) {
   $hash->{NOTIFYDEV} = "global,TYPE=TelegramBot";
 
   $hash->{STATE} = "Defined";
+
+  TBot_List_calcListNo($hash);
 
   Log3 $name, 4, "TBot_List_Setup $name: ended ";
 
@@ -1137,7 +1152,10 @@ sub TBot_List_Setup($) {
     where &lt;what&gt; / &lt;value&gt; is one of
 
   <br><br>
-    <li><code>querAnswer &lt;telegrambot name&gt; &lt;peerid&gt; &lt;queryData&gt; </code><br>Get the queryAnswer for the given query data in the dialog (will be called internally by the telegramBot on receiving querydata) 
+    <li><code>queryAnswer &lt;telegrambot name&gt; &lt;peerid&gt; &lt;queryData&gt; </code><br>Get the queryAnswer for the given query data in the dialog (will be called internally by the telegramBot on receiving querydata) 
+    </li>
+    
+    <li><code>textList</code><br>Returns a multiline string containing the list elements or <Leer>  
     </li>
     
   </ul>

@@ -91,7 +91,7 @@
 #  2016-12-30 viegener - New sets / code-commands 9 / a  - wind_sun_9 / wind_only_a
 #  2017-01-08 viegener - Handle fixed encryption A0 for switches - switchable fixed_enckey
 #  2017-01-21 viegener - updatestate also called in non virtual mode to sent events
-#  
+#  2017-02-19 viegener - Restructuring of method blocks
 
 # - myUtilsSOMFY_Initialize removed
 # - SOMFY_StartTime removed
@@ -175,13 +175,6 @@ my %sendCommands = (
 	"stop" => "stop",
   "wind_sun_9" => "wind_sun_9",
   "wind_only_a" => "wind_only_a",
-);
-
-my %inverseCommands = (
-	"off" => "on",
-	"on" => "off",
-	"on-for-timer" => "off-for-timer",
-	"off-for-timer" => "on-for-timer"
 );
 
 my %somfy_c2b;
@@ -473,6 +466,7 @@ sub SOMFY_Parse($$) {
 	if ($ioType eq "SIGNALduino") {
 		my $encData = substr($msg, 2);
 		return "Somfy RTS message format error!" if ($encData !~ m/A[0-9A-F]{13}/);
+    return "Somfy RTS message format error (length)!" if (length($encData) != 14);
 	
 		my $decData = SOMFY_RTS_Crypt("d", $name, $encData);
 		my $check = SOMFY_RTS_Check($name, $decData);
@@ -522,7 +516,7 @@ sub SOMFY_Parse($$) {
 					# readingsSingleUpdate($lh, "state", $newstate, 1);
 					readingsSingleUpdate($lh, "parsestate", $newstate, 1);
 
-			Log3 $name, 4, "SOMFY $name $newstate";
+			Log3 $name, 4, "SOMFY Parse: $name $newstate";
 
 			push(@list, $name);
 		}
@@ -659,8 +653,6 @@ sub SOMFY_InternalSet($@) {
     Log3($name,4,"SOMFY_set: $name Inverse before cmd:$cmd: arg1:$arg1: pos:$pos:");
     $arg1 = SOMFY_ConvertFrom100To0( $arg1 ) if($cmd eq 'pos');
     $pos = SOMFY_ConvertFrom100To0( $pos ); 	
-    
-    # $cmd = $inverseCommands{$cmd} if(exists($inverseCommands{$cmd}));
     
     Log3($name,4,"SOMFY_set: $name Inverse after  cmd:$cmd: arg1:$arg1: pos:$pos:");
   }
@@ -974,6 +966,19 @@ sub SOMFY_isSwitch($) {
 }
   
 
+#############################
+# 0 blinds / 2 or 4 for switches
+sub SOMFY_isRemote($) {
+	my ($hash) = @_;
+	my $name = $hash->{NAME};
+ 
+  my $model = AttrVal( $name, "model", "" );
+  
+  return ( $model =~ /remote$/ )?$model:0;
+  
+}
+  
+
 
 ######################################################
 ######################################################
@@ -1044,8 +1049,6 @@ sub SOMFY_ConvertTo100To0($) {
 
   return ( $v > 100 ) ? ( (200-$v)/10.0 ) : ( 100-(9*$v/10.0) ); 
 } 
-
-
 
 
 #############################
@@ -1471,10 +1474,20 @@ sub SOMFY_SendCommand($@)
 		$command = $args[1];
 	}
 
+	# increment encryption key and rolling code
+  my $new_enc_key = $enckey;
+  if ( (! AttrVal( $name, "fixed_enckey", 0 ) ) && ( ! SOMFY_isSwitch($hash) ) ) {
+    my $enc_key_increment      = hex( $enckey );
+    $new_enc_key = sprintf( "%02X", ( ++$enc_key_increment & hex("0xAF") ) );
+  }
+    
+	my $rolling_code_increment = hex( $rollingcode );
+	my $new_rolling_code = sprintf( "%04X", ( ++$rolling_code_increment ) );
+
 	$message = "s"
-	  . $enckey
+	  . $new_enc_key
 	  . $command
-	  . $rollingcode
+	  . $new_rolling_code
 	  . uc( $hash->{ADDRESS} );
 
 	## Log that we are going to switch Somfy
@@ -1495,16 +1508,6 @@ sub SOMFY_SendCommand($@)
 		Log3($name,5,"SOMFY_sendCommand: $name -> message :$message: ");
 		IOWrite( $hash, "Y", $message );
 	}
-
-	# increment encryption key and rolling code
-  my $new_enc_key = $enckey;
-  if ( (! AttrVal( $name, "fixed_enckey", 0 ) ) && ( ! SOMFY_isSwitch($hash) ) ) {
-    my $enc_key_increment      = hex( $enckey );
-    $new_enc_key = sprintf( "%02X", ( ++$enc_key_increment & hex("0xAF") ) );
-  }
-    
-	my $rolling_code_increment = hex( $rollingcode );
-	my $new_rolling_code = sprintf( "%04X", ( ++$rolling_code_increment ) );
 
 	# update the readings, but do not generate an event
 	setReadingsVal($hash, "enc_key", $new_enc_key, $timestamp); 

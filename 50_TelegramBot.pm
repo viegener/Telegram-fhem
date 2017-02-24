@@ -75,14 +75,17 @@
 #   document cmdRespondChat / msgChatId
 #   "Bad Request:" or "Unauthorized" do not result in retry
 #   cleaned up done list
-
 #   ATTENTION: store api key in setkey value see patch from msg576714
-#   
+
+#   put values in chat/chatId even if no group involved (peer will be set)
 #   
 #   
 #   
 ##############################################################################
 # TASKS 
+#   
+#   
+#   replyKeyboardRemove - #msg592808
 #   
 #   allow multiple commands
 #   
@@ -2180,9 +2183,9 @@ sub TelegramBot_ParseMsg($$$)
 
     readingsBulkUpdate($hash, "msgId", $mid);        
     readingsBulkUpdate($hash, "msgPeer", TelegramBot_GetFullnameForContact( $hash, $mpeernorm ));        
-    readingsBulkUpdate($hash, "msgChat", TelegramBot_GetFullnameForChat( $hash, $chatId ) );        
-    readingsBulkUpdate($hash, "msgChatId", $chatId );        
     readingsBulkUpdate($hash, "msgPeerId", $mpeernorm);        
+    readingsBulkUpdate($hash, "msgChat", TelegramBot_GetFullnameForContact( $hash, ((!$chatId)?$mpeernorm:$chatId) ) );        
+    readingsBulkUpdate($hash, "msgChatId", ((!$chatId)?$mpeernorm:$chatId) );        
     readingsBulkUpdate($hash, "msgText", $mtext);
     readingsBulkUpdate($hash, "msgReplyMsgId", $replyId);        
 
@@ -2233,6 +2236,8 @@ sub TelegramBot_ParseCallbackQuery($$$)
 
   my $imid = $callback->{inline_message_id};
   my $chat= $callback->{chat_instance};
+#  Debug "Chat :".$chat.":";
+  
   my $data = $callback->{data};
 
   my $mtext = "Callback for inline query id: $qid  from : $mpeer :  data : ".(defined($data)?$data:"<undef>");
@@ -3315,8 +3320,8 @@ sub TelegramBot_BinaryFileWrite($$$) {
     For secret chats a value of -1 will be given, since the msgIds of secret messages are not part of the consecutive numbering</li> 
     <li>msgPeer &lt;text&gt;<br>The sender name of the last received message (either full name or if not available @username)</li> 
     <li>msgPeerId &lt;text&gt;<br>The sender id of the last received message</li> 
-    <li>msgChat &lt;text&gt;<br>The name of the Chat in which the last message was received</li> 
-    <li>msgChatId &lt;ID&gt;<br>The id of the chat of the last message, if not identical to the private peer chat</li> 
+    <li>msgChat &lt;text&gt;<br>The name of the Chat in which the last message was received (might be the peer if no group involved)</li> 
+    <li>msgChatId &lt;ID&gt;<br>The id of the chat of the last message, if not identical to the private peer chat then this value will be the peer id</li> 
     <li>msgText &lt;text&gt;<br>The last received message text is stored in this reading. Information about special messages like documents, audio, video, locations or venues will be also stored in this reading</li> 
     <li>msgFileId &lt;fileid&gt;<br>The last received message file_id (Audio, Photo, Video, Voice or other Document) is stored in this reading.</li> 
     <li>msgReplyMsgId &lt;text&gt;<br>Contains the message id of the original message, that this message was a reply to</li> 

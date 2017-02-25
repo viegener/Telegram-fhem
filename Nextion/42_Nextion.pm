@@ -54,19 +54,17 @@
 # 0.6 2016-10-29 available through SVN
 #
 # 0.7 2017-02-19 Implement attributes "disable" and "timeout"
+#   reduced logging for cmd send
+#   fix for page 10 not recognized : #msg592948
+#   
+#   
 #   
 ##############################################
 ##############################################
 ### TODO
 #
-#   Tutorial
 #   react on events with commands allowing values from FHEM
 #   remove wait for answer by attribute
-#   commands 
-#     set - page x
-#     set - text elem text
-#     set - val elem val
-#     picture setting
 #   init page from fhem might sent a magic starter and finisher something like get 4711 to recognize the init command results (can be filtered away)
 #   number of pages as define (std max 0-9)
 #   add 0x65 code
@@ -411,7 +409,7 @@ Nextion_SendCommand($$$)
   my $name = $hash->{NAME};
   my @ret; 
   
-  Log3 $name, 1, "Nextion_SendCommand $name: send commands :".$msg.": ";
+  Log3 $name, 4, "Nextion_SendCommand $name: send commands :".$msg.": ";
   
   # First replace any magics
   my %dummy; 
@@ -731,7 +729,8 @@ Nextion_convertMsg($)
       $text .= $rest;
       $val = $rest;
     }
-  } elsif ( $raw =~ /^\x66(.)$/ ) {
+  } elsif ( $raw =~ /^\x66(.)$/s ) {
+    # need to parse multiline due to issue with page 10 --> x0A
     # page started
     $text = "page ";
     my $rest = $1;

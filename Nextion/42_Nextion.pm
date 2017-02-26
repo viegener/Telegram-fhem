@@ -53,9 +53,11 @@
 #   
 # 0.6 2016-10-29 available through SVN
 #
-# 0.7 2017-02-19 Implement attributes "disable" and "timeout"
+#   Implement attributes "disable" and "timeout"
 #   reduced logging for cmd send
 #   fix for page 10 not recognized : #msg592948
+# 0.7 2017-02-26 disable/timeout, fix for page 10
+
 #   
 #   
 #   

@@ -71,9 +71,9 @@
 #   add new attribute for defining special template urls templateFiles
 #   allow spaces around = and after <? for more tolerance
 #   do not require space at end of tag before ?> for more tolerance
-
 #   more tolerance on spaces around =
-#   
+#   doc change on ftui-if
+
 #   
 ################################################################
 #TODO:

@@ -870,8 +870,9 @@ Nextion_DecodeFromIso($)
       0 = The device is enabled | 1 = The device is deactivated. 
     </li>
 	
-	<li><code>timeout</code><br>
+    <li><code>timeout</code><br>
       Asks the Nextion every timeout seconds if it is still alive. If there is no response it reconnects to the Nextion.<br>
+    </li>
   </ul>
 
   <br><br>

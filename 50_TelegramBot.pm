@@ -76,8 +76,9 @@
 #   "Bad Request:" or "Unauthorized" do not result in retry
 #   cleaned up done list
 #   ATTENTION: store api key in setkey value see patch from msg576714
-
 #   put values in chat/chatId even if no group involved (peer will be set)
+# 2.2 2016-02-26  msgChatId with peer / api key secured / communication with TBot_List
+
 #   
 #   
 #   

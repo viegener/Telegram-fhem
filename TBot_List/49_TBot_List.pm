@@ -26,7 +26,7 @@
 #
 # Discussed in FHEM Forum: <not yet> TODO
 #
-# $Id:  $
+# $Id: 49_TBot_List.pm 13530 2017-02-26 13:14:45Z viegener $
 #
 ##############################################################################
 # 0.0 2017-01-15 Started
@@ -51,11 +51,12 @@
 #   Documentation
 #   changed log levels
 #   corrected listNo calculation on dialog and define
+# 0.2 2017-02-26 Initial SVN Checkin
 #   
 ##############################################################################
 # TASKS 
 #   
-#   
+#   Use msgchat to store original chat and respond in chat 
 #   
 #   
 #   Make texts and addtl buttons configurable

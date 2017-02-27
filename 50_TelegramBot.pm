@@ -79,7 +79,7 @@
 #   put values in chat/chatId even if no group involved (peer will be set)
 # 2.2 2016-02-26  msgChatId with peer / api key secured / communication with TBot_List
 
-#   
+#   cmdSend to send the result of a command as message (used for sending SVGs)
 #   
 #   
 ##############################################################################
@@ -175,6 +175,8 @@ my %sets = (
   "sendVoice" => "textField",
 
   "sendLocation" => "textField",
+
+  "cmdSend" => "textField",
 
   "replaceContacts" => "textField",
   "reset" => undef,
@@ -535,6 +537,55 @@ sub TelegramBot_Set($@)
     Log3 $name, 5, "TelegramBot_Set $name: start send for cmd :$cmd: and sendType :$sendType:";
     $ret = TelegramBot_SendIt( $hash, $peers, $msg, $addPar, $sendType, $msgid );
 
+
+  } elsif($cmd eq 'cmdSend') {
+
+    return "TelegramBot_Set: Command $cmd, no peers and no text/file specified" if ( $numberOfArgs < 2 );
+    # numberOfArgs might not be correct beyond this point
+
+    my $peers;
+    while ( $args[0] =~ /^@(..+)$/ ) {
+      my $ppart = $1;
+      return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( ($cmd eq 'reply') && ( defined( $peers ) ) );
+      $peers .= " " if ( defined( $peers ) );
+      $peers = "" if ( ! defined( $peers ) );
+      $peers .= $ppart;
+      
+      shift @args;
+      last if ( int(@args) == 0 );
+    }   
+    return "TelegramBot_Set: Command $cmd, no msg content specified" if ( int(@args) < 1 );
+
+    if ( ! defined( $peers ) ) {
+      $peers = AttrVal($name,'defaultPeer',undef);
+      return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peers) );
+    }
+
+    # Execute command
+    my $isMediaStream = 0;
+    
+    my $msg;
+    my $scmd = join(" ", @args );
+
+    # run replace set magic on command - first
+    my %dummy; 
+    my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $scmd ) );
+      
+    if ( $err ) {
+      Log3 $name, 1, "TelegramBot_ExecuteCommand $name: parse cmd failed on ReplaceSetmagic with :$err: on  :$scmd:";
+    } else {
+      $msg = join(" ", @a);
+      Log3 $name, 4, "TelegramBot_ExecuteCommand $name: parse cmd returned :$msg:";
+    } 
+  
+    $msg = AnalyzeCommand( $hash, $msg );
+
+    # Check for image/doc/audio stream in return (-1 image
+    ( $isMediaStream ) = TelegramBot_IdentifyStream( $hash, $msg ) if ( defined( $msg ) );
+      
+    Log3 $name, 5, "TelegramBot_Set $name: start send for cmd :$cmd: and isMediaStream :$isMediaStream:";
+    $ret = TelegramBot_SendIt( $hash, $peers, $msg, undef, $isMediaStream, undef );
+    
   } elsif($cmd eq 'zDebug') {
     # for internal testing only
     Log3 $name, 5, "TelegramBot_Set $name: start debug option ";
@@ -3105,6 +3156,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
           <dd> to send the message "Bye" to a contact or chat with the id "1234567". Chat ids might be negative and need to be specified with a leading hyphen (-). <br></dd>
       <dl>
     </li>
+    
     <li><code>msgForceReply [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;text&gt;</code><br>Sends the given message to the recipient(s) and requests (forces) a reply. Handling of peers is equal to the message command. Adding reply keyboards is currently not supported by telegram.
     </li>
     <li><code>reply &lt;msgid&gt; [ @&lt;peer1&gt; ] &lt;text&gt;</code><br>Sends the given message as a reply to the msgid (number) given to the given peer or if peer is ommitted to the defined default peer user. Only a single peer can be specified. Beside the handling of the message as a reply to a message received earlier, the peer and message handling is otherwise identical to the msg command. 
@@ -3113,6 +3165,10 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>msgEdit &lt;msgid&gt; [ @&lt;peer1&gt; ] &lt;text&gt;</code><br>Changes the given message on the recipients clients. The msgid of the message to be changed must match a valid msgId and the peers need to match the original recipient, so only a single peer can be given or if peer is ommitted the defined default peer user is used. Beside the handling of a change of an existing message, the peer and message handling is otherwise identical to the msg command. 
     </li>
 
+    <li><code>cmdSend [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;fhem command&gt;</code><br>Executes the given fhem command and then sends the result to the given peers or the default peer.<br>
+    Example: The following command would sent the resulting SVG picture to the default peer: <br>
+      <code>set tbot cmdSend { plotAsPng('SVG_FileLog_Aussen') }</code>
+    </li>
 
     <li><code>queryInline [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) &lt;text&gt;</code><br>Sends the given message to the recipient(s) with an inline keyboard allowing direct response <br>
     IMPORTANT: The response coming from the keyboard will be provided in readings and a corresponding answer command with the query id is required, sicne the client is frozen otherwise waiting for the response from the bot!

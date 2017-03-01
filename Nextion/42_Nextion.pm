@@ -58,7 +58,7 @@
 # 0.8 2016-03-01 revert changes
 #   fix for page 10 not recognized : #msg592948 
 #   _connect/Disconnect/isConnected subs
-#   
+#   init device after notify on initialized
 #   
 #   
 ##############################################
@@ -158,7 +158,8 @@ Nextion_Initialize($)
   $hash->{UndefFn}      = "Nextion_Undef";
   $hash->{ShutdownFn}   = "Nextion_Undef";
   $hash->{ReadAnswerFn} = "Nextion_ReadAnswer";
-  
+  $hash->{NotifyFn}     = "Nextion_Notify"; 
+   
   $hash->{AttrFn}     = "Nextion_Attr";
   $hash->{AttrList}   = "initPage0:textField-long initPage1:textField-long initPage2:textField-long initPage3:textField-long initPage4:textField-long ".
                         "initPage5:textField-long initPage6:textField-long initPage7:textField-long initPage8:textField-long initPage9:textField-long ".
@@ -195,7 +196,13 @@ Nextion_Define($$)
 
   return undef if($dev eq "none"); # DEBUGGING
   
-  my $ret = Nextion_Connect( $hash );
+  my $ret;
+  if( $init_done ) {
+    Nextion_Disconnect($hash);
+    $ret = Nextion_Connect($hash);
+  } elsif( $hash->{STATE} ne "???" ) {
+    $hash->{STATE} = "Initialized";
+  }    
   return $ret;
 }
 
@@ -367,7 +374,26 @@ sub Nextion_Connect($;$) {
  return $ret;
 }
    
-  
+#####################################
+sub
+Nextion_Notify($$)
+{
+  my ($hash,$dev) = @_;
+  my $name  = $hash->{NAME};
+  my $type  = $hash->{TYPE};
+
+  return if($dev->{NAME} ne "global");
+  return if(!grep(m/^INITIALIZED|REREADCFG$/, @{$dev->{CHANGED}}));
+
+  if( IsDisabled($name) > 0 ) {
+    readingsSingleUpdate($hash, 'state', 'disabled', 1 ) if( ReadingsVal($name,'state','' ) ne 'disabled' );
+    return undef;
+  }
+
+  Nextion_Connect($hash);
+
+  return undef;
+}    
 #####################################
 sub
 Nextion_DoInit($)

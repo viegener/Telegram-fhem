@@ -67,7 +67,6 @@
 #
 #
 #   timeout with checkalive check?
-#   init device after notify on initialized
 #   
 #   react on events with commands allowing values from FHEM
 #   remove wait for answer by attribute

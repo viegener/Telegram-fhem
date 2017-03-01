@@ -437,6 +437,11 @@ sub TBot_List_getConfigListname($)
 sub TBot_List_getConfigListno($)
 {
   my ($hash) = @_;
+  
+  if ( ! defined($hash->{listno}) ) {
+    TBot_List_calcListNo($hash);
+  }
+  
   return $hash->{listno};
 }
   
@@ -1086,8 +1091,6 @@ sub TBot_List_Setup($) {
 
   $hash->{STATE} = "Defined";
 
-  TBot_List_calcListNo($hash);
-
   Log3 $name, 4, "TBot_List_Setup $name: ended ";
 
 }
@@ -1124,6 +1127,8 @@ sub TBot_List_Setup($) {
     Defines a TBot_List device, which will allow interaction between the telegrambot and the postme device
     <br><br>
     Example: <code>define testtbotlist TBot_List testposteme testlist</code><br>
+    <br><br>
+    Note: The module relies on events send from the corresponding TelegramBot devices. Specifically changes to the readings <code>sentMsgId</code> and <code>msgReplyMsgId</code> are required to enable to find the corresponding message ids to be able to modify messages. This needs to be taken into account when using the attributes event-on-*-reading on the TelegramBot device.<br>
     <br>
   </ul>
   <br><br>   

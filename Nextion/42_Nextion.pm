@@ -59,7 +59,7 @@
 #   fix for page 10 not recognized : #msg592948 
 #   _connect/Disconnect/isConnected subs
 #   init device after notify on initialized
-#   
+#   fix connection  - to work also if nextion is unavailable
 #   
 ##############################################
 ##############################################
@@ -113,7 +113,7 @@ use Encode qw( decode encode );
 sub Nextion_Read($@);
 sub Nextion_Write($$$);
 sub Nextion_ReadAnswer($$);
-#sub Nextion_Ready($);
+sub Nextion_Ready($);
 
 #########################
 # Globals
@@ -153,7 +153,7 @@ Nextion_Initialize($)
 # Provider
   $hash->{ReadFn}       = "Nextion_Read";
   $hash->{WriteFn}      = "Nextion_Write";
-#  $hash->{ReadyFn}      = "Nextion_Ready";
+  $hash->{ReadyFn}      = "Nextion_Ready";
   $hash->{UndefFn}      = "Nextion_Undef";
   $hash->{ShutdownFn}   = "Nextion_Undef";
   $hash->{ReadAnswerFn} = "Nextion_ReadAnswer";
@@ -259,8 +259,9 @@ Nextion_Set($@)
     }  
   } elsif($type eq "reopen") {
     Nextion_Disconnect($hash);
-    delete $hash->{DevIoJustClosed} if($hash->{DevIoJustClosed});
-    return Nextion_Connect( $hash );
+    delete $hash->{DevIoJustClosed} if($hash->{DevIoJustClosed});   
+    delete($hash->{NEXT_OPEN}); # needed ? - can this ever occur
+    return Nextion_Connect( $hash, 1 );
   } elsif($type eq "disconnect") {
     Nextion_Disconnect($hash);
     DevIo_setStates($hash, "disconnected"); 
@@ -347,7 +348,7 @@ sub Nextion_Disconnect($)
   my $hash = shift;
   my $name = $hash->{NAME};
 
-  Log3 $name, 5, "Nextion_Disconnect";
+  Log3 $name, 5, "Nextion_Disconnect: $name";
   DevIo_CloseDev($hash);
 } 
 
@@ -361,13 +362,16 @@ sub Nextion_Connect($;$) {
   $mode = 0 if!($mode);
 
   return undef if(Nextion_IsConnected($hash));
- # ??? delete($hash->{NEXT_OPEN}); #work around the connection rate limiter in DevIo 
- 
+  
+#  Debug "NEXT_OPEN: $name".((defined($hash->{NEXT_OPEN}))?time()-$hash->{NEXT_OPEN}:"undef");
+
   if(!IsDisabled($name)) {
-	  DevIo_OpenDev($hash, $mode, "Nextion_DoInit");
-    if(!Nextion_IsConnected($hash)) {
-      $ret = "Nextion_Connect: Could not connect :".$name;
-      Log3 $hash, 2, $ret;
+    # undefined means timeout / 0 means failed / 1 means ok
+    if ( DevIo_OpenDev($hash, $mode, "Nextion_DoInit") ) {
+      if(!Nextion_IsConnected($hash)) {
+        $ret = "Nextion_Connect: Could not connect :".$name;
+        Log3 $hash, 2, $ret;
+      }
     }
   }
  return $ret;
@@ -677,14 +681,17 @@ Nextion_ReadAnswer($$)
 }
 
 #####################################
-#sub
-#Nextion_Ready($)
-#{
-#  my ($hash) = @_;
-#
-#  return Nextion_Connect( $hash, 1 ) if($hash->{STATE} eq "disconnected");
-#  return 0;
-#}
+sub
+Nextion_Ready($)
+{
+  my ($hash) = @_;
+
+#  Debug "Name : ".$hash->{NAME};
+#  stacktrace();
+  
+  return Nextion_Connect( $hash, 1 ) if($hash->{STATE} eq "disconnected");
+  return 0;
+}
 
 ##############################################################################
 ##############################################################################

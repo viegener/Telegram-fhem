@@ -80,7 +80,7 @@
 # 2.2 2016-02-26  msgChatId with peer / api key secured / communication with TBot_List
 
 #   cmdSend to send the result of a command as message (used for sending SVGs)
-#   
+#   add utf8Special attribute for encoding before send
 #   
 ##############################################################################
 # TASKS 
@@ -94,18 +94,12 @@
 #   
 #   add an option to send silent messages - msg556631
 #   
-#   allow setting one time keyboard through set - how to connect to set?
 #   
 #   
 #   
 #   
 #   
 #   
-##############################################################################
-# Ideas / Future
-#   
-#   Idea: allow literals in msges: U+27F2 - \xe2\x9f\xb2 / Forum msg458794
-#
 ##############################################################################
 
 package main;
@@ -113,8 +107,8 @@ package main;
 use strict;
 use warnings;
 
-#use HttpUtils;
-use utf8;
+use HttpUtils;
+#use utf8;
 
 use Encode;
 
@@ -236,7 +230,7 @@ sub TelegramBot_Initialize($) {
   "cmdTimeout pollingTimeout disable queryAnswerText:textField cmdRespondChat:0,1 ".
   "allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCommands:textField allowedCommands filenameUrlEscape:1,0 ". 
   "textResponseFavorites:textField textResponseResult:textField textResponseUnauthorized:textField ".
-  "parseModeSend:0_None,1_Markdown,2_HTML,3_InMsg webPagePreview:1,0 ".
+  "parseModeSend:0_None,1_Markdown,2_HTML,3_InMsg webPagePreview:1,0 utf8Special:1,0 ".
   " maxRetries:0,1,2,3,4,5 ".$readingFnAttributes;           
 }
 
@@ -1566,10 +1560,12 @@ sub TelegramBot_SendIt($$$$$;$$)
 
   } else {
     $hash->{HU_DO_PARAMS}->{args} = \@args;
-    # reset UTF8 flag for ensuring length in httputils is correctly handling lenght (as bytes)
-#  Debug "send a command  :".$hash->{HU_DO_PARAMS}->{data}.":";
-#    $hash->{HU_DO_PARAMS}->{data} = encode_utf8(decode_utf8($hash->{HU_DO_PARAMS}->{data}));
-# Debug "send b command  :".$hash->{HU_DO_PARAMS}->{data}.":";
+    
+    # if utf8 is set on string this will lead to length wrongly calculated in HTTPUtils (char instead of bytes) for some installations
+    if ( ( AttrVal($name,'utf8Special',0) ) && ( utf8::is_utf8($hash->{HU_DO_PARAMS}->{data}) ) ) {
+      Log3 $name, 4, "TelegramBot_SendIt $name: utf8 encoding for data in message ";
+      $hash->{HU_DO_PARAMS}->{data} = encode_utf8($hash->{HU_DO_PARAMS}->{data});
+    }
     
     Log3 $name, 4, "TelegramBot_SendIt $name: timeout for sent :".$hash->{HU_DO_PARAMS}->{timeout}.": ";
     HttpUtils_NonblockingGet( $hash->{HU_DO_PARAMS} );
@@ -3363,6 +3359,9 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>textResponseUnauthorized &lt;UNAUTHORIZED: TelegramBot FHEM request from user :$peer\n  Msg: $msg&gt;</code><br>Text to be sent as warning for unauthorized command requests. Default is shown here and $peer will be replaced with the actual contact full name and id if added. $msg will be replaced with the sent message.
     </li> 
 
+    <li><code>utf8Special &lt;0 or 1&gt;</code><br>Specify if utf8 encodings will be resolved before sending to avoid issues with timeout on HTTP send (experimental ! / default is off).
+    </li> 
+    
   </ul>
   <br><br>
   

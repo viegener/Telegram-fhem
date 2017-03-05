@@ -57,8 +57,10 @@
 #   FIX: corrected allowedPeers definition
 #   Also support chats in start without args
 #   respond in chats / still only a single dialog per user allowed
-
 #   add entry for messages sent accidentially - absed on dialog
+
+#   removed debug statements
+#   
 #   
 #   
 ##############################################################################
@@ -601,7 +603,7 @@ sub TBot_List_handleEvents($$$)
       my $msgWait = TBot_List_getMsgId( $hash, $tbot, $msgChat, "textmsg" );
       my $msgSent = InternalVal( $tbot, "sentMsgText", "" );
       $msgSent =~ s/\s//g;
-      Debug "wait :".$msgWait.":   sent :".$msgSent.":    msgPeer/chat :$msgChat:"; 
+#      Debug "wait :".$msgWait.":   sent :".$msgSent.":    msgPeer/chat :$msgChat:"; 
       if ( defined( $msgWait ) && (  $msgSent eq $msgWait ) ) {
         my $arg = ReadingsVal($tbot,"sentMsgId","");
         
@@ -635,7 +637,7 @@ sub TBot_List_handleEvents($$$)
       # distinguish between reply (check for waiting reply)
       if ( length($msgReplyId) != 0 ) {
         # reply found
-        Debug "reply :".$replyMsg.":   rece reply :".$msgReplyId.":    msgPeer/chat :$msgChat:"; 
+#        Debug "reply :".$replyMsg.":   rece reply :".$msgReplyId.":    msgPeer/chat :$msgChat:"; 
         if ( defined( $replyMsg ) && ( $replyMsg eq $msgReplyId ) ) {
           TBot_List_setMsgId( $hash, $tbot, $msgChat, undef, "reply");
           

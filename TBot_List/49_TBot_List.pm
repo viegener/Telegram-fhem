@@ -52,12 +52,15 @@
 #   changed log levels
 #   corrected listNo calculation on dialog and define
 # 0.2 2017-02-26 Initial SVN Checkin
+
+#   Add note to documentation on events and event-on attributes
+#   FIX: corrected allowedPeers definition
+#   Also support chats in start without args
+#   respond in chats / still only a single dialog per user allowed
+#   
 #   
 ##############################################################################
 # TASKS 
-#   
-#   Use msgchat to store original chat and respond in chat 
-#   
 #   
 #   Make texts and addtl buttons configurable
 #   
@@ -124,7 +127,7 @@ sub TBot_List_Initialize($) {
   $hash->{AttrList}   = 
           "telegramBots:textField ".
           "optionDouble:0,1 ".
-          "allowedPeers:textfield ".
+          "allowedPeers:textField ".
           $readingFnAttributes;           
 }
 
@@ -218,7 +221,8 @@ sub TBot_List_Set($@)
 
   if ( $ret ) {
 
-    # do nothing if error/ret is defined
+    # This is wrong arg / ? --> just return without log
+    return $ret;
 
   } elsif ($cmd eq 'start')  {
     Log3 $name, 4, "TBot_List_Set $name: start of dialog requested ";
@@ -226,6 +230,7 @@ sub TBot_List_Set($@)
     
     my $tbot;
     my $tpeer;
+    my $tchat;
     if ( ! $ret ) {
       $tbot = $args[0];
       $ret = "No telegramBot specified :$tbot:" if ( ! TBot_List_isTBot( $hash, $tbot ) );
@@ -237,6 +242,7 @@ sub TBot_List_Set($@)
     
     if ( ! $ret ) {
       if ( $numberOfArgs == 2 ) {
+        $tchat = ReadingsVal( $tbot, "msgChatId", undef );
         $tpeer = ReadingsVal( $tbot, "msgPeerId", "" );
       } else {
         $tpeer = fhem( "get $tbot peerId ".$args[1] );
@@ -257,6 +263,8 @@ sub TBot_List_Set($@)
     Log3 $name, 1, "TBot_List_Set $name: Error :".$ret if ( $ret );
     
     # start uses a botname and an optional peer
+    $tpeer .= " ".$tchat if ( defined( $tchat ) );
+    
     $ret = TBot_List_handler( $hash, "list", $tbot, $tpeer ) if ( ! $ret );
 
   } elsif($cmd eq 'end') {
@@ -277,7 +285,12 @@ sub TBot_List_Set($@)
   
     # start uses a botname and an optional peer
     $ret = TBot_List_handler( $hash, "end", $tbot, $tpeer ) if ( ! $ret );
+
+  } elsif($cmd eq 'reset') {
+    Log3 $name, 4, "TBot_List_Set $name: reset requested ";
+    TBot_List_Setup( $hash );
   }
+
 
   Log3 $name, 4, "TBot_List_Set $name: $cmd ".((defined( $ret ))?"failed with :$ret: ":"done succesful ");
   return $ret
@@ -304,8 +317,8 @@ sub TBot_List_Get($@)
   my $ret = TBot_List_CheckSetGet( $hash, $cmd, $hash->{getoptions} );
 
   if ( $ret ) {
-    # do nothing if error/ret is defined
-
+    # This is wrong arg / ? --> just return without log
+    return $ret;
 
   } elsif($cmd eq "textList") {
     $ret = TBot_List_getTextList($hash);
@@ -377,7 +390,7 @@ sub TBot_List_Attr(@) {
       $aVal = ($aVal eq "1")? "1": "0";
 
     } elsif ($aName eq 'allowedPeers') {
-      return "\"TBot_List_Attr: \" $aName needs to be given in digits - and space only" if ( $aVal !~ /^[[:digit: -]]$/ );
+      return "\"TBot_List_Attr: \" $aName needs to be given in digits - and space only" if ( $aVal !~ /^[[:digit:] -]*$/ );
 
     }
 
@@ -580,56 +593,58 @@ sub TBot_List_handleEvents($$$)
   foreach my $event ( @{$events} ) {
     next if(!defined($event));
     
+    # msgPeer is chat here in chats
     if ( $event =~ /sentMsgId\:/ ) {
       Log3 $name, 4, "TBot_List_handleEvents $name: found sentMsgId ". $event;
-      my $msgPeer = InternalVal( $tbot, "sentMsgPeerId", "" );  
-      my $msgWait = TBot_List_getMsgId( $hash, $tbot, $msgPeer, "textmsg" );
+      my $msgChat = InternalVal( $tbot, "sentMsgPeerId", "" );  
+      my $msgWait = TBot_List_getMsgId( $hash, $tbot, $msgChat, "textmsg" );
       my $msgSent = InternalVal( $tbot, "sentMsgText", "" );
       $msgSent =~ s/\s//g;
-#      Debug "wait :".$msgWait.":   sent :".$msgSent.":"; 
+      Debug "wait :".$msgWait.":   sent :".$msgSent.":    msgPeer/chat :$msgChat:"; 
       if ( defined( $msgWait ) && (  $msgSent eq $msgWait ) ) {
         my $arg = ReadingsVal($tbot,"sentMsgId","");
         
         # store key set means a reply is expected
-        if ( defined( TBot_List_getMsgId( $hash, $tbot, $msgPeer, "store") ) ) {
+        if ( defined( TBot_List_getMsgId( $hash, $tbot, $msgChat, "store") ) ) {
           # reply received
-          TBot_List_setMsgId( $hash, $tbot, $msgPeer, $arg, "reply");
+          TBot_List_setMsgId( $hash, $tbot, $msgChat, $arg, "reply");
 
-          TBot_List_setMsgId( $hash, $tbot, $msgPeer, undef, "store");
+          TBot_List_setMsgId( $hash, $tbot, $msgChat, undef, "store");
 
         } else {
         
-          TBot_List_setMsgId( $hash, $tbot, $msgPeer, $arg );
+          TBot_List_setMsgId( $hash, $tbot, $msgChat, $arg );
 
           # remove old entry ids from chg entries
-          TBot_List_setMsgId( $hash, $tbot, $msgPeer, undef, "entry");
+          TBot_List_setMsgId( $hash, $tbot, $msgChat, undef, "entry");
         }
         
-        # set internal msg
-        TBot_List_setMsgId( $hash, $tbot, $msgPeer, undef, "textmsg" );
+        # reset internal msg
+        TBot_List_setMsgId( $hash, $tbot, $msgChat, undef, "textmsg" );
         
       }
       
     } elsif ( $event =~ /msgReplyMsgId\:/ ) {
       Log3 $name, 4, "TBot_List_handleEvents $name: found msgReplyMsgId ". $event;
-      my $msgPeer = ReadingsVal( $tbot, "msgPeerId", "" );  
+      my $msgChat = ReadingsVal( $tbot, "msgChatId", "" );  
       my $msgReplyId = ReadingsVal($tbot,"msgReplyMsgId","");
       $msgReplyId =~ s/\s//g;
 
-      my $replyMsg = TBot_List_getMsgId( $hash, $tbot, $msgPeer, "reply");
-      if ( $replyMsg eq $msgReplyId ) {
-        TBot_List_setMsgId( $hash, $tbot, $msgPeer, undef, "reply");
+      my $replyMsg = TBot_List_getMsgId( $hash, $tbot, $msgChat, "reply");
+      Debug "reply :".$replyMsg.":   rece reply :".$msgReplyId.":    msgPeer/chat :$msgChat:"; 
+      if ( defined( $replyMsg ) && ( $replyMsg eq $msgReplyId ) ) {
+        TBot_List_setMsgId( $hash, $tbot, $msgChat, undef, "reply");
         
         my $msgText = ReadingsVal( $tbot, "msgText", "" );
 
         # now check if an id of an entry was stored then this is edit
-        my $entryno = TBot_List_getMsgId( $hash, $tbot, $msgPeer, "entry");
+        my $entryno = TBot_List_getMsgId( $hash, $tbot, $msgChat, "entry");
         if ( defined( $entryno ) ) {
-          TBot_List_setMsgId( $hash, $tbot, $msgPeer, undef, "entry");
+          TBot_List_setMsgId( $hash, $tbot, $msgChat, undef, "entry");
 
-          TBot_List_handler( $hash, "list_chg-$entryno", $tbot, $msgPeer, $msgText );
+          TBot_List_handler( $hash, "list_chg-$entryno", $tbot, $msgChat, $msgText );
         } else {
-          TBot_List_handler( $hash,  "list_add", $tbot, $msgPeer, $msgText );
+          TBot_List_handler( $hash,  "list_add", $tbot, $msgChat, $msgText );
         }
       }
     }
@@ -652,17 +667,26 @@ sub TBot_List_handler($$$$;$)
 
   my $lname = TBot_List_getConfigListname($hash);
   my $msgId;
+  my $chatId;
   my @list;
   
-  if ( ! $ret ) {
-    $ret = "TBot_List_handler: $name - $tbot  ERROR - $peer not allowed" if ( ! TBot_List_isAllowed( $hash, $peer ) );
-  }
+  # in start case from group chat both ids will be given and need to be allowed
+  ($peer, $chatId) = split( / /, $peer );
+  
+  $ret = "TBot_List_handler: $name - $tbot  ERROR - $peer peer not allowed" if ( ( ! $ret ) && ( ! TBot_List_isAllowed( $hash, $peer ) ) );
+  $ret = "TBot_List_handler: $name - $tbot  ERROR - $chatId chat not allowed" if ( ( ! $ret ) && ( defined($chatId) ) && ( ! TBot_List_isAllowed( $hash, $peer ) ) );
   
   # get Msgid and list as prefetch
   if ( ! $ret ) {
+    $chatId = TBot_List_getMsgId( $hash, $tbot, $peer, "chat" ) if ( ! defined($chatId) );
+    $chatId = $peer if ( ! defined($chatId) );
+    
     $msgId = TBot_List_getMsgId( $hash, $tbot, $peer );
+    $msgId = TBot_List_getMsgId( $hash, $tbot, $chatId ) if ( ! defined( $msgId ) );
+
     @list = TBot_List_getList( $hash );
   }
+  Log3 $name, 4, "JVLISTMGR_handler: $name - after prefetch peer :$peer:  chatId :$chatId:   msgId :$msgId: ";
   
   #####################  
   if ( $ret ) {
@@ -670,40 +694,31 @@ sub TBot_List_handler($$$$;$)
 #    Log 1,$ret;
 
   #####################  
-  } elsif ( $cmd eq "list_ok" ) {
-    # ok means clean buttons and show only list
-    
-    # start the inline
+  } elsif ( ( $cmd eq "list_ok" ) || ( $cmd eq "list_done" ) ) {
+    # done means clean buttons and show only list
+    my $textmsg = (defined($arg)?$arg:"DONE");   # default for done
     my $inline = " ";
     
-    # get the list of entries in the list
-    my $liste = "";
-    foreach my $entry ( @list )  {
-      $liste .= "\n".$entry; 
+    if ( $cmd eq "list_ok" ) {
+      # get the list of entries in the list
+      my $liste = "";
+      foreach my $entry ( @list )  {
+        $liste .= "\n    ".$entry; 
+      }
+    
+      $textmsg = "Liste ".$lname;
+      $textmsg .= " ist leer " if ( scalar(@list) == 0 );
+      $textmsg .= " : $arg " if ( defined($arg) );
+      $textmsg .= $liste;
     }
-    
-    my $textmsg = "Liste ".$lname;
-    $textmsg .= " ist leer " if ( scalar(@list) == 0 );
-    $textmsg .= " : $arg " if ( defined($arg) );
-    $textmsg .= $liste;
-    
+
     if ( defined($msgId ) ) {
-      # show new list 
-      fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$peer." $inline $textmsg" );
-      TBot_List_setMsgId( $hash, $tbot, $peer );
+      # show final list 
+      fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
+      TBot_List_setMsgId( $hash, $tbot, $chatId );
+      TBot_List_setMsgId( $hash, $tbot, $peer, undef, "chat" );
     } else {
-      $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer:   cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
-    }
-    
-  #####################  
-  } elsif ( $cmd eq "list_done" ) {
-    # done means clean buttons and show only list
-    
-    if ( defined($msgId ) ) {
-      # show new list 
-      fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$peer." DONE" );
-    } else {
-      $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer:   cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
+      $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
     }
     
   #####################  
@@ -741,25 +756,33 @@ sub TBot_List_handler($$$$;$)
     $textmsg .= " : $arg " if ( defined($arg) );
     
     if ( $cmd eq "list" ) {
-      # remove msgId
+    
+    
+      # remove msgId if existing
       if ( defined($msgId ) ) {
         # done old list now and start a new list message
-        TBot_List_handler( $hash,  "list_done", $tbot, $peer );
-        TBot_List_setMsgId( $hash, $tbot, $peer );
+        TBot_List_handler( $hash,  "list_done", $tbot, $peer, "wurde beendet" );
+      } else {
+        # there might be still a dialog in another chat
+        my $oldchatId = TBot_List_getMsgId( $hash, $tbot, $peer, "chat" );
+        TBot_List_handler( $hash,  "list_done", $tbot, $peer, "wurde beendet" ) if ( defined( TBot_List_getMsgId( $hash, $tbot, $oldchatId ) ) );
       }
       
       # store text msg to recognize msg id in dummy
-      TBot_List_setMsgId( $hash, $tbot, $peer, $textmsg, "textmsg" );
+      TBot_List_setMsgId( $hash, $tbot, $chatId, $textmsg, "textmsg" );
+      
+      # store chat
+      TBot_List_setMsgId( $hash, $tbot, $peer, $chatId, "chat" );
       
       # send msg and keys
-      fhem( "set ".$tbot." queryInline ".'@'.$peer." $inline $textmsg" );
+      fhem( "set ".$tbot." queryInline ".'@'.$chatId." $inline $textmsg" );
       
     } else {
       if ( defined($msgId ) ) {
         # show new list 
-        fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$peer." $inline $textmsg" );
+        fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
       } else {
-        $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer:   cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
+        $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
       }
     }
     
@@ -775,9 +798,9 @@ sub TBot_List_handler($$$$;$)
         # show ask for removal
         my $textmsg = "Liste ".$lname."\nEintrag ".($no+1)." (".$list[$no].") ?";
         # show ask msg 
-        fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$peer." (Entfernen:".$name."\%"."list_rem-$no|Aendern:".$name."\%"."list_askchg-$no) (Nach Oben:".$name."\%"."list_totop-$no|Zurueck:".$name."\%"."list_edit) $textmsg" );
+        fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." (Entfernen:".$name."\%"."list_rem-$no|Aendern:".$name."\%"."list_askchg-$no) (Nach Oben:".$name."\%"."list_totop-$no|Zurueck:".$name."\%"."list_edit) $textmsg" );
       } else {
-        $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer:   cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
+        $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
       }
     
     }
@@ -814,9 +837,9 @@ sub TBot_List_handler($$$$;$)
         # show ask for removal
         my $textmsg = "Liste ".$lname."\nSoll der Eintrag ".($no+1)." (".$list[$no].") entfernt werden?";
         # show ask msg 
-        fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$peer." (Ja:".$name."\%"."list_remyes-$no) (Nein:".$name."\%"."list_edit) $textmsg" );
+        fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." (Ja:".$name."\%"."list_remyes-$no) (Nein:".$name."\%"."list_edit) $textmsg" );
       } else {
-        $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer:   cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
+        $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
       }
     }
      
@@ -841,9 +864,9 @@ sub TBot_List_handler($$$$;$)
       # show ask for removal
       my $textmsg = "Liste ".$lname."\nSoll die gesamte Liste ".scalar(@list)." Einträge gelöscht werden?";
       # show ask msg 
-      fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$peer." (Ja - Liste löschen:".$name."\%"."list_clryes|Nein:".$name."\%"."list_edit) $textmsg" );
+      fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." (Ja - Liste löschen:".$name."\%"."list_clryes|Nein:".$name."\%"."list_edit) $textmsg" );
     } else {
-      $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer:   cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
+      $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
     }
 
   #####################  
@@ -857,15 +880,15 @@ sub TBot_List_handler($$$$;$)
           
   #####################  
   } elsif ( $cmd eq "list_askadd" ) {
-    TBot_List_setMsgId( $hash, $tbot, $peer, $msgId, "store" );
+    TBot_List_setMsgId( $hash, $tbot, $chatId, $msgId, "store" );
 
     my $textmsg = "Liste ".$lname." Neuen Eintrag eingeben:";
     
     # store text msg to recognize msg id in dummy
-    TBot_List_setMsgId( $hash, $tbot, $peer, $textmsg, "textmsg" );
+    TBot_List_setMsgId( $hash, $tbot, $chatId, $textmsg, "textmsg" );
     
     # means ask for an entry to be added to the list
-    fhem( "set ".$tbot." msgForceReply ".'@'.$peer." $textmsg" );
+    fhem( "set ".$tbot." msgForceReply ".'@'.$chatId." $textmsg" );
 
   #####################  
   } elsif ( $cmd eq "list_add" ) {
@@ -892,7 +915,7 @@ sub TBot_List_handler($$$$;$)
       $ret = undef;
       
     } else {
-      $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer:   cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
+      $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
     }
     
   #####################  
@@ -901,18 +924,18 @@ sub TBot_List_handler($$$$;$)
 
     if ( ( $no >= 0 ) && ( $no < scalar(@list) ) ) {
 
-      TBot_List_setMsgId( $hash, $tbot, $peer, $msgId, "store" );
+      TBot_List_setMsgId( $hash, $tbot, $chatId, $msgId, "store" );
       
       # remove old entry ids from chg entries
-      TBot_List_setMsgId( $hash, $tbot, $peer, $no, "entry" );
+      TBot_List_setMsgId( $hash, $tbot, $chatId, $no, "entry" );
 
       my $textmsg = "Liste ".$lname." Eintrag ".($no+1)." ändern : ".$list[$no];
       
       # store text msg to recognize msg id in dummy
-      TBot_List_setMsgId( $hash, $tbot, $peer, $textmsg, "textmsg" );
+      TBot_List_setMsgId( $hash, $tbot, $chatId, $textmsg, "textmsg" );
 
       # means ask for an entry to be added to the list
-      fhem( "set ".$tbot." msgForceReply ".'@'.$peer." $textmsg" );
+      fhem( "set ".$tbot." msgForceReply ".'@'.$chatId." $textmsg" );
       
     }
 
@@ -943,7 +966,7 @@ sub TBot_List_handler($$$$;$)
       $ret = undef;
       
     } else {
-      $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer:   cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
+      $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
     }
     
   }
@@ -1071,6 +1094,7 @@ sub TBot_List_Setup($) {
   my %sets = (
     "start" => undef,
     "end" => undef,
+    "reset" => undef,
 
   );
 

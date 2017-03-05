@@ -57,6 +57,8 @@
 #   FIX: corrected allowedPeers definition
 #   Also support chats in start without args
 #   respond in chats / still only a single dialog per user allowed
+
+#   add entry for messages sent accidentially - absed on dialog
 #   
 #   
 ##############################################################################
@@ -66,7 +68,6 @@
 #   
 #   internal value if waiting for msg or reply -- otherwise notify not looping through events
 #   
-#   add entry for messages sent accidentially - absed on dialog
 #   
 #   TODOs
 #
@@ -624,31 +625,40 @@ sub TBot_List_handleEvents($$$)
         
       }
       
-    } elsif ( $event =~ /msgReplyMsgId\:/ ) {
-      Log3 $name, 4, "TBot_List_handleEvents $name: found msgReplyMsgId ". $event;
-      my $msgChat = ReadingsVal( $tbot, "msgChatId", "" );  
+    } elsif ( $event =~ /msgId\:/ ) {
+      Log3 $name, 4, "TBot_List_handleEvents $name: found msgId ". $event;
       my $msgReplyId = ReadingsVal($tbot,"msgReplyMsgId","");
-      $msgReplyId =~ s/\s//g;
-
+      my $msgChat = ReadingsVal( $tbot, "msgChatId", "" );  
       my $replyMsg = TBot_List_getMsgId( $hash, $tbot, $msgChat, "reply");
-      Debug "reply :".$replyMsg.":   rece reply :".$msgReplyId.":    msgPeer/chat :$msgChat:"; 
-      if ( defined( $replyMsg ) && ( $replyMsg eq $msgReplyId ) ) {
-        TBot_List_setMsgId( $hash, $tbot, $msgChat, undef, "reply");
-        
-        my $msgText = ReadingsVal( $tbot, "msgText", "" );
+      my $hasChat = TBot_List_getMsgId( $hash, $tbot, $msgChat );
 
-        # now check if an id of an entry was stored then this is edit
-        my $entryno = TBot_List_getMsgId( $hash, $tbot, $msgChat, "entry");
-        if ( defined( $entryno ) ) {
-          TBot_List_setMsgId( $hash, $tbot, $msgChat, undef, "entry");
+      # distinguish between reply (check for waiting reply)
+      if ( length($msgReplyId) != 0 ) {
+        # reply found
+        Debug "reply :".$replyMsg.":   rece reply :".$msgReplyId.":    msgPeer/chat :$msgChat:"; 
+        if ( defined( $replyMsg ) && ( $replyMsg eq $msgReplyId ) ) {
+          TBot_List_setMsgId( $hash, $tbot, $msgChat, undef, "reply");
+          
+          my $msgText = ReadingsVal( $tbot, "msgText", "" );
 
-          TBot_List_handler( $hash, "list_chg-$entryno", $tbot, $msgChat, $msgText );
-        } else {
-          TBot_List_handler( $hash,  "list_add", $tbot, $msgChat, $msgText );
+          # now check if an id of an entry was stored then this is edit
+          my $entryno = TBot_List_getMsgId( $hash, $tbot, $msgChat, "entry");
+          if ( defined( $entryno ) ) {
+            TBot_List_setMsgId( $hash, $tbot, $msgChat, undef, "entry");
+
+            TBot_List_handler( $hash, "list_chg-$entryno", $tbot, $msgChat, $msgText );
+          } else {
+            TBot_List_handler( $hash,  "list_add", $tbot, $msgChat, $msgText );
+          }
         }
+        
+      } elsif( ( defined( $hasChat ) ) && ( ! defined( $replyMsg ) ) ) {
+        # not waiting for reply but received message -> ask if entry should be added
+        my $msgText = ReadingsVal( $tbot, "msgText", "" );  
+        TBot_List_handler( $hash,  "list_expadd", $tbot, $msgChat, $msgText );
       }
+      
     }
-  
   }
 }
 
@@ -824,7 +834,7 @@ sub TBot_List_handler($$$$;$)
       # show updated list -> call recursively
       TBot_List_handler( $hash,  "list_edit", $tbot, $peer, " Nach oben gesetzt" );
     }
-    
+ 
   #####################  
   } elsif ( $cmd =~ /^list_rem-(\d+)$/ ) {
     # means remove a numbered entry from list - first ask
@@ -967,6 +977,37 @@ sub TBot_List_handler($$$$;$)
       
     } else {
       $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
+    }
+    
+    
+  #####################  
+  } elsif ( $cmd =~ /^list_expadd$/ ) {
+    # means unsolicited message ask for adding - first ask
+    
+    my $textmsg = "Liste ".$lname."\nSoll der Eintrag ".$arg." hinzugefügt werden?";
+    if ( defined($msgId ) ) {
+      # store text for adding 
+      TBot_List_setMsgId( $hash, $tbot, $chatId, $arg, "expadd" );
+
+      fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." (Ja:".$name."\%"."list_expaddyes) (Nein:".$name."\%"."list_edit) $textmsg" );
+    } else {
+      $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
+    }
+
+  #####################  
+  } elsif ( $cmd eq "list_expaddyes" ) {
+    # means add entry to list
+    
+    my $addentry =  TBot_List_getMsgId( $hash, $tbot, $chatId, "expadd" );
+
+    if ( defined($addentry ) ) {
+      fhem( "set ".TBot_List_getConfigPostMe($hash)." add $lname ".$addentry );
+      # show list again -> call recursively
+      if ( defined($msgId ) ) {
+        TBot_List_handler( $hash,  "list_edit", $tbot, $peer, " Eintrag hinzugefuegt" );
+      } else {
+        $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
+      }
     }
     
   }

@@ -81,6 +81,9 @@
 
 #   cmdSend to send the result of a command as message (used for sending SVGs)
 #   add utf8Special attribute for encoding before send
+#   reset msgReplyMsgId on reception to empty if no replyid
+#   
+#   
 #   
 ##############################################################################
 # TASKS 
@@ -1892,7 +1895,7 @@ sub TelegramBot_Callback($$$)
       if ( defined( $jo->{description} ) ) {
         $ret = "Callback returned error :".$jo->{description}.":";
         $doRetry = 0 if ($jo->{description} =~ /^Bad Request\:/);
-        Debug "description :".$jo->{description}.":";
+#        Debug "description :".$jo->{description}.":";
         $doRetry = 0 if ($jo->{description} =~ /^Unauthorized/);
       } else {
         $ret = "Callback returned error without description";
@@ -2235,7 +2238,7 @@ sub TelegramBot_ParseMsg($$$)
     readingsBulkUpdate($hash, "msgChat", TelegramBot_GetFullnameForContact( $hash, ((!$chatId)?$mpeernorm:$chatId) ) );        
     readingsBulkUpdate($hash, "msgChatId", ((!$chatId)?$mpeernorm:$chatId) );        
     readingsBulkUpdate($hash, "msgText", $mtext);
-    readingsBulkUpdate($hash, "msgReplyMsgId", $replyId);        
+    readingsBulkUpdate($hash, "msgReplyMsgId", (defined($replyId)?$replyId:""));        
 
     readingsBulkUpdate($hash, "msgFileId", ( ( defined( $mfileid ) ) ? $mfileid : "" ) );        
 

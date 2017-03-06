@@ -82,7 +82,7 @@
 #   cmdSend to send the result of a command as message (used for sending SVGs)
 #   add utf8Special attribute for encoding before send
 #   reset msgReplyMsgId on reception to empty if no replyid
-#   
+#   clarified scope of cmdRestrictedPeer in doc
 #   
 #   
 ##############################################################################
@@ -3295,9 +3295,9 @@ sub TelegramBot_BinaryFileWrite($$$) {
 
   <br>
     <li><code>cmdRestrictedPeer &lt;peer(s)&gt;</code><br>Restrict the execution of commands only to messages sent from the given peername or multiple peernames
-    (specified in the form of contact id, username or full name, multiple peers to be separated by a space). 
+    (specified in the form of contact id, username or full name, multiple peers to be separated by a space). This applies to the internal machanisms for commands in the TelegramBot-Module (favorites, cmdKeyword etc) not for external methods to react on changes of readings.
     A message with the cmd and sender is sent to the default peer in case of another peer trying to sent messages<br>
-    It is recommended to use only peer ids for this restriction to reduce spoofing risk!
+    NOTE: It is recommended to use only peer ids for this restriction to reduce spoofing risk!
 
     </li> 
     <li><code>cmdRespondChat &lt;1 or 0&gt;</code><br>Results / Responses from Commands will be sent to a group chat (1 = default) if originating from this chat. Otherwise responses will be sent only to the person initiating the command (personal chat) if set to value 0. <br>

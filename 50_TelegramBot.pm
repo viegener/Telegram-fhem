@@ -83,6 +83,9 @@
 #   add utf8Special attribute for encoding before send
 #   reset msgReplyMsgId on reception to empty if no replyid
 #   clarified scope of cmdRestrictedPeer in doc
+
+#   changed utf8Special to downgrade
+#   
 #   
 #   
 ##############################################################################
@@ -1567,7 +1570,8 @@ sub TelegramBot_SendIt($$$$$;$$)
     # if utf8 is set on string this will lead to length wrongly calculated in HTTPUtils (char instead of bytes) for some installations
     if ( ( AttrVal($name,'utf8Special',0) ) && ( utf8::is_utf8($hash->{HU_DO_PARAMS}->{data}) ) ) {
       Log3 $name, 4, "TelegramBot_SendIt $name: utf8 encoding for data in message ";
-      $hash->{HU_DO_PARAMS}->{data} = encode_utf8($hash->{HU_DO_PARAMS}->{data});
+      utf8::downgrade($hash->{HU_DO_PARAMS}->{data}); 
+#      $hash->{HU_DO_PARAMS}->{data} = encode_utf8($hash->{HU_DO_PARAMS}->{data});
     }
     
     Log3 $name, 4, "TelegramBot_SendIt $name: timeout for sent :".$hash->{HU_DO_PARAMS}->{timeout}.": ";

@@ -85,7 +85,7 @@
 #   clarified scope of cmdRestrictedPeer in doc
 
 #   changed utf8Special to downgrade
-#   
+#   FIX: defpeer undefined in #msg605605
 #   
 #   
 ##############################################################################
@@ -1121,7 +1121,7 @@ sub TelegramBot_ExecuteCommand($$$$;$) {
   my $defpeer = AttrVal($name,'defaultPeer',undef);
   $defpeer = TelegramBot_GetIdForPeer( $hash, $defpeer ) if ( defined( $defpeer ) );
   $defpeer = AttrVal($name,'defaultPeer',undef) if ( ! defined( $defpeer ) );
-  $defpeer = undef if ( $defpeer eq $mpeernorm );
+  $defpeer = undef if ( defined($defpeer) && ( $defpeer eq $mpeernorm ) );
   
   # LOCAL: External message
   my $retMsg = AttrVal( $name, 'textResponseResult', 'TelegramBot FHEM : $peer\n    Befehl:$cmd:\n  Ergebnis:\n$result \n ');

@@ -58,13 +58,18 @@
 #   Also support chats in start without args
 #   respond in chats / still only a single dialog per user allowed
 #   add entry for messages sent accidentially - absed on dialog
-
 #   removed debug statements
+
+#   make unsolicited entries configurable
+#   handle multiline entries --> remove line ends
+#   handle multiline entries --> multiple entries to be created
 #   
 #   
 #   
 ##############################################################################
 # TASKS 
+#   
+#   
 #   
 #   Make texts and addtl buttons configurable
 #   
@@ -130,6 +135,7 @@ sub TBot_List_Initialize($) {
   $hash->{AttrList}   = 
           "telegramBots:textField ".
           "optionDouble:0,1 ".
+          "handleUnsolicited:0,1 ".
           "allowedPeers:textField ".
           $readingFnAttributes;           
 }
@@ -520,6 +526,8 @@ sub TBot_List_getList($;$)
   $rd = "postme".sprintf("%2.2d",TBot_List_getConfigListno($hash))."Cont";
   my $listCont = ReadingsVal(TBot_List_getConfigPostMe($hash),$rd,"");
     
+  $listCont =~ s/[\n\t\r\f]+/ /sg;
+    
   my @entries = split( /,/, $listCont );
   
   if ( defined( $entry ) ) {
@@ -574,6 +582,18 @@ sub TBot_List_getMsgId($$$;$) {
   return $hash->{inlinechats}{$key};
 }
 
+##############################################
+# translate multiple lines into comma separated list
+#
+sub TBot_List_changeMultiLine($) {
+  my ($text) = @_;
+
+  $text =~ s/[\n\t\r\f]+/,/sg;
+
+  return $text;
+}
+
+
 
 ##############################################################################
 ##############################################################################
@@ -592,6 +612,8 @@ sub TBot_List_handleEvents($$$)
   my ($hash, $tbot, $events ) = @_;
   my $name = $hash->{NAME};
 
+  my $unsolic = AttrVal($name,"handleUnsolicited",0);
+  
   # events - look for sentMsgId / msgReplyMsgId
   foreach my $event ( @{$events} ) {
     next if(!defined($event));
@@ -654,7 +676,7 @@ sub TBot_List_handleEvents($$$)
           }
         }
         
-      } elsif( ( defined( $hasChat ) ) && ( ! defined( $replyMsg ) ) ) {
+      } elsif( ( defined( $hasChat ) ) && ( ! defined( $replyMsg ) ) && ( $unsolic ) ) {
         # not waiting for reply but received message -> ask if entry should be added
         my $msgText = ReadingsVal( $tbot, "msgText", "" );  
         TBot_List_handler( $hash,  "list_expadd", $tbot, $msgChat, $msgText );
@@ -905,6 +927,8 @@ sub TBot_List_handler($$$$;$)
   #####################  
   } elsif ( $cmd eq "list_add" ) {
     # means add entry to list
+
+    $arg = TBot_List_changeMultiLine( $arg );
     
     # ! means put on top
     if ( $arg =~ /^\!(.+)$/ ) {
@@ -956,6 +980,8 @@ sub TBot_List_handler($$$$;$)
     # means add entry to list
     my $no = $1;
     
+    $arg = TBot_List_changeMultiLine( $arg );
+    
     if ( ( $no >= 0 ) && ( $no < scalar(@list) ) ) {
       my $nre = 0;
       my $text = "";
@@ -973,7 +999,7 @@ sub TBot_List_handler($$$$;$)
     
     if ( defined($msgId ) ) {
       # show new list -> call recursively
-      $ret = "Eintrag hinzugefuegt";
+      $ret = "Eintrag gändert";
       TBot_List_handler( $hash,  "list", $tbot, $peer, $ret );
       $ret = undef;
       
@@ -985,6 +1011,8 @@ sub TBot_List_handler($$$$;$)
   #####################  
   } elsif ( $cmd =~ /^list_expadd$/ ) {
     # means unsolicited message ask for adding - first ask
+    
+    $arg = TBot_List_changeMultiLine( $arg );
     
     my $textmsg = "Liste ".$lname."\nSoll der Eintrag ".$arg." hinzugefügt werden?";
     if ( defined($msgId ) ) {
@@ -1247,6 +1275,10 @@ sub TBot_List_Setup($) {
     
     <li><code>allowedPeers &lt;list of peer ids&gt;</code><br>If specifed further restricts the users for the given list to these peers. It can be specifed in the same form as in the telegramBot msg command but without the leading @ (so ids will be just numbers).
     </li> 
+
+    <li><code>handleUnsolicited &lt;1 or 0&gt;</code><br>If set to 1 and new messages are sent in a chat where a dialog of this list is active the bot will ask if an entry should be added. This helps for accidential messages without out first pressing the "add" button.
+    </li> 
+    
   </ul>
 
   <br><br>

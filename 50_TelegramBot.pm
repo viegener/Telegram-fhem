@@ -83,10 +83,10 @@
 #   add utf8Special attribute for encoding before send
 #   reset msgReplyMsgId on reception to empty if no replyid
 #   clarified scope of cmdRestrictedPeer in doc
-
 #   changed utf8Special to downgrade
 #   FIX: defpeer undefined in #msg605605
-#   
+
+#   FIXDOC: url escaping for filenames
 #   
 ##############################################################################
 # TASKS 
@@ -95,8 +95,6 @@
 #   replyKeyboardRemove - #msg592808
 #   
 #   allow multiple commands
-#   
-#   allow comma as separator for recipients
 #   
 #   add an option to send silent messages - msg556631
 #   
@@ -3188,8 +3186,8 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>sendImage|image [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer(s) or if ommitted to the default peer. 
     File is specifying a filename and path to the image file to be send. 
     Local paths should be given local to the root directory of fhem (the directory of fhem.pl e.g. /opt/fhem).
-    Filenames with spaces need to be given in double quotes (")
-    Rule for specifying peers are the same as for messages. Multiple peers are to be separated by space. Captions can also contain multiple words and do not need to be quoted.
+    Filenames with special characters (especially spaces) need to be given with url escaping (i.e. spaces need to be replaced by %20). 
+    Rules for specifying peers are the same as for messages. Multiple peers are to be separated by space. Captions can also contain multiple words and do not need to be quoted.
     </li>
     <li><code>sendMedia|sendDocument [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt;</code><br>Sends a media file (video, audio, image or other file type) to the given peer(s) or if ommitted to the default peer. Handling for files and peers is as specified above.
     </li>

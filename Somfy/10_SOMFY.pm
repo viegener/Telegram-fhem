@@ -30,85 +30,30 @@
 ##############################################################################
 # History:
 #	1.0		thomyd			initial implementation
-#
 #	1.1		Elektrolurch		state changed to open,close,pos <x>
-# 							for using "set device pos <value> the attributes
-#							drive-down-time-to-100, drive-down-time-to-close,
-#							drive-up-time-to-100 and drive-up-time-to-open must be set
-# 							Hardware section seperated to SOMFY_SetCommand
-#
-#	1.2		Elektrolurch		state is now set after reaching the position of the blind
-#							preparation for receiving signals of Somfy remotes signals,
-#							associated with the blind
-#
-#	1.3		thomyd			Basic implementation of "parse" function, requires updated CULFW
-#							Removed open/close as the same functionality can be achieved with an eventMap.
-#
-#	1.4 		thomyd			Implemented fallback on/off-for-timer methods and only show warning about stop/go-my
-#							if the positioning attributes are set.
-#
-#	1.5		thomyd			Bugfix for wrong attribute names when calculating the updatetime (drive-up-...)
-#
 #	1.6		viegener		New state and action handling (trying to stay compatible also adding virtual receiver capabilities)
-#
-#									Further refined:
-#									2015-04-30 - state/position are now regularly updated during longer moves (as specified in somfy_updateFreq in seconds)
-#									2015-04-30 - For blinds normalize on pos 0 to 100 (max) (meaning if drive-down-time-to-close == drive-down-time-to-100 and drive-up-time-to-100 == 0)
-#         				2015-04-30 - new reading exact position called 'exact' also used for further pos calculations
-#  2015-07-03 additionalPosReading <name> for allowing to specify an additional reading to contain position for shutter
-#  2015-07-03 Cleanup of reading update routine
-#
-#  2015-07-06 viegener - Timing improvement for position calculation / timestamp used before extensive calculations
-#  2015-07-06 viegener - send stop command only when real movement needs to be stopped (to avoid conflict with my-pos for stopped shutters)
-#  2015-07-09 viegener - FIX: typo in set go-my (was incorrectly spelled: go_my) 
-#  2015-07-09 viegener - FIX: log and set command helper corrections 
-#  2015-08-05 viegener - Remove setList (obsolete) and could be rather surprising for the module
-######################################################
-#
-#  2016-05-03 viegener - Support readingFnAttributes also for Somfy
-#  2016-05-11 viegener - Handover SOMFY from thdankert/thomyd
-#  2016-05-11 viegener - Cleanup Todolist
-#  2016-05-11 viegener - Some additions to documentation (commandref)
-#  2016-05-13 habichvergessen - Extend SOMFY module to use Signalduino as iodev
-#  2016-05-13 viegener - Fix for CUL-SCC
-#  2016-05-16 habichvergessen - Fixes - on newly (autocreated entries)
-#  2016-05-16 habichvergessen - add rolling code / enckey for autocreate
-#  2016-05-16 viegener - Minor cleanup on code
-#  2016-05-16 viegener - Fix Issue#5 - autocreate preparation (code in modules pointer for address also checked for empty hash)
-#  2016-05-16 viegener - Ensure Ys message length correct before analyzing
-#  2016-05-29 viegener - Correct define for readingsval on rollingcode etc
-#  2016-05-29 viegener - Some cleanup - translations reduced
-#  2016-05-29 viegener - remove internals exact/position use only readings
-#  2016-05-29 viegener - Fix value in exact not being numeric (Forum449583)
-#  2016-10-06 viegener - add summary for fhem commandref
-#  2016-10-06 viegener - positionInverse for inverse operation 100 open 10 down 0 closed 
-#  2016-10-17 viegener - positionInverse test and fixes
-#  2016-10-18 viegener - positionInverse documentation and complettion (no change to set on/off logic)
-#  2016-10-25 viegener - drive-Attribute - correct syntax check - add note in commandref
-#  2016-10-30 viegener - FIX: remove wrong attribute up-time-to-close - typo in attr setter
-#  2016-10-14 viegener - FIX: Use of uninitialized value $updateState in concatenation
-# 
 #  2016-12-30 viegener - New sets / code-commands 9 / a  - wind_sun_9 / wind_only_a
 #  2017-01-08 viegener - Handle fixed encryption A0 for switches - switchable fixed_enckey
 #  2017-01-21 viegener - updatestate also called in non virtual mode to sent events
 #  2017-02-19 viegener - Restructuring of method blocks
-
+######################################################
+# 
+# 1.9 Prep for rebuilt and signalduino
 # - myUtilsSOMFY_Initialize removed
 # - SOMFY_StartTime removed
 # - prepare: restructure code
+# - clean up history
+# 
+# 
 #   
 # 
 ###############################################################################
 #
-### Known Issue - if timer is running and last command equals new command (only for open / close) - considered minor/but still relevant
 #
 ###############################################################################
 ###############################################################################
 # Somfy Modul - OPEN
 ###############################################################################
-# 
-# 
-# 
 # 
 # - Check readings set
 # - Check if modify can replace the strange attr - reading operation
@@ -117,6 +62,7 @@
 # - Autocreate 
 # - Complete shutter / blind as different model
 # - Make better distinction between different IoTypes - CUL+SCC / Signalduino
+# - Known Issue - if timer is running and last command equals new command (only for open / close) - considered minor/but still relevant
 # - 
 # - 
 #

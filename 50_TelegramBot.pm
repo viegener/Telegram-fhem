@@ -90,10 +90,13 @@
 #   allow multiple commands in favorites with double ;;
 #   DOC: multiple commands in favorites
 #  allow flagging favorites not shown in favlist (only with alias prefixing alias with a hyphen --> /-alias ) 
-
 #   FIX: Allow utf8 again
 #   alias execution is not honoring needsconfirm and sent result --> needs to be backward compatible
 #   cleanup for favorite execution and parsing
+
+#   reduce utf8 handling
+#   
+#   
 #   
 ##############################################################################
 # TASKS 
@@ -140,9 +143,6 @@ sub TelegramBot_SendIt($$$$$;$$);
 sub TelegramBot_checkAllowedPeer($$$);
 
 sub TelegramBot_SplitFavoriteDef($$);
-
-sub TelegramBot_GetUTF8Back( $ );
-sub TelegramBot_PutToUTF8( $ );
 
 sub TelegramBot_AttrNum($$$);
 
@@ -1953,9 +1953,6 @@ sub TelegramBot_Callback($$$)
     my $jo;
  
 
-#  Debug "jjj: ".$data;
- 
-### mark as latin1 to ensure no conversion is happening (this works surprisingly)
     eval {
 #       $data = encode( 'latin1', $data );
        $data = encode_utf8( $data );
@@ -3023,30 +3020,6 @@ sub TelegramBot_AttrNum($$$)
   $val =~ s/[^-\.\d]//g;
   return $val;
 } 
-
-
-#####################################
-#  INTERNAL: Convert (Mark) a scalar as UTF8 - coming from telegram
-sub TelegramBot_GetUTF8Back( $ ) {
-  my ( $data ) = @_;
-  
-  return $data;
-#JVI
-#  return encode('utf8', $data);
-}
-  
-
-
-#####################################
-#  INTERNAL: used to encode a string aas Utf-8 coming from the code
-sub TelegramBot_PutToUTF8( $ ) {
-  my ( $data ) = @_;
-  
-  return $data;
-#JVI
-#  return decode('utf8', $data);
-}
-  
 
 
 ######################################

@@ -87,9 +87,9 @@
 #   FIX: defpeer undefined in #msg605605
 #   FIXDOC: url escaping for filenames
 #   avoid empty favorites
-
 #   allow multiple commands in favorites with double ;;
-#   
+
+#   DOC: multiple commands in favorites
 #   
 #   
 ##############################################################################
@@ -3314,7 +3314,12 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <br>
     The question mark needs to be before the exclamation mark if both are given.
     <br>
-    Meaning the full format for a single favorite is <code>/alias[description]=command</code> where the alias can be empty or <code>/alias=command</code> or just the <code>command</code>. In any case the command can be also prefixed with a '?' or a '!' (or both). Spaces are only allowed in the description and the command, usage of spaces in other areas might lead to wrong interpretation of the definition. Spaces and also many other characters are not supported in the alias commands by telegram, so if you want to have your favorite/alias directly recognized in then telegram app, restriction to letters, digits and underscore is required.  
+    <br>
+    Favorite commands can also include multiple fhem commands being execute using ;; as a separator 
+    <br>
+        Example: <code>get lights status; /blink=set lights on;; sleep 3;; set lights off; set heater;</code> <br>
+    <br>
+    Meaning the full format for a single favorite is <code>/alias[description]=commands</code> where the alias can be empty or <code>/alias=command</code> or just the <code>commands</code>. In any case the commands can be also prefixed with a '?' or a '!' (or both). Spaces are only allowed in the description and the commands, usage of spaces in other areas might lead to wrong interpretation of the definition. Spaces and also many other characters are not supported in the alias commands by telegram, so if you want to have your favorite/alias directly recognized in the telegram app, restriction to letters, digits and underscore is required. Double semicolon will be used for specifying mutliple fhem commands in a single favorites, while single semicolon is used to separate between different favorite definitions
     </li> 
 
   <br>

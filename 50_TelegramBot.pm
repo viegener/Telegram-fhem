@@ -85,24 +85,26 @@
 #   clarified scope of cmdRestrictedPeer in doc
 #   changed utf8Special to downgrade
 #   FIX: defpeer undefined in #msg605605
-
 #   FIXDOC: url escaping for filenames
+
+#   avoid empty favorites
+#   
+#   
 #   
 ##############################################################################
 # TASKS 
 #   
 #   
+#   
+#   allow multiple commands in favorites (and general)
+#   
+#   
+#   
+#   
+#   
 #   replyKeyboardRemove - #msg592808
 #   
-#   allow multiple commands
-#   
 #   add an option to send silent messages - msg556631
-#   
-#   
-#   
-#   
-#   
-#   
 #   
 ##############################################################################
 
@@ -731,8 +733,6 @@ sub TelegramBot_Attr(@) {
   # aName and aVal are Attribute name and value
   if ($cmd eq "set") {
     if ($aName eq 'favorites') {
-      $attr{$name}{'favorites'} = $aVal;
-
       # Empty current alias list in hash
       if ( defined( $hash->{AliasCmds} ) ) {
         foreach my $key (keys %{$hash->{AliasCmds}} )
@@ -744,9 +744,16 @@ sub TelegramBot_Attr(@) {
       }
 
       my @clist = split( /;/, $aVal);
+      my $newVal = "";
 
       foreach my $cs (  @clist ) {
         my ( $alias, $desc, $parsecmd, $needsConfirm, $needsResult ) = TelegramBot_SplitFavoriteDef( $hash, $cs );
+        
+        Debug "parsecmd :".$parsecmd.":  ".length($parsecmd);
+        next if ( length($parsecmd) == 0 ); # skip emtpy commands
+
+        $newVal .= ";" if ( length($newVal)>0 );
+        $newVal .= $cs;
         if ( $alias ) {
           my $alx = $alias;
           my $alcmd = $parsecmd;
@@ -755,6 +762,10 @@ sub TelegramBot_Attr(@) {
           $hash->{AliasCmds}{$alx} = $alcmd;
         }
       }
+
+      # set attribute value to newly combined commands
+      $attr{$name}{'favorites'} = $newVal;
+      $aVal = $newVal;
 
     } elsif ($aName eq 'cmdRestrictedPeer') {
       $aVal =~ s/^\s+|\s+$//g;

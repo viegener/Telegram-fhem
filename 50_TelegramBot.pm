@@ -86,8 +86,9 @@
 #   changed utf8Special to downgrade
 #   FIX: defpeer undefined in #msg605605
 #   FIXDOC: url escaping for filenames
-
 #   avoid empty favorites
+
+#   allow multiple commands in favorites with double ;;
 #   
 #   
 #   
@@ -95,9 +96,7 @@
 # TASKS 
 #   
 #   
-#   
-#   allow multiple commands in favorites (and general)
-#   
+#  allow flagging favorites not shown in favlist (only with alias) 
 #   
 #   
 #   
@@ -578,7 +577,7 @@ sub TelegramBot_Set($@)
       Log3 $name, 4, "TelegramBot_ExecuteCommand $name: parse cmd returned :$msg:";
     } 
   
-    $msg = AnalyzeCommand( $hash, $msg );
+    $msg = AnalyzeCommandChain( $hash, $msg );
 
     # Check for image/doc/audio stream in return (-1 image
     ( $isMediaStream ) = TelegramBot_IdentifyStream( $hash, $msg ) if ( defined( $msg ) );
@@ -743,13 +742,16 @@ sub TelegramBot_Attr(@) {
         $hash->{AliasCmds} = {};
       }
 
+      # keep double ; for inside commands
+      $aVal =~ s/;;/SeMiCoLoN/g; 
       my @clist = split( /;/, $aVal);
       my $newVal = "";
 
       foreach my $cs (  @clist ) {
+        $cs =~ s/SeMiCoLoN/;;/g; # reestablish double ; for inside commands
         my ( $alias, $desc, $parsecmd, $needsConfirm, $needsResult ) = TelegramBot_SplitFavoriteDef( $hash, $cs );
         
-        Debug "parsecmd :".$parsecmd.":  ".length($parsecmd);
+        # Debug "parsecmd :".$parsecmd.":  ".length($parsecmd);
         next if ( length($parsecmd) == 0 ); # skip emtpy commands
 
         $newVal .= ";" if ( length($newVal)>0 );
@@ -886,6 +888,10 @@ sub TelegramBot_SplitFavoriteDef($$) {
     $confirm = $5;
     $result = $6;
     $parsecmd = $7;
+    
+    # replace double semicolon 
+    $parsecmd =~ s/;;/;/g; # reestablish double ; for inside commands     
+    
 #    Debug "Parse 1  a:".$alias.":  d:".$desc.":  c:".$parsecmd.":";
   } else {
     Log3 $name, 1, "TelegramBot_SplitFavoriteDef invalid favorite definition :$cmd: ";
@@ -908,6 +914,8 @@ sub TelegramBot_SentFavorites($$$$$) {
   my $slc =  AttrVal($name,'favorites',"");
 #  Log3 $name, 5, "TelegramBot_SentFavorites Favorites :$slc: ";
   
+  # keep double ; for inside commands
+  $slc =~ s/;;/SeMiCoLoN/g; 
   my @clist = split( /;/, $slc);
   my $isConfirm;
   
@@ -926,7 +934,8 @@ sub TelegramBot_SentFavorites($$$$$) {
     Log3 $name, 4, "TelegramBot_SentFavorites exec cmd :$cmdId: ";
     if ( ( $cmdId >= 0 ) && ( $cmdId < scalar( @clist ) ) ) { 
       my $ecmd = $clist[$cmdId];
-      
+      $ecmd =~ s/SeMiCoLoN/;;/g; # reestablish double ; for inside commands 
+            
       my ( $alias, $desc, $parsecmd, $needsConfirm, $needsResult ) = TelegramBot_SplitFavoriteDef( $hash, $ecmd );
       return "Alias could not be parsed :$ecmd:" if ( ! $parsecmd );
 
@@ -980,6 +989,8 @@ sub TelegramBot_SentFavorites($$$$$) {
       my $fcmd = AttrVal($name,'cmdFavorites',undef);
       
       foreach my $cs (  @clist ) {
+        $cs =~ s/SeMiCoLoN/;;/g; # reestablish double ; for inside commands 
+
         $cnt += 1;
         my ( $alias, $desc, $parsecmd, $needsConfirm, $needsResult ) = TelegramBot_SplitFavoriteDef( $hash, $cs );
         if ( defined($parsecmd) ) { 
@@ -1118,7 +1129,7 @@ sub TelegramBot_ExecuteCommand($$$$;$) {
       Log3 $name, 4, "TelegramBot_ExecuteCommand $name: parse cmd returned :$cmd:";
     } 
   
-    $ret = AnalyzeCommand( $hash, $cmd );
+    $ret = AnalyzeCommandChain( $hash, $cmd );
 
     # Check for image/doc/audio stream in return (-1 image
     ( $isMediaStream ) = TelegramBot_IdentifyStream( $hash, $ret ) if ( defined( $ret ) );

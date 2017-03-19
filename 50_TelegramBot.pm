@@ -89,15 +89,18 @@
 #   avoid empty favorites
 #   allow multiple commands in favorites with double ;;
 #   DOC: multiple commands in favorites
+#  allow flagging favorites not shown in favlist (only with alias prefixing alias with a hyphen --> /-alias ) 
 
-#  allow flagging favorites not shown in favlist (only with alias) 
-#   
+#   FIX: Allow utf8 again
+#   alias execution is not honoring needsconfirm and sent result --> needs to be backward compatible
+#   cleanup for favorite execution and parsing
 #   
 ##############################################################################
 # TASKS 
 #   
-#   FIX: alias execution is not honoring needsconfirm and sent result --> needs to be backward compatible
+#   cleanup encodings
 #   
+#   Handle favorites as inline?
 #   
 #   replyKeyboardRemove - #msg592808
 #   
@@ -111,7 +114,7 @@ use strict;
 use warnings;
 
 use HttpUtils;
-#use utf8;
+use utf8;
 
 use Encode;
 
@@ -744,6 +747,7 @@ sub TelegramBot_Attr(@) {
       $aVal =~ s/;;/SeMiCoLoN/g; 
       my @clist = split( /;/, $aVal);
       my $newVal = "";
+      my $cnt = 0;
 
       foreach my $cs (  @clist ) {
         $cs =~ s/SeMiCoLoN/;;/g; # reestablish double ; for inside commands
@@ -752,6 +756,8 @@ sub TelegramBot_Attr(@) {
         # Debug "parsecmd :".$parsecmd.":  ".length($parsecmd);
         next if ( length($parsecmd) == 0 ); # skip emtpy commands
 
+        $cnt += 1;
+
         $newVal .= ";" if ( length($newVal)>0 );
         $newVal .= $cs;
         if ( $alias ) {
@@ -759,7 +765,7 @@ sub TelegramBot_Attr(@) {
           my $alcmd = $parsecmd;
           
           Log3 $name, 2, "TelegramBot_Attr $name: Alias $alcmd defined multiple times" if ( defined( $hash->{AliasCmds}{$alx} ) );
-          $hash->{AliasCmds}{$alx} = $alcmd;
+          $hash->{AliasCmds}{$alx} = $cnt;
         }
       }
 
@@ -910,9 +916,25 @@ sub TelegramBot_SplitFavoriteDef($$) {
     
 #####################################
 #####################################
-# INTERNAL: handle sentlast and favorites
-sub TelegramBot_SentFavorites($$$$$) {
-  my ($hash, $mpeernorm, $mchatnorm, $cmd, $mid ) = @_;
+# INTERNAL: handle favorites and alias execution
+# alias exec is used by case an alias command is entered
+#
+# cmd is everything after the key word
+# cases
+#   empty --> list of favorites
+#   [0-9]+ --> id no addition
+#   [0-9]+ <addition> --> id no addition
+#   [0-9]+ = <description or cmd> --> id automaticall no addition
+#   
+#   -[0-9]+- --> confirmed manually no addition
+#   -[0-9]+- ; <addition> --> confirmed manually with addition
+#   
+#   -[0-9]+- = <description or cmd> --> confirmed automatically without addition
+#   -[0-9]+- = <description or cmd> =; <addition> --> confirmed automatically with addition
+#   
+#
+sub TelegramBot_SentFavorites($$$$$;$) {
+  my ($hash, $mpeernorm, $mchatnorm, $cmd, $mid, $aliasExec ) = @_;
   my $name = $hash->{NAME};
 
   my $ret;
@@ -926,19 +948,47 @@ sub TelegramBot_SentFavorites($$$$$) {
   $slc =~ s/;;/SeMiCoLoN/g; 
   my @clist = split( /;/, $slc);
   my $isConfirm;
+  my $cmdFavId;
+  my $cmdAddition;
   
   my $resppeer = $mpeernorm;
   $resppeer .= "(".$mchatnorm.")" if ( $mchatnorm ); 
-
-  if ( $cmd =~ /^\s*([0-9]+)(\??)\s*=.*$/ ) {
-    $cmd = $1;
-    $isConfirm = ($2 eq "?")?1:0; 
-  }
   
+  if ( $cmd =~ /^\s*([0-9]+)( = .+)?\s*$/ ) {
+  #   [0-9]+ --> id no addition
+  #   [0-9]+ = <description or cmd> --> id automaticall no addition
+    $cmdFavId = $1;
+  
+  } elsif ( $cmd =~ /^\s*([0-9]+)(.+)\s*$/ ) {
+  #   [0-9]+<addition> --> id addition
+    $cmdFavId = $1;
+    $cmdAddition = $2;
+    
+  } elsif ( $cmd =~ /^\s*([0-9]+)( ; (.*))?\s*$/ ) {
+  #   [0-9]+ --> id no addition
+  #   [0-9]+ ; <addition> --> id no addition
+    $cmdFavId = $1;
+    $cmdAddition = $3;
+    
+  } elsif ( $cmd =~ /^\s*-([0-9]+)-( ; (.*))?\s*$/ ) {
+  #   -[0-9]+- --> confirmed manually no addition
+  #   -[0-9]+- ; <addition> --> confirmed manually with addition
+    $cmdFavId = $1;
+    $cmdAddition = $3;
+    $isConfirm = 1;
+    
+  } elsif ( $cmd =~ /^\s*-([0-9]+)-( = ((=[^;])|([^=;])|([^=];))*)( =; (.*))?\s*$/ ) {
+  #   -[0-9]+- = <description or cmd> --> confirmed automatically without addition
+  #   -[0-9]+- = <description or cmd> =; <addition> --> confirmed automatically with addition
+    $cmdFavId = $1;
+    $cmdAddition = $8;
+    $isConfirm = 1;
+  } 
+  
+  Debug "cmd :$cmd:";
   # if given a number execute the numbered favorite as a command
-  if ( looks_like_number( $cmd ) ) {
-    return $ret if ( $cmd == 0 );
-    my $cmdId = ($cmd-1);
+  if ( $cmdFavId ) {
+    my $cmdId = ($cmdFavId-1);
     Log3 $name, 4, "TelegramBot_SentFavorites exec cmd :$cmdId: ";
     if ( ( $cmdId >= 0 ) && ( $cmdId < scalar( @clist ) ) ) { 
       my $ecmd = $clist[$cmdId];
@@ -950,22 +1000,15 @@ sub TelegramBot_SentFavorites($$$$$) {
       $ecmd = $parsecmd;
       
 #      Debug "Needsconfirm: ". $needsConfirm;
-      
-      if ( ( ! $isConfirm ) && ( $needsConfirm ) ) {
+      if ( ( $hidden ) && ( ! $aliasExec ) && ( ! $isConfirm ) ) {
+        Log3 $name, 3, "TelegramBot_SentFavorites hidden favorite (id;".($cmdId+1).") execution from ".$mpeernorm;
+      } elsif ( ( ! $isConfirm ) && ( $needsConfirm ) ) {
         # ask first for confirmation
-        my $fcmd = AttrVal($name,'cmdFavorites',undef);
+        my $fcmd = AttrVal($name,'cmdFavorites',"");
         
         my @tmparr;
         my @keys = ();
-#        my @tmparr1 = ( TelegramBot_PutToUTF8( $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd)." ausführen?" ) );
-#        my @tmparr1 = ( $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd)." ausführen?" );
-#        my $tmptxt = encode_utf8( $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd)." ausführen?" );
-        my $tmptxt = $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd).encode_utf8( " ausführen?" );
-#        my $tmptxt = $fcmd.$cmd."? = ".(($desc)?$desc:$parsecmd);
-#        Debug "tmptxt :$tmptxt:";
-        #        utf8::upgrade($tmptxt);
-#        $tmptxt = TelegramBot_PutToUTF8($tmptxt);
-#        $tmptxt = decode_utf8($tmptxt);
+        my $tmptxt = $fcmd."-".$cmdFavId."- = ".(($desc)?$desc:$parsecmd).($cmdAddition?" =; ".$cmdAddition:"");
         my @tmparr1 = ( $tmptxt );
         push( @keys, \@tmparr1 );
         my @tmparr2 = ( "Abbruch" );
@@ -981,7 +1024,8 @@ sub TelegramBot_SentFavorites($$$$$) {
         return TelegramBot_SendIt( $hash, (($mchatnorm)?$mchatnorm:$mpeernorm), $ret, $jsonkb, 0 );
         
       } else {
-        $ecmd = $1 if ( $ecmd =~ /^\s*\?(.*)$/ );
+#        $ecmd = $1 if ( $ecmd =~ /^\s*\?(.*)$/ );
+        $ecmd .= " ".$cmdAddition if ( $cmdAddition );
         return TelegramBot_ExecuteCommand( $hash, $mpeernorm, $mchatnorm, $ecmd, $needsResult );
       }
     } else {
@@ -1298,15 +1342,23 @@ sub Telegram_HandleCommandInMessages($$$$$)
     foreach my $aliasKey (keys %{$hash->{AliasCmds}} ) {
       ( $cmd, $doRet ) = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mchatnorm, $mtext, $aliasKey, 1 );
       if ( defined( $cmd ) ) {
-        # Build the final command from the the alias and the remainder of the message
-        Log3 $name, 5, "TelegramBot_ParseMsg $name: Alias Match :$aliasKey:";
         $cmd = $hash->{AliasCmds}{$aliasKey}." ".$cmd;
-        $cmdRet = TelegramBot_ExecuteCommand( $hash, $mpeernorm, $mchatnorm, $cmd );
-        Log3 $name, 4, "TelegramBot_ParseMsg $name: ExecuteFavoriteCmd returned :$cmdRet:" if ( defined($cmdRet) );
+        $cmdRet = TelegramBot_SentFavorites( $hash, $mpeernorm, $mchatnorm, $cmd, $mid, 1 ); # call with aliasesxec set
+        Log3 $name, 4, "TelegramBot_ParseMsg $name: SentFavorites (alias) returned :$cmdRet:" if ( defined($cmdRet) );
         return;
       } elsif ( $doRet ) {
         return;
       }
+      
+#        # Build the final command from the the alias and the remainder of the message
+#       Log3 $name, 5, "TelegramBot_ParseMsg $name: Alias Match :$aliasKey:";
+#        $cmd = $hash->{AliasCmds}{$aliasKey}." ".$cmd;
+#        $cmdRet = TelegramBot_ExecuteCommand( $hash, $mpeernorm, $mchatnorm, $cmd );
+#        Log3 $name, 4, "TelegramBot_ParseMsg $name: ExecuteFavoriteCmd returned :$cmdRet:" if ( defined($cmdRet) );
+#        return;
+#      } elsif ( $doRet ) {
+#        return;
+#      }
     }
   }
 

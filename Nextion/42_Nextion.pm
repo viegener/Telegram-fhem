@@ -60,6 +60,10 @@
 #   _connect/Disconnect/isConnected subs
 #   init device after notify on initialized
 #   fix connection  - to work also if nextion is unavailable
+
+
+#   Extended log for read function
+#   
 #   
 ##############################################
 ##############################################
@@ -592,8 +596,16 @@ Nextion_Read($@)
 
         readingsEndUpdate($hash, 1);
 
+      } else {
+        Log3 $name, 5, "Nextion/RAW: match with zero length ";
       }
     } else {
+      # not matching 
+      if ( $data =~ /^[^\xff]*(\xff+)/ ) {
+        Log3 $name, 5, "Nextion/RAW: not matching commands but contains ff :".length($1).":";
+      } else {
+        Log3 $name, 5, "Nextion/RAW: not matching commands no ff";
+      }
       last;
     }
 

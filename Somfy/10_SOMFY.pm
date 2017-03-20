@@ -43,7 +43,9 @@
 # - SOMFY_StartTime removed
 # - prepare: restructure code
 # - clean up history
+
 # - modify of definition to replace attr handling for enc and rolling_code
+# - remove attribute for enc_key and rollingcode
 # 
 #   
 # 
@@ -55,7 +57,6 @@
 # Somfy Modul - OPEN
 ###############################################################################
 # 
-# - remove attribute for enc_key and rollingcode
 # - 
 # - 
 # - 
@@ -219,8 +220,6 @@ sub SOMFY_Initialize($) {
     . " positionInverse:1,0  "
 	  . " IODev"
 	  . " symbol-length"
-	  . " enc-key"
-	  . " rolling-code"
 	  . " repetition"
 	  . " switch_rfmode:1,0"
 	  . " fixed_enckey:1,0"
@@ -1414,14 +1413,6 @@ sub SOMFY_SendCommand($@)
 	
 	# convert old attribute values to READINGs
 	my $timestamp = TimeNow();
-	if(defined($attr{$name}{"enc-key"} && defined($attr{$name}{"rolling-code"}))) {
-		setReadingsVal($hash, "enc_key", $attr{$name}{"enc-key"}, $timestamp);
-		setReadingsVal($hash, "rolling_code", $attr{$name}{"rolling-code"}, $timestamp);
-
-		# delete old attribute
-		delete($attr{$name}{"enc-key"});
-		delete($attr{$name}{"rolling-code"});
-	}
 
 	# message looks like this
 	# Ys_key_ctrl_cks_rollcode_a0_a1_a2
@@ -1588,6 +1579,8 @@ sub SOMFY_SendCommand($@)
    if you used FHEM to clone an existing remote.
    <br>
    This is because the code is original remote's codes are out of sync.</li>
+   <br>
+   Rolling code and encryption key in the device definition will be always updated on commands sent and can be also changed manually by modifying the original definition (e.g in FHEMWeb - modify).
    </ul>
    <br>
 
@@ -1682,18 +1675,6 @@ sub SOMFY_SendCommand($@)
     <li>additionalPosReading<br>
         Position of the shutter will be stored in the reading <code>pos</code> as numeric value. 
         Additionally this attribute might specify a name for an additional reading to be updated with the same value than the pos.
-		</li><br>
-
-    <a name="rolling-code"></a>
-    <li>rolling-code &lt; 4 digit hex &gt; <br>
-        Can be used to overwrite the rolling-code manually with a new value (rolling-code will be automatically increased with every command sent)
-        This requires also setting enc-key: only with bot attributes set the value will be accepted for the internal reading
-		</li><br>
-
-    <a name="enc-key"></a>
-    <li>enc-key &lt; 2 digit hex &gt; <br>
-        Can be used to overwrite the enc-key manually with a new value 
-        This requires also setting rolling-code: only with bot attributes set the value will be accepted for the internal reading
 		</li><br>
 
     <a name="fixed_enckey"></a>

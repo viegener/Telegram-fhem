@@ -43,7 +43,7 @@
 # - SOMFY_StartTime removed
 # - prepare: restructure code
 # - clean up history
-# 
+# - modify of definition to replace attr handling for enc and rolling_code
 # 
 #   
 # 
@@ -55,8 +55,13 @@
 # Somfy Modul - OPEN
 ###############################################################################
 # 
+# - remove attribute for enc_key and rollingcode
+# - 
+# - 
+# - 
+# - 
+# - 
 # - Check readings set
-# - Check if modify can replace the strange attr - reading operation
 # - add queuing for commands
 # - signalduino modifications - to be adapted to not change existing behavior
 # - Autocreate 
@@ -267,9 +272,9 @@ sub SOMFY_Define($$) {
 
 		# store it as reading, so it is saved in the statefile
 		# only store it, if the reading does not exist yet
-    if(! defined( ReadingsVal($name, "enc_key", undef) )) {
+#    if(! defined( ReadingsVal($name, "enc_key", undef) )) {
 			setReadingsVal($hash, "enc_key", uc($a[3]), $tzero);
-		}
+#		}
 
 		if ( int(@a) == 5 ) {
 			# check rolling code (4 hex digits)
@@ -279,9 +284,9 @@ sub SOMFY_Define($$) {
 			}
 
 			# store it, if old reading does not exist yet
-      if(! defined( ReadingsVal($name, "rolling_code", undef) )) {
+#      if(! defined( ReadingsVal($name, "rolling_code", undef) )) {
 				setReadingsVal($hash, "rolling_code", uc($a[4]), $tzero);
-			}
+#			}
 		}
 	}
 
@@ -924,7 +929,17 @@ sub SOMFY_isRemote($) {
   
 }
   
+#####################################
+sub SOMFY_updateDef($;$$)
+{
+	my ($hash, $ec, $rc) = @_;
+	my $name = $hash->{NAME};
 
+  $ec = ReadingsVal($name, "enc_key", "A0") if ( ! defined( $ec ) );
+  $rc = ReadingsVal($name, "rolling_code", "0000") if ( ! defined( $rc ) );
+  
+  $hash->{DEF} = $hash->{ADDRESS}." ".uc($ec)." ".uc($rc);
+}
 
 ######################################################
 ######################################################
@@ -1457,8 +1472,10 @@ sub SOMFY_SendCommand($@)
 
 	# update the readings, but do not generate an event
 	setReadingsVal($hash, "enc_key", $new_enc_key, $timestamp); 
-
 	setReadingsVal($hash, "rolling_code", $new_rolling_code, $timestamp);
+  
+  # modify definition of device with actual enc/rc
+  SOMFY_updateDef( $hash, $new_enc_key, $new_rolling_code );
 
 	# CUL specifics
 	if ($ioType ne "SIGNALduino") {
@@ -1506,6 +1523,7 @@ sub SOMFY_SendCommand($@)
 		$lh->{READINGS}{enc_key}{VAL}       = $new_enc_key;
 		$lh->{READINGS}{rolling_code}{TIME} = $tn;
 		$lh->{READINGS}{rolling_code}{VAL}  = $new_rolling_code;
+    SOMFY_updateDef( $lh, $new_enc_key, $new_rolling_code );
 	}
 	
 	return $ret;

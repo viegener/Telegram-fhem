@@ -93,14 +93,16 @@
 #   FIX: Allow utf8 again
 #   alias execution is not honoring needsconfirm and sent result --> needs to be backward compatible
 #   cleanup for favorite execution and parsing
-
 #   reduce utf8 handling
-#   
+
+#   add favorite hidden zusatz
+#   favorite keyboard 2 column #msg609128
 #   
 #   
 ##############################################################################
 # TASKS 
 #   
+#    
 #   cleanup encodings
 #   
 #   Handle favorites as inline?
@@ -236,7 +238,7 @@ sub TelegramBot_Initialize($) {
   "cmdTimeout pollingTimeout disable queryAnswerText:textField cmdRespondChat:0,1 ".
   "allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCommands:textField allowedCommands filenameUrlEscape:1,0 ". 
   "textResponseFavorites:textField textResponseResult:textField textResponseUnauthorized:textField ".
-  "parseModeSend:0_None,1_Markdown,2_HTML,3_InMsg webPagePreview:1,0 utf8Special:1,0 ".
+  "parseModeSend:0_None,1_Markdown,2_HTML,3_InMsg webPagePreview:1,0 utf8Special:1,0 favorites2Col:0,1 ".
   " maxRetries:0,1,2,3,4,5 ".$readingFnAttributes;           
 }
 
@@ -954,6 +956,8 @@ sub TelegramBot_SentFavorites($$$$$;$) {
   my $resppeer = $mpeernorm;
   $resppeer .= "(".$mchatnorm.")" if ( $mchatnorm ); 
   
+  Log3 $name, 4, "TelegramBot_SentFavorites cmd :$cmd:   peer :$mpeernorm:   aliasExec :".$aliasExec;
+
   if ( $cmd =~ /^\s*([0-9]+)( = .+)?\s*$/ ) {
   #   [0-9]+ --> id no addition
   #   [0-9]+ = <description or cmd> --> id automaticall no addition
@@ -966,7 +970,7 @@ sub TelegramBot_SentFavorites($$$$$;$) {
     
   } elsif ( $cmd =~ /^\s*([0-9]+)( ; (.*))?\s*$/ ) {
   #   [0-9]+ --> id no addition
-  #   [0-9]+ ; <addition> --> id no addition
+  #   [0-9]+ ; <addition> --> id but addition
     $cmdFavId = $1;
     $cmdAddition = $3;
     
@@ -983,9 +987,19 @@ sub TelegramBot_SentFavorites($$$$$;$) {
     $cmdFavId = $1;
     $cmdAddition = $8;
     $isConfirm = 1;
+
+  } elsif ( $cmd =~ /^\s*(.*)\s*$/ ) {
+  #   --> no id no addition
+  #   <addition> --> no id but addition
+    $cmdAddition = $1;
+    
   } 
   
-  Debug "cmd :$cmd:";
+  # trim cmd addition if given
+  $cmdAddition =~ s/^\s+|\s+$//g if ( $cmdAddition );
+  
+  Log3 $name, 5, "TelegramBot_SentFavorites parsed cmdFavId :".(defined($cmdFavId)?$cmdFavId:"<undef>")."   cmdaddition :".(defined($cmdAddition)?$cmdAddition:"<undef>").": ";
+
   # if given a number execute the numbered favorite as a command
   if ( $cmdFavId ) {
     my $cmdId = ($cmdFavId-1);
@@ -1037,17 +1051,25 @@ sub TelegramBot_SentFavorites($$$$$;$) {
   if ( ! defined( $ret ) ) {
       my $cnt = 0;
       my @keys = ();
+      my $showalsohidden = 1 if ( $cmdAddition && ( $cmdAddition =~ /^hidden$/i ) ); 
 
       my $fcmd = AttrVal($name,'cmdFavorites',undef);
+      my $lastarr;
       
       foreach my $cs (  @clist ) {
         $cs =~ s/SeMiCoLoN/;;/g; # reestablish double ; for inside commands 
 
         $cnt += 1;
         my ( $alias, $desc, $parsecmd, $needsConfirm, $needsResult, $hidden ) = TelegramBot_SplitFavoriteDef( $hash, $cs );
-        if ( ( defined($parsecmd) ) && ( ! $hidden ) ) { 
-          my @tmparr = ( $fcmd.$cnt." = ".($alias?$alias." = ":"").(($desc)?$desc:$parsecmd) );
-          push( @keys, \@tmparr );
+        if ( ( defined($parsecmd) ) && ( ( ! $hidden ) || $showalsohidden ) ) { 
+          my $key = ( $fcmd.$cnt." = ".($alias?$alias." = ":"").(($desc)?$desc:$parsecmd) );
+          if ( ( $cnt % 2 ) || ( ! AttrVal($name,"favorites2Col",0) )  ){
+            my @tmparr = ( $key );
+            $lastarr = \@tmparr;
+            push( @keys, \@tmparr );
+          } else {
+            $$lastarr[1] = $key;
+          }
         }
       }
 
@@ -3141,7 +3163,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
   <ul>
     <li>Bots can not initiate connections to arbitrary users, instead users need to first initiate the communication with the bot.</li> 
     <li>Bots have a different privacy setting then normal users (see <a href=https://core.telegram.org/bots#privacy-mode>Privacy mode</a>) </li> 
-    <li>Bots support commands and specialized keyboards for the interaction (not yet supported in the fhem telegramBot)</li> 
+    <li>Bots support commands and specialized keyboards for the interaction </li> 
   </ul>
   
   <br><br>

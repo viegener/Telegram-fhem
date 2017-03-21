@@ -46,8 +46,9 @@
 
 # - modify of definition to replace attr handling for enc and rolling_code
 # - remove attribute for enc_key and rollingcode
-# 
-#   
+# - cleanup namings of globals
+# - set default model as attribute to shutter
+# - support different settings for different models  
 # 
 ###############################################################################
 #
@@ -91,7 +92,7 @@ use warnings;
 
 #use List::Util qw(first max maxstr min minstr reduce shuffle sum);
 
-my %codes = (
+my %somfy_codes = (
 	"10" => "go-my",    # goto "my" position
 	"11" => "stop", 	# stop the current movement
 	"20" => "off",      # go "up"
@@ -104,29 +105,27 @@ my %codes = (
 	"XX" => "z_custom",	# custom control code
 );
 
-my %sets = (
+my %somfy_sets = (
 	"off" => "noArg",
 	"on" => "noArg",
 	"stop" => "noArg",
-	"go-my" => "noArg",
 	"prog" => "noArg",
 	"on-for-timer" => "textField",
 	"off-for-timer" => "textField",
 	"z_custom" => "textField",
-  "wind_sun_9" => "noArg",
-  "wind_only_a" => "noArg",
-	"pos" => "0,10,20,30,40,50,60,70,80,90,100"
 );
 
-my %sendCommands = (
-	"off" => "off",
+my %somfy_sets_addition = (
+	"go-my" => "noArg",
+	"pos" => "100,90,80,70,60,50,40,30,20,10,0",
+#	"pos" => "0,10,20,30,40,50,60,70,80,90,100",
+  "wind_sun_9" => "noArg",
+  "wind_only_a" => "noArg",
+);
+
+my %somfy_sendCommands = (
 	"open" => "off",
-	"on" => "on",
 	"close" => "on",
-	"prog" => "prog",
-	"stop" => "stop",
-  "wind_sun_9" => "wind_sun_9",
-  "wind_only_a" => "wind_only_a",
 );
 
 my %somfy_c2b;
@@ -136,7 +135,7 @@ my $somfy_defrepetition = 6;	# Default Somfy frame repeat counter
 
 my $somfy_updateFreq = 3;	# Interval for State update
 
-my %models = ( somfyblinds => 'blinds', somfyshutter => 'shutter', somfyswitch2 => 'switch2', somfyswitch4 => 'switch4', ); # supported models (blinds  and shutters)
+my %models = ( somfyshutter => 'shutter', somfyremote => 'remote', somfyblinds => 'blinds', somfyswitch2 => 'switch2', somfyswitch4 => 'switch4', ); # supported models 
 
 
 ######################################################
@@ -199,8 +198,8 @@ sub SOMFY_Initialize($) {
 	my ($hash) = @_;
 
 	# map commands from web interface to codes used in Somfy RTS
-	foreach my $k ( keys %codes ) {
-		$somfy_c2b{ $codes{$k} } = $k;
+	foreach my $k ( keys %somfy_codes ) {
+		$somfy_c2b{ $somfy_codes{$k} } = $k;
 	}
 
 	#                       YsKKC0RRRRAAAAAA
@@ -257,6 +256,13 @@ sub SOMFY_Define($$) {
 
 	$hash->{ADDRESS} = uc($address);
 
+  # set default model if not yet set
+  if ( ! defined( $attr{$name}{model} ) ) {
+    $attr{$name}{model} = "somfyshutter"
+  }
+  
+  
+  
 	# check optional arguments for device definition
 	if ( int(@a) > 3 ) {
 
@@ -449,7 +455,7 @@ sub SOMFY_Parse($$) {
 		$cmd = "11"; # use "stop" instead of "go-my"
   }
 
-	my $newstate = $codes{ $cmd };
+	my $newstate = $somfy_codes{ $cmd };
 
 	my $def = $modules{SOMFY}{defptr}{$address};
 
@@ -549,24 +555,11 @@ sub SOMFY_InternalSet($@) {
 		$numberOfArgs = int(@args);
 	}
 
-	if(!exists($sets{$cmd})) {
-		my @cList;
-
-		foreach my $k (sort keys %sets) {
-			my $opts = undef;
-			$opts = $sets{$k};
-
-      if (defined($opts)) {
-        $opts = "100,90,80,70,60,50,40,30,20,10,0" if ( $k eq "pos" );
-				push(@cList,$k . ':' . $opts);
-			} else {
-				push (@cList,$k);
-			}
-		} # end foreach
-
-		return "SOMFY_set: Unknown argument $cmd, choose one of " . join(" ", @cList);
-	} # error unknown cmd handling
-
+	if( ! SOMFY_getTestSets( $hash, $cmd ) ) {
+		my $setist = SOMFY_getTestSets( $hash );
+    return "SOMFY_set: Unknown argument $cmd, choose one of " . $setist;
+  }
+  
 	my $arg1 = "";
 	if ( $numberOfArgs >= 2 ) {
 		$arg1 = $args[1];
@@ -835,18 +828,14 @@ sub SOMFY_InternalSet($@) {
 	
 	### send command
 	if ( $mode ne 'virtual' ) {
-		if(exists($sendCommands{$move})) {
-			$args[0] = $sendCommands{$move};
+    if ( $move ne 'none' ) {
+			$args[0] = $somfy_sendCommands{$move};
+      $args[0] = $move if ( ! defined( $args[0] ) );
 			SOMFY_SendCommand($hash,@args);
-		} elsif ( $move eq 'none' ) {
-      # do nothing if commmand / move is set to none
 		} else {
-			Log3($name,1,"SOMFY_set: Error - unknown move for sendCommands: $move");
+      # do nothing if commmand / move is set to none
 		}
-	}	
-
-	### start timer 
-	if ( $mode eq 'virtual' ) {
+	}	else {
 		# in virtual mode define drivetime as updatetime only, so no commands will be send
 		if ( $updatetime == 0 ) {
 			$updatetime = $drivetime;
@@ -864,6 +853,7 @@ sub SOMFY_InternalSet($@) {
 		$hash->{runningtime} = $updatetime;
 	}
 
+	### start timer 
 	if($hash->{runningtime} > 0) {
 		# timer fuer stop starten
 		if ( defined( $hash->{runningcmd} )) {
@@ -917,7 +907,17 @@ sub SOMFY_isSwitch($) {
   
 
 #############################
-# 0 blinds / 2 or 4 for switches
+sub SOMFY_isShutter($) {
+	my ($hash) = @_;
+	my $name = $hash->{NAME};
+ 
+  my $model = AttrVal( $name, "model", "shutter" );
+  
+  return ( $model =~ /shutter$/ )?$model:0;
+  
+}
+
+#############################
 sub SOMFY_isRemote($) {
 	my ($hash) = @_;
 	my $name = $hash->{NAME};
@@ -948,7 +948,44 @@ sub SOMFY_updateDef($;$$)
 ######################################################
 ######################################################
 
+###################################
+sub SOMFY_getTestSets($;$) {
+	my ($hash, $cmd) = @_;
+	my $name = $hash->{NAME};
 
+  if ( $cmd ) {
+    # no sets for remotes
+    return 0 if ( SOMFY_isRemote( $hash ) );
+
+    # default sets 
+    return 1 if ( exists($somfy_sets{$cmd}) );
+
+    # addtl cmds for shutters and blinds (not switches) 
+    return 1 if ( ( ! SOMFY_isSwitch( $hash ) ) && ( exists($somfy_sets_addition{$cmd}) ) );
+    return 0;
+  } 
+  
+  # no sets for remotes
+  return "" if ( SOMFY_isRemote( $hash ) );
+
+  my @cList;
+  foreach my $k (sort keys %somfy_sets) {
+    my $opts = $somfy_sets{$k};
+    push(@cList,$k.(defined($opts)?':' . $opts:""));
+  } # end foreach
+  
+  
+  if ( ! SOMFY_isSwitch( $hash ) ) {
+    foreach my $k (sort keys %somfy_sets_addition) {
+      my $opts = $somfy_sets_addition{$k};
+      push(@cList,$k.(defined($opts)?':' . $opts:""));
+    } # end foreach
+  }
+  
+  return join(" ", @cList);
+}  
+  
+  
 ###################################
 sub SOMFY_Runden($) {
 	my ($v) = @_;
@@ -1368,7 +1405,7 @@ sub SOMFY_SendCommand($@)
   		|| ($numberOfArgs == 2 && $args[1] !~ m/^[a-fA-F0-9]{2}$/)));
 
     my $command = $somfy_c2b{ $cmd };
-	# eigentlich überflüssig, da oben schon auf Existenz geprüft wird -> %sets
+	# eigentlich überflüssig, da oben schon auf Existenz geprüft wird 
 	if ( !defined($command) ) {
 
 		return "Unknown argument $cmd, choose one of "

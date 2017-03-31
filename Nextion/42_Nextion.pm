@@ -63,13 +63,13 @@
 
 
 #   Extended log for read function
-#   
+#   remove leading ff
 #   
 ##############################################
 ##############################################
 ### TODO
 #
-#
+#   rectextold1-5 --> #msg611695
 #   timeout with checkalive check?
 #   
 #   react on events with commands allowing values from FHEM
@@ -601,7 +601,10 @@ Nextion_Read($@)
       }
     } else {
       # not matching 
-      if ( $data =~ /^[^\xff]*(\xff+)/ ) {
+      if ( $data =~ /^\xff+([^\xff].*)/ ) {
+        Log3 $name, 5, "Nextion/RAW: remove leading ff ";
+        $data = $1;
+      } elsif ( $data =~ /^[^\xff]*(\xff+)/ ) {
         Log3 $name, 5, "Nextion/RAW: not matching commands but contains ff :".length($1).":";
       } else {
         Log3 $name, 5, "Nextion/RAW: not matching commands no ff";

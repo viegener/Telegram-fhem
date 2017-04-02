@@ -60,10 +60,16 @@
 #   _connect/Disconnect/isConnected subs
 #   init device after notify on initialized
 #   fix connection  - to work also if nextion is unavailable
-
-
 #   Extended log for read function
 #   remove leading ff
+
+#   fault tolerant command reader allow empty commands and missing \xff
+#   
+#   
+#   
+#   
+#   
+#   
 #   
 ##############################################
 ##############################################
@@ -553,9 +559,14 @@ Nextion_Read($@)
   
   while(length($data) > 0) {
 
-    if ( $data =~ /^([^\xff]*)\xff\xff\xff(.*)$/ ) {
+#    if ( $data =~ /^([^\xff]*)\xff\xff\xff(.*)$/ ) {
+    if ( $data =~ /^([^\xff]*)(\xff+)([^\xff].*)?$/ ) {
       my $rcvd = $1;
-      $data = $2;
+      my $ffpart = $2;
+      $data = $3;
+      $data = "" if ( ! defined($data) );
+      
+      Log3 $name, 5, "Nextion/RAW: not matching command end sequence :".length($ffpart).":" if ( length($ffpart) != 3 );
       
       if ( length($rcvd) > 0 ) {
       
@@ -597,18 +608,18 @@ Nextion_Read($@)
         readingsEndUpdate($hash, 1);
 
       } else {
-        Log3 $name, 5, "Nextion/RAW: match with zero length ";
+        Log3 $name, 5, "Nextion/RAW: match with zero length - command missing ";
       }
     } else {
       # not matching 
-      if ( $data =~ /^\xff+([^\xff].*)/ ) {
-        Log3 $name, 5, "Nextion/RAW: remove leading ff ";
-        $data = $1;
-      } elsif ( $data =~ /^[^\xff]*(\xff+)/ ) {
-        Log3 $name, 5, "Nextion/RAW: not matching commands but contains ff :".length($1).":";
-      } else {
-        Log3 $name, 5, "Nextion/RAW: not matching commands no ff";
-      }
+#      if ( $data =~ /^\xff+([^\xff].*)/ ) {
+#        Log3 $name, 5, "Nextion/RAW: remove leading ff ";
+#        $data = $1;
+#      } elsif ( $data =~ /^[^\xff]*(\xff+)/ ) {
+#        Log3 $name, 5, "Nextion/RAW: not matching commands but contains ff :".length($1).":";
+#      } else {
+#        Log3 $name, 5, "Nextion/RAW: not matching commands no ff";
+#      }
       last;
     }
 

@@ -27,7 +27,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,38328.0.html
 #
-# $Id: 50_TelegramBot.pm 12383 2016-10-19 21:24:53Z viegener $
+# $Id: 50_TelegramBot.pm 13824 2017-03-27 20:48:32Z viegener $
 #
 ##############################################################################
 # 0.0 2015-09-16 Started
@@ -94,15 +94,22 @@
 #   alias execution is not honoring needsconfirm and sent result --> needs to be backward compatible
 #   cleanup for favorite execution and parsing
 #   reduce utf8 handling
-
 #   add favorite hidden zusatz
 #   favorite keyboard 2 column #msg609128
+# 2.3 2016-03-27  utf8Special for unicode issues / favorite handling / hidden favorites
+
+#   doc: favorites2Col for 2 columns favorites keyboard
+#   fix: aliasExec can be undefined - avoid error
+#   
+#   
 #   
 #   
 ##############################################################################
 # TASKS 
 #   
-#    
+#   allow : in keyboards (either escaped or just use last : for data split) --> #msg611609
+#   
+#   
 #   cleanup encodings
 #   
 #   Handle favorites as inline?
@@ -938,6 +945,8 @@ sub TelegramBot_SplitFavoriteDef($$) {
 sub TelegramBot_SentFavorites($$$$$;$) {
   my ($hash, $mpeernorm, $mchatnorm, $cmd, $mid, $aliasExec ) = @_;
   my $name = $hash->{NAME};
+  
+  $aliasExec = 0 if ( ! $aliasExec );
 
   my $ret;
   
@@ -3375,6 +3384,8 @@ sub TelegramBot_BinaryFileWrite($$$) {
         Example: <code>get lights status; /blink=set lights on;; sleep 3;; set lights off; set heater;</code> <br>
     <br>
     Meaning the full format for a single favorite is <code>/alias[description]=commands</code> where the alias can be empty if the description is given or <code>/alias=command</code> or <code>/-alias=command</code> for a hidden favorite or just the <code>commands</code>. In any case the commands can be also prefixed with a '?' or a '!' (or both). Spaces are only allowed in the description and the commands, usage of spaces in other areas might lead to wrong interpretation of the definition. Spaces and also many other characters are not supported in the alias commands by telegram, so if you want to have your favorite/alias directly recognized in the telegram app, restriction to letters, digits and underscore is required. Double semicolon will be used for specifying mutliple fhem commands in a single favorites, while single semicolon is used to separate between different favorite definitions
+    </li> 
+    <li><code>favorites2Col &lt;1 or 0&gt;</code><br>Show favorites in 2 columns keyboard (instead of 1 column  - default)
     </li> 
 
   <br>

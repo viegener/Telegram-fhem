@@ -42,6 +42,8 @@
 #   cleaned up cmd and result handling
 
 #   removed debug
+# 0.5 2017-04-17 Working with multi register polling 
+
 #   
 #   
 #   

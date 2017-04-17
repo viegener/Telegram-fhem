@@ -24,8 +24,16 @@
 #  $Id:$
 #  
 ##############################################################################
-# 0.0 2017-0416 Started
+# 0.0 2017-04-16 Started
 #   Inital Version to communicate with Arduino with Kamstrup smartmeter firmware54_Kamstrup
+#   Attribute registers  list of id:name ... 
+#   if register in id:name setreading
+#   pollingtimeout and updatesequence (either all 10 secs between regs - or polling time)
+#   no events for cmd... on polling
+#   poll reister readings prefixed with R_
+#   documentation 
+#   polling reset on any new line result
+#   
 #   
 #   
 #   
@@ -34,6 +42,8 @@
 ##############################################
 ### TODO
 #   
+#   timeout on specific registers
+#   queuing of commands if still active with timeout
 #   
 #
 ##############################################
@@ -85,7 +95,8 @@ Kamstrup_Initialize($)
   $hash->{NotifyFn}     = "Kamstrup_Notify"; 
    
   $hash->{AttrFn}     = "Kamstrup_Attr";
-  $hash->{AttrList}   = "initCommands:textField disable:0,1 ".$readingFnAttributes;           
+  $hash->{AttrList}   = "initCommands:textField disable:0,1 registers:textField-long ".
+                        "pollingTimeout ".$readingFnAttributes;           
 
   $hash->{TIMEOUT} = 1;      # might be better?      0.5;       
                         
@@ -116,6 +127,8 @@ Kamstrup_Define($$)
   Kamstrup_Disconnect($hash);
   $hash->{DeviceName} = $dev;
 
+  $hash->{POLLREG} = 0; 
+  
   return undef if($dev eq "none"); # DEBUGGING
   
   my $ret;
@@ -196,7 +209,7 @@ Kamstrup_Get($@)
     my $cmd = "r ".join(" ", @a );
     $ret = Kamstrup_SendCommand($hash,$cmd, 1);
   } elsif( ($type eq "queue")  ) {
-    my $cmd = "g ";
+    my $cmd = "q ";
     $ret = Kamstrup_SendCommand($hash,$cmd, 1);
   }
 
@@ -237,10 +250,22 @@ sub Kamstrup_Attr(@) {
           InternalTimer(gettimeofday()+1, "Kamstrup_Connect", $hash, 0);
         }
       }
-    }
+      Kamstrup_ResetPollInfo($hash);
+      
+    } elsif ($aName eq 'register') {
+      return "\"Kamstrup_Attr: \" $aName needs to be sequence of hexid:name elements" if($aVal !~ /^\s*([0-9A-F]+:[A-Z0-9]+\s*)*$/i );
+    } elsif ($aName eq 'pollingTimeout') {
+      return "\"BlinkCamera_Attr: \" $aName needs to be given in digits only" if ( $aVal !~ /^[[:digit:]]+$/ );
+      # let all existing methods run into block
+      RemoveInternalTimer($hash);
+      
+      # wait some time before next polling is starting
+      Kamstrup_ResetPollInfo( $hash );
+     }
     
     $_[3] = $aVal;
   
+  } elsif ( $cmd eq "del" ) {
   }
 
   return undef;
@@ -317,6 +342,8 @@ Kamstrup_Notify($$)
 
   Kamstrup_Connect($hash);
 
+  Kamstrup_ResetPollInfo( $hash );
+  
   return undef;
 }    
 #####################################
@@ -376,14 +403,17 @@ Kamstrup_SendCommand($$$)
   Log3 $name, 4, "Kamstrup_SendCommand $name: send commands :".$msg.": ";
 
   if ( defined( ReadingsVal($name,"cmdResult",undef) ) ) {
-    $hash->{READINGS}{old1}{VAL} = $hash->{READINGS}{cmdResult}{VAL};
-    $hash->{READINGS}{old1}{TIME} = $hash->{READINGS}{cmdResult}{TIME};
+    $hash->{READINGS}{oldResult}{VAL} = $hash->{READINGS}{cmdResult}{VAL};
+    $hash->{READINGS}{oldResult}{TIME} = $hash->{READINGS}{cmdResult}{TIME};
+    $hash->{READINGS}{oldCmd}{VAL} = $hash->{READINGS}{cmdSent}{VAL};
+    $hash->{READINGS}{oldCmd}{TIME} = $hash->{READINGS}{cmdSent}{TIME};
   }
   
+  # no event on sending - too much noise
   readingsBeginUpdate($hash);
   readingsBulkUpdate($hash, "cmdSent", $msg);        
   readingsBulkUpdate($hash, "cmdResult", "" );        
-  readingsEndUpdate($hash, 1);
+  readingsEndUpdate($hash, 0);
     
   # First replace any magics
   my %dummy; 
@@ -391,11 +421,11 @@ Kamstrup_SendCommand($$$)
   my $singleMsg;
   my $lret; # currently always empty
   while(defined($singleMsg = shift @msgList)) {
-    $msg =~ s/^\s+|\s+$//g;
+    $singleMsg =~ s/^\s+|\s+$//g;
 
-    Log3 $name, 4, "Kamstrup_SendCommand $name: send command :".$msg.": ";
+    Log3 $name, 4, "Kamstrup_SendCommand $name: send command :".$singleMsg.": ";
 
-    DevIo_SimpleWrite($hash, $msg."\r\n", 0);
+    DevIo_SimpleWrite($hash, $singleMsg."\r\n", 0);
     
     push(@ret, $lret) if(defined($lret));
   }
@@ -416,6 +446,9 @@ Kamstrup_Read($@)
 
   my $name = $hash->{NAME};
 
+  my $isPoll = ( ( $hash->{POLLING} ) ? 1 : 0 );
+
+  
 ###  $buf = unpack('H*', $buf);
   my $data = ($hash->{PARTIAL} ? $hash->{PARTIAL} : "");
 
@@ -445,9 +478,36 @@ Kamstrup_Read($@)
     $read .= $data;
     $data = "";    
     
+    # reset polling on first new line
+    $hash->{POLLING} = 0;
+    
     readingsBeginUpdate($hash);
+    readingsBulkUpdate($hash, "cmdSent", ReadingsVal($name,"cmdSent","") );        
     readingsBulkUpdate($hash, "cmdResult", $read );        
+    
+    if ( $read =~ /-- Register ([0-9A-F]+)h = (.*)$/i ) {
+      my $reg = $1;
+      my $rval = $2;
+      Log3 $name, 5, "Kamstrup_Read $name: found reg value :".$reg." = ".$rval;
+      
+      my $regs = " ".AttrVal( $name, "registers", "" )." ";
+      
+      if ( $regs =~ /\s$reg:([^\s]+)\s/i ) {
+        my $rname = $1;
+
+        # for polling do not send events on cmdResult but only for register update
+        if ( $isPoll ) {
+          readingsEndUpdate($hash, 0);
+          readingsBeginUpdate($hash);
+        }
+        readingsBulkUpdate($hash, "R_".$rname, $rval );        
+        Log3 $name, 4, "Kamstrup_Read $name: store reg value :R_".$rname.": = :".$rval.":";
+        
+      }
+    }
+
     readingsEndUpdate($hash, 1);
+    
   }
   
   $hash->{PARTIAL} = $data;
@@ -475,6 +535,91 @@ Kamstrup_Ready($)
 ##############################################################################
 ##############################################################################
 ##
+## Polling / Setup
+##
+##############################################################################
+##############################################################################
+
+
+#####################################
+#  INTERNAL: PollInfo is called to queue the next getInfo and/or set the next timer
+sub Kamstrup_PollInfo($) 
+{
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+    
+  Log3 $name, 5, "Kamstrup_PollInfo $name: called ";
+
+  return if(IsDisabled($name));
+
+  # Get timeout from attribute 
+  my $timeout =   AttrVal($name,'pollingTimeout',0);
+  if ( $timeout == 0 ) {
+    $hash->{STATE} = "Static";
+    $hash->{POLLING} = 0;
+    Log3 $name, 4, "Kamstrup_PollInfo $name: Polling timeout 0 - no polling ";
+    return;
+  }
+
+  $hash->{STATE} = "Polling";
+  
+  my $nextto = 10;
+  my $ret;
+  
+  my @regList = split( " ", AttrVal($name,"registers","") );
+  my $idx = 0;
+  
+  if ( $hash->{POLLREG} ) {
+    my $pr = $hash->{POLLREG};
+    foreach my $rd ( @regList ) { 
+      $idx++;
+      last if ( $rd =~ /^$pr:/ );
+    }
+    if ( $idx >= scalar( @regList ) ) {
+      $idx = 0;
+      $nextto = $timeout;
+    }
+  }   
+
+  if ( scalar( @regList ) > 0 ) {
+    my $reg = $regList[$idx];
+    $reg =~ s/:.*$//;
+    
+    $hash->{POLLING} = 1;
+    $ret = Kamstrup_SendCommand($hash,"r ".$reg, 1); 
+    Log3 $name, 1, "Kamstrup_PollInfo $name: Poll call resulted in ".$ret." " if ( defined($ret) );
+
+    $hash->{POLLREG} = $reg; 
+  }
+  
+  
+  Log3 $name, 4, "Kamstrup_PollInfo $name: initiate next polling homescreen ".$timeout."s";
+  InternalTimer(gettimeofday()+$nextto, "Kamstrup_PollInfo", $hash,0); 
+
+}
+  
+######################################
+#  make sure a reinitialization is triggered on next update
+#  
+sub Kamstrup_ResetPollInfo($) {
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+
+  Log3 $name, 4, "Kamstrup_ResetPollInfo $name: called ";
+
+  RemoveInternalTimer($hash);
+  $hash->{POLLING} = 0;
+
+  # wait some time before next polling is starting
+  InternalTimer(gettimeofday()+5, "Kamstrup_PollInfo", $hash,0) if(! IsDisabled($name));
+
+  Log3 $name, 4, "Kamstrup_ResetPollInfo $name: finished ";
+
+}
+
+ ##############################################################################
+##############################################################################
+##
 ## Helper
 ##
 ##############################################################################
@@ -493,7 +638,9 @@ Kamstrup_Ready($)
 <h3>Kamstrup</h3>
 <ul>
 
-  This module connects remotely to an Arduino running a special Kamstrup smartmeter reader software (e.g. connected through a ESP8266 or similar serial to network connection)
+  This module connects remotely to an Arduino running a special Kamstrup smartmeter reader software (e.g. connected through a ESP8266 or similar serial to network connection). This Arduino is refered to as kamstrup-arduino in the following documentation.
+  
+  Commands can be sent manually to the Arduino requesting specific informations or a number of register can be polled regularly automatically and provided as specific readings.
   
   <br><br>
   <a name="Kamstrupdefine"></a>
@@ -516,21 +663,29 @@ Kamstrup_Ready($)
     where &lt;what&gt; / &lt;value&gt; is one of
 
   <br><br>
-    <li><code>raw &lt;nextion command&gt;</code><br>Sends the given raw message to the nextion display. The supported commands are described with the Nextion displays: <a href="http://wiki.iteadstudio.com/Nextion_Instruction_Set">http://wiki.iteadstudio.com/Nextion_Instruction_Set</a>
-    <br>
-    Examples:<br>
-      <dl>
-        <dt><code>set nxt raw page 0</code></dt>
-          <dd> switch the display to page 0 <br> </dd>
-        <dt><code>set nxt raw b0.txt</code></dt>
-          <dd> get the text for button 0 <br> </dd>
-      <dl>
+    <li><code>raw &lt;sequence of hex bytes&gt;</code><br>Sends the given raw message to the kamstrup-arduino (starting with w command). A physical layer message is formed and the result will be available as reading cmdResult
     </li>
-    <li><code>cmd &lt;nextion command&gt;</code><br>same as raw
+    <li><code>cmd &lt;kamstrup arduino command&gt;</code><br>send a command to the arduino, result will also be available as cmdResult. Send help for information on arduino commands
     </li>
-    <li><code>page &lt;0 - 9&gt;</code><br>set the page number given as new page on the nextion display.
+    <li><code>disconnect</code><br>Disconnect from the kamstrup-arduino.
     </li>
-    <li><code>pageCmd &lt;one or multiple page numbers separated by ,&gt; &lt;cmds&gt;</code><br>Execute the given commands if the current page on the screen is in the list given as page number.
+    <li><code>reopen</code><br>Reopen the connection to the kamstrup-arduino.
+    </li>
+  </ul>
+
+  <br><br>
+
+  <a name="Kamstrupget"></a>
+  <b>Get</b>
+  <ul>
+    <code>get &lt;name&gt; &lt;what&gt; [&lt;value&gt;]</code>
+    <br><br>
+    where &lt;what&gt; / &lt;value&gt; is one of
+
+  <br><br>
+    <li><code>register &lt;hex register id&gt;</code> or <code>_register &lt;hex register id&gt;</code><br>Requests the content for the specific register id from the smartmeter and provides the result in cmdResult.
+    </li>
+    <li><code>queue</code><br>Requests status information from the kamstrup-arduino.
     </li>
   </ul>
 
@@ -540,20 +695,21 @@ Kamstrup_Ready($)
   <b>Attributes</b>
   <br><br>
   <ul>
-    <li><code>hasSendMe &lt;0 or 1&gt;</code><br>Specify if the display definition on the Nextion display is using the "send me" checkbox to send current page on page changes. This will then change the reading currentPage accordingly
+    <li><code>registers &lt;list of registers ids and names&gt;</code><br>Specify a list of registers to be polled regularly. Each entry consists of a register id in hex and a name for the corresponding reading that should be used in polling. Multiple entries are separated by spaces. 
+    <br>
+    Example<br>
+    &nbsp;&nbsp;<code>1:Energy 3ff:MaxPower</code>
+    <br>
+    The resulting reading will be prefixed with R_
     </li> 
 
-    <li><code>initCommands &lt;series of commands&gt;</code><br>Display will be initialized with these commands when the connection to the device is established (or reconnected). Set logic for executing perl or getting readings can be used. Multiple commands will be separated by ;<br>
-    Example<br>
-    &nbsp;&nbsp;<code>t1.txt="Hallo";p1.val=1;</code>
+    <li><code>pollingTimeout &lt;seconds&gt;</code><br>Specify the regular interval for requesting the registers specified in the attribute registers. This specifies the interval waiting between complete rounds of requesting all register values. Between the different registers a timeout of 10 seconds is fix. A timeout of 0 disables the polling.
     </li> 
     
-    <li><code>initPage1 &lt;series of commands&gt;</code> to <code>initPage9 &lt;series of commands&gt;</code><br>When the corresponding page number will be displayed the given commands will be sent to the display. See also initCommands.<br>
-    Example<br>
-    &nbsp;&nbsp;<code>t1.txt="Hallo";p1.val=1;</code>
+    <li><code>initCommand &lt;series of commands&gt;</code><br>Specify a list (separated by ;) of commands to be sent to the kamstrup-arduino on connection established. <br>
     </li> 
 
-    <li><code>expectAnswer &lt;1 or 0&gt;</code><br>Specify if an answer from display is expected. If set to zero no answer is expected at any time on a command.
+    <li><code>disable &lt;1 or 0&gt;</code><br>Disable the device. So no connection is made and no polling done.
     </li> 
 
   </ul>
@@ -564,19 +720,12 @@ Kamstrup_Ready($)
     <a name="Kamstrupreadings"></a>
   <b>Readings</b>
   <ul>
-    <li><code>received &lt;Hex values of the last received message from the display&gt;</code><br> The message is converted in hex values (old messages are stored in the readings old1 ... old5). Example for a message is <code>H65(e) H00 H04 H00</code> </li> 
+    <li><code>R_...</code><br>Readings created automatically from the polling functionality based on the names specified in attribute registers</li> 
     
-    <li><code>rectext &lt;text or empty&gt;</code><br> Translating the received message into text form if possible. Beside predefined data that is sent from the display on specific changes, custom values can be sent in the form <code>$name=value</code>. This can be sent by statements in the Nextion display event code <br>
-      <code>print "$bt0="<br>
-            get bt0.val</code>
-    </li> 
+    <li><code>cmdSent / cmdResult</code><br>Full command and raw result for the cmd sent to the kamstrup arduino. This reading will not create events if the register is requested through polling</li> 
     
-    <li><code>currentPage &lt;page number on the display&gt;</code><br> Shows the number of the UI screen as configured on the Nextion display that is currently shown.<br>This is only valid if the attribute <code>hasSendMe</code> is set to 1 and used also in the display definition of the Nextion.</li> 
-    
-    <li><code>cmdSent &lt;cmd&gt;</code><br> Last cmd sent to the Nextion Display </li> 
-    <li><code>cmdResult &lt;result text&gt;</code><br> Result of the last cmd sent to the display (or empty)</li> 
-    
-    
+    <li><code>oldCmd / oldResult</code><br>Values for cmdSent and cmdResult from the last cmd. Not emitting events.</li> 
+        
   </ul> 
 
   <br><br>   

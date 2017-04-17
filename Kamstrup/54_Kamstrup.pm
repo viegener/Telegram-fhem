@@ -36,11 +36,17 @@
 #   clean cmdresult from line endings
 #   trim reg and val
 #   timeout on specific registers being specified with registers
-
 #   Allow underline in readingnames
 #   start next poll round immediately when result is there
 #   queuing of commands if still active with timeout
 #   cleaned up cmd and result handling
+
+#   removed debug
+#   
+#   
+#   
+#   
+#   
 #   
 ##############################################
 ##############################################
@@ -646,20 +652,20 @@ sub Kamstrup_PollInfo($)
     $pollstart = 1 if ( ! $pollstart );
     my $timeout =   AttrVal($name,'pollingTimeout',0);
     
-    Debug "current timeout :".(gettimeofday() - $pollstart);
+    Log3 $name, 5, "Kamstrup_PollInfo $name current timeout :".(gettimeofday() - $pollstart);
     
     if ( $timeout == 0 ) {
       Log3 $name, 4, "Kamstrup_PollInfo $name: Polling timeout 0 - no polling ";
     } elsif( (gettimeofday() - $pollstart) > $timeout) {
       # waited enough
-      Debug "waited enough";
+      # Debug "waited enough";
       
       my @regList = split( " ", AttrVal($name,"registers","") );
       my $idx = 0;
       
       # If pollreg is set than I am in turn and need to find the idx of the next register (idx will be one higher)
       if ( $hash->{POLLREG} ) {
-        Debug "has pollreg :".$hash->{POLLREG};
+        Log3 $name, 5, "Kamstrup_PollInfo $name has pollreg :".$hash->{POLLREG};
         my $pr = $hash->{POLLREG};
         foreach my $rd ( @regList ) { 
           $idx++;
@@ -667,7 +673,7 @@ sub Kamstrup_PollInfo($)
         }
       } else {
         # next round set poll start
-        Debug "set next poll start";
+        #Debug "set next poll start";
         $hash->{POLLSTART} = gettimeofday();
       }  
         

@@ -37,14 +37,19 @@
 #   trim reg and val
 #   timeout on specific registers being specified with registers
 
-#   
-#   
+#   Allow underline in readingnames
+#   start next poll round immediately when result is there
+#   queuing of commands if still active with timeout
+#   cleaned up cmd and result handling
 #   
 ##############################################
 ##############################################
 ### TODO
 #   
-#   queuing of commands if still active with timeout
+#   check if polling works if disconnected
+#   
+#   
+#   
 #   
 #
 ##############################################
@@ -65,13 +70,12 @@ use Data::Dumper;
 
 sub Kamstrup_Read($@);
 sub Kamstrup_Write($$$);
-sub Kamstrup_ReadAnswer($$);
 sub Kamstrup_Ready($);
 
 #########################
 # Globals
 
-my $Kamstrup_RegexpReg = "([0-9A-F]+):([A-Z0-9]+)(:([0-9]+))?";
+my $Kamstrup_RegexpReg = "([0-9A-F]+):([A-Z0-9_]+)(:([0-9]+))?";
 
 
 
@@ -96,7 +100,6 @@ Kamstrup_Initialize($)
   $hash->{ReadyFn}      = "Kamstrup_Ready";
   $hash->{UndefFn}      = "Kamstrup_Undef";
   $hash->{ShutdownFn}   = "Kamstrup_Undef";
-  $hash->{ReadAnswerFn} = "Kamstrup_ReadAnswer";
   $hash->{NotifyFn}     = "Kamstrup_Notify"; 
    
   $hash->{AttrFn}     = "Kamstrup_Attr";
@@ -167,10 +170,10 @@ Kamstrup_Set($@)
 
   if($type eq "cmd") {
     my $cmd = join(" ", @a );
-    $ret = Kamstrup_SendCommand($hash,$cmd, 1);
+    $ret = Kamstrup_SendCommand($hash,$cmd, 0);
   } elsif($type eq "raw") {
     my $cmd = "w ".join(" ", @a );
-    $ret = Kamstrup_SendCommand($hash,$cmd, 1);
+    $ret = Kamstrup_SendCommand($hash,$cmd, 0);
   } elsif($type eq "reopen") {
     Kamstrup_Disconnect($hash);
     delete $hash->{DevIoJustClosed} if($hash->{DevIoJustClosed});   
@@ -212,10 +215,10 @@ Kamstrup_Get($@)
 
   if( ($type =~ /.?register/ )  ) {
     my $cmd = "r ".join(" ", @a );
-    $ret = Kamstrup_SendCommand($hash,$cmd, 1);
+    $ret = Kamstrup_SendCommand($hash,$cmd, 0);
   } elsif( ($type eq "queue")  ) {
     my $cmd = "q ";
-    $ret = Kamstrup_SendCommand($hash,$cmd, 1);
+    $ret = Kamstrup_SendCommand($hash,$cmd, 0);
   }
 
   if ( ! defined( $ret ) ) {
@@ -401,12 +404,66 @@ Kamstrup_Write($$$)
 sub
 Kamstrup_SendCommand($$$)
 {
-  my ($hash,$msg,$answer) = @_;
+  my ($hash,$msg,$poll) = @_;
   my $name = $hash->{NAME};
   my @ret; 
   
   Log3 $name, 4, "Kamstrup_SendCommand $name: send commands :".$msg.": ";
 
+  # First replace any magics
+  my %dummy; 
+  my @msgList = split(";", $msg);
+  my $singleMsg;
+  my $lret; # currently always empty
+  while(defined($singleMsg = shift @msgList)) {
+    $singleMsg =~ s/^\s+|\s+$//g;
+    
+    $lret = Kamstrup_SendSingleCommand( $hash, $singleMsg, $poll );
+
+    push(@ret, $lret) if(defined($lret));
+  }
+
+  return join("\n", @ret) if(@ret);
+  return undef; 
+}
+
+#####################################
+sub
+Kamstrup_SendSingleCommand($;$$)
+{
+  my ($hash,$msg,$poll) = @_;
+  my $name = $hash->{NAME};
+  
+  Log3 $name, 4, "Kamstrup_SendSingleCommand $name: send command :".($msg?$msg:"<undef>").": ";
+  
+  if ( ! $msg ) {
+    # empty messag start next command if there
+    return undef if ( $hash->{WAITING} );   # should never happen
+    if ( $hash->{WAITINGQUEUE} ) {
+      if ( $hash->{WAITINGQUEUE} =~ /^([^;]+);([^;]+)(;(.*))?$/ ) {
+        $msg = $1;
+        $poll = $2;
+        $hash->{WAITINGQUEUE} = $4;
+      }
+    }
+    return undef if ( ! $msg );   # should never happen
+    
+  } elsif ( $hash->{WAITING} ) {
+    # queue if waiting
+    if ( $hash->{WAITINGQUEUE} ) {
+      $hash->{WAITINGQUEUE} .= ";".$msg.";".$poll;
+    } else {
+      $hash->{WAITINGQUEUE} = $msg.";".$poll;
+    }
+    return undef;
+  }
+    
+  $hash->{WAITING} = gettimeofday();
+  $hash->{POLLING} = $poll;
+
+  delete($hash->{PARTIAL});
+  delete($hash->{READ_TS});
+  
   if ( defined( ReadingsVal($name,"cmdResult",undef) ) ) {
     $hash->{READINGS}{oldResult}{VAL} = $hash->{READINGS}{cmdResult}{VAL};
     $hash->{READINGS}{oldResult}{TIME} = $hash->{READINGS}{cmdResult}{TIME};
@@ -419,24 +476,14 @@ Kamstrup_SendCommand($$$)
   readingsBulkUpdate($hash, "cmdSent", $msg);        
   readingsBulkUpdate($hash, "cmdResult", "" );        
   readingsEndUpdate($hash, 0);
-    
-  # First replace any magics
-  my %dummy; 
-  my @msgList = split(";", $msg);
-  my $singleMsg;
+
   my $lret; # currently always empty
-  while(defined($singleMsg = shift @msgList)) {
-    $singleMsg =~ s/^\s+|\s+$//g;
+  $msg =~ s/^\s+|\s+$//g;
+  Log3 $name, 4, "Kamstrup_SendCommand $name: send command :".$msg.": ";
+  DevIo_SimpleWrite($hash, $msg."\r\n", 0);
 
-    Log3 $name, 4, "Kamstrup_SendCommand $name: send command :".$singleMsg.": ";
-
-    DevIo_SimpleWrite($hash, $singleMsg."\r\n", 0);
-    
-    push(@ret, $lret) if(defined($lret));
-  }
-
-  return join("\n", @ret) if(@ret);
-  return undef; 
+  return $lret;
+  
 }
 
 #####################################
@@ -452,14 +499,12 @@ Kamstrup_Read($@)
   my $name = $hash->{NAME};
 
   my $isPoll = ( ( $hash->{POLLING} ) ? 1 : 0 );
-
   
-###  $buf = unpack('H*', $buf);
   my $data = ($hash->{PARTIAL} ? $hash->{PARTIAL} : "");
 
   # drop old data
   if($data) {
-    $data = "" if(gettimeofday() - $hash->{READ_TS} > 5);
+    $data = "" if(gettimeofday() - $hash->{READ_TS} > 9);
     delete($hash->{READ_TS});
   }
   
@@ -474,28 +519,44 @@ Kamstrup_Read($@)
     }
   }
   
-  if ( index($data,"\n") != -1 ) {
+  if ( ! $hash->{WAITING} ) {
+    # unsolicited content - not waiting for data
+  
+    my $read = ReadingsVal($name,"dataRead","");
+    if ( ReadingsAge($name,"dataRead",3600) > 60 ) {
+      $read = "";
+    }
+    $read .= $data if ( ( !$local ) || ( $local ne "\n" ) ); # only add to buffer if not special case
+    
+    if ( $read ne ReadingsVal($name,"dataRead","") ) {
+      readingsBeginUpdate($hash);
+      my $cleanRead = $read;
+      $cleanRead =~ s/\r//g;
+      $cleanRead =~ s/\n/;/g;
+      
+      readingsBulkUpdate($hash, "dataRead", $cleanRead );        
+      readingsEndUpdate($hash, 1);
+      
+      $data = "";
+    }
+  } elsif ( index($data,"\n") != -1 ) {
     my $read = ReadingsVal($name,"cmdResult",undef);
     if ( ReadingsAge($name,"cmdResult",3600) > 60 ) {
       $read = "";
     }
     
-    $read .= $data;
-    $data = "";    
-    
-    # reset polling on first new line
-    $hash->{POLLING} = 0;
+    $read .= $data if ( ( !$local ) || ( $local ne "\n" ) ); # only add to buffer if not special case
     
     readingsBeginUpdate($hash);
-    readingsBulkUpdate($hash, "cmdSent", ReadingsVal($name,"cmdSent","") );        
     
     my $cleanRead = $read;
     $cleanRead =~ s/\r//g;
-    $cleanRead =~ s/\n/;;/g;
+    $cleanRead =~ s/\n/;/g;
     
+    readingsBulkUpdate($hash, "cmdSent", ReadingsVal($name,"cmdSent","") );    
     readingsBulkUpdate($hash, "cmdResult", $cleanRead );        
     
-    if ( $read =~ /-- Register ([0-9A-F]+)h = (.*)$/i ) {
+    if ( $data =~ /-- Register ([0-9A-F]+)h = (.*)$/i ) {
       my $reg = $1;
       my $rval = $2;
       
@@ -523,14 +584,19 @@ Kamstrup_Read($@)
 
     readingsEndUpdate($hash, 1);
     
+    # reset polling and waiting on first new line
+    $hash->{POLLING} = 0;
+    $hash->{WAITING} = 0;
+    $data = "";    # handled data already
+    
+    # handle next in queue
+    Kamstrup_SendSingleCommand( $hash );
+    
   }
   
   $hash->{PARTIAL} = $data;
   $hash->{READ_TS} = gettimeofday() if($data);
-
-  my $ret;
-
-  return $ret if(defined($local));
+  
   return undef;
 }
 
@@ -555,10 +621,110 @@ Kamstrup_Ready($)
 ##############################################################################
 ##############################################################################
 
+#####################################
+#  INTERNAL: PollInfo is called every 10 seconds to check for timeout for commands or next polling to be done
+sub Kamstrup_PollInfo($) 
+{
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+    
+  Log3 $name, 5, "Kamstrup_PollInfo $name: called ";
+
+  my $ret;
+
+  return if(IsDisabled($name));
+  
+  # check for stale commands --> send local \n (no read) this means line end and result finished
+  if ( ( $hash->{WAITING} ) && ( (gettimeofday()-$hash->{WAITING}) > 10 ) ) {
+    Kamstrup_Read($hash, "\n", undef);
+  }
+    
+  # ! if waiting then no command from queue is running --> check poll
+  if ( ! $hash->{WAITING} ) {
+    # first check if we have waited enough (polling timeout)
+    my $pollstart = $hash->{POLLSTART};
+    $pollstart = 1 if ( ! $pollstart );
+    my $timeout =   AttrVal($name,'pollingTimeout',0);
+    
+    Debug "current timeout :".(gettimeofday() - $pollstart);
+    
+    if ( $timeout == 0 ) {
+      Log3 $name, 4, "Kamstrup_PollInfo $name: Polling timeout 0 - no polling ";
+    } elsif( (gettimeofday() - $pollstart) > $timeout) {
+      # waited enough
+      Debug "waited enough";
+      
+      my @regList = split( " ", AttrVal($name,"registers","") );
+      my $idx = 0;
+      
+      # If pollreg is set than I am in turn and need to find the idx of the next register (idx will be one higher)
+      if ( $hash->{POLLREG} ) {
+        Debug "has pollreg :".$hash->{POLLREG};
+        my $pr = $hash->{POLLREG};
+        foreach my $rd ( @regList ) { 
+          $idx++;
+          last if ( $rd =~ /^$pr:/ );
+        }
+      } else {
+        # next round set poll start
+        Debug "set next poll start";
+        $hash->{POLLSTART} = gettimeofday();
+      }  
+        
+        
+      # At the end longer timeout and no request
+      if ( $idx >= scalar( @regList ) ) {
+        delete( $hash->{POLLREG} );
+    
+      } else {
+        # Debug "finalize regid :";
+        # get id (and timeout)
+        my $regId;
+        while ( ! $regId ) {
+          my $reg = $regList[$idx];
+          #Debug "test regdef :".$reg.":";
+          $reg =~ /^$Kamstrup_RegexpReg$/i;
+          $regId = $1;
+          my $regName = $2;
+          my $regTime = $4;
+          Log3 $name, 5, "Kamstrup_PollInfo $name: check regid :".$regId.":  name :".$regName.":  timeout :".($regTime?$regTime:"<undef>");
+
+          # check if reading is older than update interval specified for register
+          $regId = undef if ( ( $regTime ) && ( ReadingsAge($name,"R_".$regName,$regTime+1) < $regTime ) );
+          
+          # found a regId -> done
+          last if ( $regId );
+          
+          # end loop at end of array
+          $idx++;
+          last if ( $idx >= scalar( @regList ) ); 
+        }
+    
+        if ( $idx >= scalar( @regList ) ) {
+          delete( $hash->{POLLREG} );
+        }
+  
+        # regId found so poll it
+        if ( $regId ) {
+          Log3 $name, 4, "Kamstrup_PollInfo $name: Polling regId ".$regId;
+          $ret = Kamstrup_SendSingleCommand($hash,"r ".$regId, 1); 
+          Log3 $name, 1, "Kamstrup_PollInfo $name: Poll call for $regId resulted in ".$ret." " if ( defined($ret) );
+
+          $hash->{POLLREG} = $regId; 
+        } 
+    
+      }
+    }
+  }
+
+  Log3 $name, 4, "Kamstrup_PollInfo $name: initiate next polling ";
+  InternalTimer(gettimeofday()+10, "Kamstrup_PollInfo", $hash,0); 
+}  
+  
 
 #####################################
-#  INTERNAL: PollInfo is called to queue the next getInfo and/or set the next timer
-sub Kamstrup_PollInfo($) 
+#  INTERNAL: PollInfo is called to grab the next register and set the next timer
+sub Kamstrup_OldPollInfo($) 
 {
   my ($hash) = @_;
   my $name = $hash->{NAME};
@@ -658,7 +824,7 @@ sub Kamstrup_ResetPollInfo($) {
   $hash->{POLLING} = 0;
 
   # wait some time before next polling is starting
-  InternalTimer(gettimeofday()+5, "Kamstrup_PollInfo", $hash,0) if(! IsDisabled($name));
+  InternalTimer(gettimeofday()+10, "Kamstrup_PollInfo", $hash,0) if(! IsDisabled($name));
 
   Log3 $name, 4, "Kamstrup_ResetPollInfo $name: finished ";
 
@@ -690,6 +856,28 @@ sub Kamstrup_ResetPollInfo($) {
   Commands can be sent manually to the Arduino requesting specific informations or a number of register can be polled regularly automatically and provided as specific readings.
   
   <br><br>
+  Known or assumed register ids for the Kamstrup 382Lx3 are
+  <ul>
+        <li><code>1</code> - Counter for energy consumption accumulated (kWh) </li>
+        <br>
+        <li><code>3e9</code> - Serial number of the smartmeter (number) </li>
+        <li><code>3ea</code> - internal clock of the smartmeter with seconds - not adjusted (clock) </li>
+        <li><code>3ec</code> - internal hour counter of the smartmeter - since start? (h) </li>
+        <br>
+        <li><code>3ff</code> - Power consumption currently (kW) </li>
+
+        <br>
+        <li><code>41e</code> - Voltage - phase 1 (V) </li>
+        <li><code>41f</code> - Voltage - phase 2 (V) </li>
+        <li><code>420</code> - Voltage - phase 3 (V) </li>
+        
+        <br>
+        <li><code>4ad</code> - Some date for an event or max consumption (yy:mm:ss date) </li>
+  </ul>
+  
+  <br><br>
+  
+  
   <a name="Kamstrupdefine"></a>
   <b>Define</b>
   <ul>

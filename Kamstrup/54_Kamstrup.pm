@@ -33,8 +33,10 @@
 #   poll reister readings prefixed with R_
 #   documentation 
 #   polling reset on any new line result
-#   
-#   
+#   clean cmdresult from line endings
+#   trim reg and val
+#   timeout on specific registers being specified with registers
+
 #   
 #   
 #   
@@ -42,7 +44,6 @@
 ##############################################
 ### TODO
 #   
-#   timeout on specific registers
 #   queuing of commands if still active with timeout
 #   
 #
@@ -69,6 +70,10 @@ sub Kamstrup_Ready($);
 
 #########################
 # Globals
+
+my $Kamstrup_RegexpReg = "([0-9A-F]+):([A-Z0-9]+)(:([0-9]+))?";
+
+
 
 ##############################################################################
 ##############################################################################
@@ -252,8 +257,8 @@ sub Kamstrup_Attr(@) {
       }
       Kamstrup_ResetPollInfo($hash);
       
-    } elsif ($aName eq 'register') {
-      return "\"Kamstrup_Attr: \" $aName needs to be sequence of hexid:name elements" if($aVal !~ /^\s*([0-9A-F]+:[A-Z0-9]+\s*)*$/i );
+    } elsif ($aName eq 'registers') {
+      return "\"Kamstrup_Attr: \" $aName needs to be sequence of hexid:name elements" if($aVal !~ /^\s*($Kamstrup_RegexpReg\s+)*($Kamstrup_RegexpReg)?$/i );
     } elsif ($aName eq 'pollingTimeout') {
       return "\"BlinkCamera_Attr: \" $aName needs to be given in digits only" if ( $aVal !~ /^[[:digit:]]+$/ );
       # let all existing methods run into block
@@ -483,16 +488,26 @@ Kamstrup_Read($@)
     
     readingsBeginUpdate($hash);
     readingsBulkUpdate($hash, "cmdSent", ReadingsVal($name,"cmdSent","") );        
-    readingsBulkUpdate($hash, "cmdResult", $read );        
+    
+    my $cleanRead = $read;
+    $cleanRead =~ s/\r//g;
+    $cleanRead =~ s/\n/;;/g;
+    
+    readingsBulkUpdate($hash, "cmdResult", $cleanRead );        
     
     if ( $read =~ /-- Register ([0-9A-F]+)h = (.*)$/i ) {
       my $reg = $1;
       my $rval = $2;
+      
+      # Trim 
+      $reg =~ s/^\s+|\s+$//g; 
+      $rval =~ s/^\s+|\s+$//g; 
+      
       Log3 $name, 5, "Kamstrup_Read $name: found reg value :".$reg." = ".$rval;
       
       my $regs = " ".AttrVal( $name, "registers", "" )." ";
       
-      if ( $regs =~ /\s$reg:([^\s]+)\s/i ) {
+      if ( $regs =~ /\s$reg:([^\s:]+)(:[0-9]+)?\s/i ) {
         my $rname = $1;
 
         # for polling do not send events on cmdResult but only for register update
@@ -569,27 +584,59 @@ sub Kamstrup_PollInfo($)
   my @regList = split( " ", AttrVal($name,"registers","") );
   my $idx = 0;
   
+  # If pollreg is set than I am in turn and need to find the idx of the next register (idx will be one higher)
   if ( $hash->{POLLREG} ) {
+    #Debug "has pollreg :".$hash->{POLLREG};
     my $pr = $hash->{POLLREG};
     foreach my $rd ( @regList ) { 
       $idx++;
       last if ( $rd =~ /^$pr:/ );
     }
-    if ( $idx >= scalar( @regList ) ) {
-      $idx = 0;
-      $nextto = $timeout;
-    }
-  }   
-
-  if ( scalar( @regList ) > 0 ) {
-    my $reg = $regList[$idx];
-    $reg =~ s/:.*$//;
+  }
+  # At the end longer timeout and no request
+  if ( $idx >= scalar( @regList ) ) {
+    $nextto = $timeout;
+    delete( $hash->{POLLREG} );
     
-    $hash->{POLLING} = 1;
-    $ret = Kamstrup_SendCommand($hash,"r ".$reg, 1); 
-    Log3 $name, 1, "Kamstrup_PollInfo $name: Poll call resulted in ".$ret." " if ( defined($ret) );
+  } else {
+    # Debug "finalize regid :";
+    # get id (and timeout)
+    my $regId;
+    while ( ! $regId ) {
+      my $reg = $regList[$idx];
+      #Debug "test regdef :".$reg.":";
+      $reg =~ /^$Kamstrup_RegexpReg$/i;
+      $regId = $1;
+      my $regName = $2;
+      my $regTime = $4;
+      Log3 $name, 5, "Kamstrup_PollInfo $name: check regid :".$regId.":  name :".$regName.":  timeout :".($regTime?$regTime:"<undef>");
 
-    $hash->{POLLREG} = $reg; 
+      # check if reading is older than update interval specified for register
+      $regId = undef if ( ( $regTime ) && ( ReadingsAge($name,"R_".$regName,$regTime+1) < $regTime ) );
+      
+      # found a regId -> done
+      last if ( $regId );
+      
+      # end loop at end of array
+      $idx++;
+      last if ( $idx >= scalar( @regList ) ); 
+    }
+    
+    if ( $idx >= scalar( @regList ) ) {
+      $nextto = $timeout;
+      delete( $hash->{POLLREG} );
+    }
+  
+    # regId found so poll it
+    if ( $regId ) {
+      Log3 $name, 4, "Kamstrup_PollInfo $name: Polling regId ".$regId;
+      $hash->{POLLING} = 1;
+      $ret = Kamstrup_SendCommand($hash,"r ".$regId, 1); 
+      Log3 $name, 1, "Kamstrup_PollInfo $name: Poll call for $regId resulted in ".$ret." " if ( defined($ret) );
+
+      $hash->{POLLREG} = $regId; 
+    } 
+    
   }
   
   
@@ -695,10 +742,12 @@ sub Kamstrup_ResetPollInfo($) {
   <b>Attributes</b>
   <br><br>
   <ul>
-    <li><code>registers &lt;list of registers ids and names&gt;</code><br>Specify a list of registers to be polled regularly. Each entry consists of a register id in hex and a name for the corresponding reading that should be used in polling. Multiple entries are separated by spaces. 
+    <li><code>registers &lt;list of registers ids and names&gt;</code><br>Specify a list of registers to be polled regularly. Each entry consists of a register id in hex, a name for the corresponding reading that should be used in polling and an optional minimum time for specifiying polling that register less often. The parts for each register are separated by colon (:) and multiple register entries are separated by spaces. 
     <br>
-    Example<br>
-    &nbsp;&nbsp;<code>1:Energy 3ff:MaxPower</code>
+    Examples<br>
+    &nbsp;&nbsp;<code>1:Energy 3ff:MaxPower:300</code>
+    <br>
+    &nbsp;&nbsp;<code>1:Energy 1:EnergyCounter</code>
     <br>
     The resulting reading will be prefixed with R_
     </li> 

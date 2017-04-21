@@ -43,12 +43,18 @@
 # - SOMFY_StartTime removed
 # - prepare: restructure code
 # - clean up history
-
 # - modify of definition to replace attr handling for enc and rolling_code
 # - remove attribute for enc_key and rollingcode
 # - cleanup namings of globals
 # - set default model as attribute to shutter
 # - support different settings for different models  
+# - rawDevice attr
+# - parse function calls dispatcher for rawDevices on remotes
+# - changed errors in parseFn to log
+# - some doc cleanup
+
+# - remove dummy attribute
+# - special cases for pos to avoid mypos being used since stop signal is sent after automatic stop
 # 
 ###############################################################################
 #
@@ -58,28 +64,24 @@
 # Somfy Modul - OPEN
 ###############################################################################
 # 
+# - Doc rework on model, set commands, rawDevice, coupling remotes
 # - 
+# - test parseFn / Remotes
 # - 
-# - 
-# - 
+# - send also wind/sun sensor codes with code E and constant rolling code --> allow complete raw send (just address is added)
 # - 
 # - Check readings set
 # - add queuing for commands
-# - signalduino modifications - to be adapted to not change existing behavior
 # - Autocreate 
 # - Complete shutter / blind as different model
 # - Make better distinction between different IoTypes - CUL+SCC / Signalduino
 # - Known Issue - if timer is running and last command equals new command (only for open / close) - considered minor/but still relevant
 # - 
-# - 
+# - switch to standard 100 to 0 position 
 #
 ###############################################################################
 #   
 #   Idea rebuilt handling from scratch
-#     represent a physical blind
-#     allow multiple remotes being connected to it - multiple addresses
-#     
-#     
 #     
 #     
 #
@@ -118,7 +120,6 @@ my %somfy_sets = (
 my %somfy_sets_addition = (
 	"go-my" => "noArg",
 	"pos" => "100,90,80,70,60,50,40,30,20,10,0",
-#	"pos" => "0,10,20,30,40,50,60,70,80,90,100",
   "wind_sun_9" => "noArg",
   "wind_only_a" => "noArg",
 );
@@ -134,8 +135,6 @@ my $somfy_defsymbolwidth = 1240;    # Default Somfy frame symbol width
 my $somfy_defrepetition = 6;	# Default Somfy frame repeat counter
 
 my $somfy_updateFreq = 3;	# Interval for State update
-
-my %models = ( somfyshutter => 'shutter', somfyremote => 'remote', somfyblinds => 'blinds', somfyswitch2 => 'switch2', somfyswitch4 => 'switch4', ); # supported models 
 
 
 ######################################################
@@ -203,7 +202,7 @@ sub SOMFY_Initialize($) {
 	}
 
 	#                       YsKKC0RRRRAAAAAA
-	#  $hash->{Match}	= "^YsA..0..........\$";
+	$hash->{Match}	= "^Ys...0..........\$";
 	$hash->{SetFn}		= "SOMFY_Set";
 	#$hash->{StateFn} 	= "SOMFY_SetState";
 	$hash->{DefFn}   	= "SOMFY_Define";
@@ -224,9 +223,9 @@ sub SOMFY_Initialize($) {
 	  . " fixed_enckey:1,0"
 	  . " do_not_notify:1,0"
 	  . " ignore:0,1"
-	  . " dummy:1,0"
-	  . " model:somfyblinds,somfyshutter,somfyswitch2,somfyswitch4"
+	  . " model:somfyblinds,somfyshutter,somfyremote,somfyswitch2,somfyswitch4"
 	  . " loglevel:0,1,2,3,4,5,6"
+	  . " rawDevice"
 	  . " $readingFnAttributes";
 
 }
@@ -258,7 +257,7 @@ sub SOMFY_Define($$) {
 
   # set default model if not yet set
   if ( ! defined( $attr{$name}{model} ) ) {
-    $attr{$name}{model} = "somfyshutter"
+    $attr{$name}{model} = "somfyshutter";
   }
   
   
@@ -410,10 +409,60 @@ sub SOMFY_Attr(@) {
 ##############################################################################
 ##############################################################################
 
+ 
+
+#############################
+sub SOMFY_DispatchRemoteCmd($$) {
+	my ($hash, $cmd) = @_;
+	my $name = $hash->{NAME};
+  
+	if ($cmd eq "10") {
+		$cmd = "11"; # use "stop" instead of "go-my"
+  }
+
+	my $txtcmd = $somfy_codes{ $cmd };
+  return if ( ! $txtcmd );
+
+	my $rawdAttr = AttrVal($name,'rawDevice',undef);
+
+	# check if rdev is defined and exists
+  if( defined($rawdAttr) ) {
+		# normalize address in rawdev
+		$rawdAttr = uc( $rawdAttr );
+
+    my @rawdevs = split( /\s+/, $rawdAttr );
+    
+    foreach my $rawdev ( @rawdevs ) {
+
+      my $slist =  $modules{SOMFY}{defptr}{$rawdev};
+      if ( defined($slist)) {
+        foreach my $n ( keys %{ $slist } ) {
+
+          my $rawhash = $modules{SOMFY}{defptr}{$rawdev}{$n};
+
+          Log3 $hash, 4, "SOMFY_DispatchRemoteCmd " .  $name . " found dispatch SOMFY device " . $rawhash->{NAME} . " sent command :$txtcmd:";
+
+          # add virtual as modifier to set command and directly call send
+          my $ret = SOMFY_InternalSet( $rawhash, $rawhash->{NAME}, "virtual", $txtcmd );
+          Log3 $hash, 1, "SOMFY_DispatchRemoteCmd " .  $name . " Internal set :$txtcmd: to ".$rawhash->{NAME}." returned  " . $ret if ( $ret );
+        }
+
+      } else {
+        Log3 $hash, 1, "SOMFY_DispatchRemoteCmd SOMFY rawDevice $rawdev not found from $name";
+      }
+    }  
+	} else {
+		Log3 $hash, 1, "SOMFY_DispatchRemoteCmd No rawDevice set in remote $name";
+	}
+
+}
+
 #############################
 sub SOMFY_Parse($$) {
 	my ($hash, $msg) = @_;
 	my $name = $hash->{NAME};
+  
+  my $ret;
 
   my $ioType = $hash->{TYPE};
 #	return "IODev unsupported" if ((my $ioType = $hash->{TYPE}) !~ m/^(CUL|SIGNALduino)$/);
@@ -421,13 +470,21 @@ sub SOMFY_Parse($$) {
 	# preprocessing if IODev is SIGNALduino	
 	if ($ioType eq "SIGNALduino") {
 		my $encData = substr($msg, 2);
-		return "Somfy RTS message format error!" if ($encData !~ m/A[0-9A-F]{13}/);
-    return "Somfy RTS message format error (length)!" if (length($encData) != 14);
+    $ret = "Somfy RTS message format error (length)! :".$encData.":" if (length($encData) != 14);
+    $ret = "Somfy RTS message format error! :".$encData.":" if ( ( ! $ret ) && ($encData !~ m/[0-9A-F]{14}/) );
 	
-		my $decData = SOMFY_RTS_Crypt("d", $name, $encData);
-		my $check = SOMFY_RTS_Check($name, $decData);
-		
-		return "Somfy RTS checksum error!" if ($check ne substr($decData, 3, 1));
+    my ( $decData, $check );
+    if ( ! $ret ) {
+      $decData = SOMFY_RTS_Crypt("d", $name, $encData);
+      $check = SOMFY_RTS_Check($name, $decData);
+    }
+    
+		$ret = "Somfy RTS checksum error! :".$encData.":" if ( ( ! $ret ) && ($check ne substr($decData, 3, 1)) );
+    
+    if ( $ret ) {
+      Log3 $name, 1, "$name: SOMFY_Parse : ".$ret;
+      return undef;
+    }
 		
 		Log3 $name, 4, "$name: Somfy RTS preprocessing check: $check enc: $encData dec: $decData";
 		$msg = substr($msg, 0, 2) . $decData;
@@ -439,12 +496,14 @@ sub SOMFY_Parse($$) {
 
 	if (substr($msg, 0, 2) eq "Yr" || substr($msg, 0, 2) eq "Yt") {
 		# changed time or repetition, just return the name
-		return $hash->{NAME};
+		return "";
 	}
-
   
   # Check for correct length
-  return "SOMFY incorrect length for command (".$msg.") / length should be 16" if ( length($msg) != 16 );
+  if ( length($msg) != 16 ) {
+    Log3 $name, 1, "$name: SOMFY_Parse : SOMFY incorrect length for command (".$msg.") / length should be 16";
+    return undef;
+  }
   
   # get address
   my $address = uc(substr($msg, 14, 2).substr($msg, 12, 2).substr($msg, 10, 2));
@@ -462,17 +521,17 @@ sub SOMFY_Parse($$) {
 	if ( ($def) && (keys %{ $def }) ) {   # Check also for empty hash --> issue #5
 		my @list;
 		foreach my $name (keys %{ $def }) {
-      		my $lh = $def->{$name};
-     	 	$name = $lh->{NAME};        # It may be renamed
+      my $lh = $def->{$name};
+      $name = $lh->{NAME};        # It may be renamed
 
-      		return "" if(IsIgnored($name));   # Little strange.
+      return "" if(IsIgnored($name));
 
-      		# update the state and log it
-					### NEEDS to be deactivated due to the state being maintained by the timer
-					# readingsSingleUpdate($lh, "state", $newstate, 1);
-					readingsSingleUpdate($lh, "parsestate", $newstate, 1);
-
-			Log3 $name, 4, "SOMFY Parse: $name $newstate";
+      # update the state and log it
+      Debug "SOMFY Parse: $name msg: $msg  --> $cmd-$newstate";
+			Log3 $name, 4, "SOMFY Parse: $name msg: $msg  --> $cmd-$newstate";
+      readingsSingleUpdate($lh, "received", $cmd, 1);
+      
+      SOMFY_DispatchRemoteCmd($lh, $cmd ) if ( SOMFY_isRemote( $lh ) );
 
 			push(@list, $name);
 		}
@@ -537,7 +596,9 @@ sub SOMFY_Set($@) {
 sub SOMFY_InternalSet($@) {
 	my ( $hash, $name, $mode, @args ) = @_;
 	
-	### Check Args
+  return undef if ( IsIgnored($name) );
+  
+  ### Check Args
 	return "SOMFY_InternalSet: mode must be virtual or send: $mode " if ( $mode !~m/(virtual|send)/ );
 
 	my $numberOfArgs  = int(@args);
@@ -575,15 +636,6 @@ sub SOMFY_InternalSet($@) {
   my ($t1down100, $t1downclose, $t1upopen, $t1up100) = SOMFY_getTimingValues($hash);
 	#Log3($name,5,"SOMFY_set: $name -> timings ->  td1:$t1down100: tdc :$t1downclose:  tuo :$t1upopen:  tu1 :$t1up100: ");
 
-	my $model =  AttrVal($name,'model',$models{somfyblinds});
-	
-	if($cmd eq 'pos') {
-		return "SOMFY_set: No pos specification"  if(!defined($arg1));
-		return  "SOMFY_set: $arg1 must be between 0 and 100 for pos" if($arg1 < 0 || $arg1 > 100);
-		return "SOMFY_set: Please set attr drive-down-time-to-100, drive-down-time-to-close, etc" 
-				if(!defined($t1downclose) || !defined($t1down100) || !defined($t1upopen) || !defined($t1up100));
-	}
-
 	# get current infos 
 	my $state = $hash->{STATE}; 
 	my $pos = ReadingsVal($name,'exact',undef);
@@ -600,6 +652,17 @@ sub SOMFY_InternalSet($@) {
     Log3($name,4,"SOMFY_set: $name Inverse after  cmd:$cmd: arg1:$arg1: pos:$pos:");
   }
   
+	if($cmd eq 'pos') {
+		return "SOMFY_set: No pos specification"  if(!defined($arg1));
+		return  "SOMFY_set: $arg1 must be between 0 and 100 for pos" if($arg1 < 0 || $arg1 > 200);
+		return "SOMFY_set: Please set attr drive-down-time-to-100, drive-down-time-to-close, etc" 
+				if(!defined($t1downclose) || !defined($t1down100) || !defined($t1upopen) || !defined($t1up100));
+        
+    # special cases for pos to avoid mypos being used since stop signal is sent after automatic stop
+    $cmd = "on" if ( $arg1 == 200 ); 
+    $cmd = "off" if ( $arg1 == 0 ); 
+	}
+
   
 		### initialize locals
 	my $drivetime = 0; # timings until halt command to be sent for on/off-for-timer and pos <value> -> move by time
@@ -1695,7 +1758,6 @@ sub SOMFY_SendCommand($@)
   <a name="SOMFYattr"></a>
   <b>Attributes</b>
   <ul>
-    <a name="IODev"></a>
     <li>IODev<br>
         Set the IO or physical device which should be used for sending signals
         for this "logical" device. An example for the physical device is a CUL.<br>
@@ -1703,23 +1765,19 @@ sub SOMFY_SendCommand($@)
         If you have both a CUL868 and CUL433, use the CUL433 as IODev for increased range.
 		</li><br>
 
-    <a name="positionInverse"></a>
     <li>positionInverse<br>
         Inverse operation for positions instead of 0 to 100-200 the positions are ranging from 100 to 10 (down) and then to 0 (closed). The pos set command will point in this case to the reversed pos values. This does NOT reverse the operation of the on/off command, meaning that on always will move the shade down and off will move it up towards the initial position.
 		</li><br>
 
-    <a name="additionalPosReading"></a>
     <li>additionalPosReading<br>
         Position of the shutter will be stored in the reading <code>pos</code> as numeric value. 
         Additionally this attribute might specify a name for an additional reading to be updated with the same value than the pos.
 		</li><br>
 
-    <a name="fixed_enckey"></a>
     <li>fixed_enckey 1|0<br>
         If set to 1 the enc-key is not changed after a command sent to the device. Default is value 0 meaning enc-key is changed normally for the RTS protocol.
 		</li><br>
     
-    <a name="eventMap"></a>
     <li>eventMap<br>
         Replace event names and set arguments. The value of this attribute
         consists of a list of space separated values, each value is a colon
@@ -1734,19 +1792,11 @@ sub SOMFY_SendCommand($@)
         </li><br>
 
     <li><a href="#do_not_notify">do_not_notify</a></li><br>
-    <a name="attrdummy"></a>
-    <li>dummy<br>
-    Set the device attribute dummy to define devices which should not
-    output any radio signals. Associated notifys will be executed if
-    the signal is received. Used e.g. to react to a code from a sender, but
-    it will not emit radio signal if triggered in the web frontend.
-    </li><br>
 
     <li><a href="#loglevel">loglevel</a></li><br>
 
     <li><a href="#showtime">showtime</a></li><br>
 
-    <a name="model"></a>
     <li>model<br>
         The model attribute denotes the model type of the device.
         The attributes will (currently) not be used by the fhem.pl directly.
@@ -1763,7 +1813,6 @@ sub SOMFY_SendCommand($@)
     </li><br>
 
 
-    <a name="ignore"></a>
     <li>ignore<br>
         Ignore this device, e.g. if it belongs to your neighbour. The device
         won't trigger any FileLogs/notifys, issued commands will silently
@@ -1775,27 +1824,23 @@ sub SOMFY_SendCommand($@)
         "ignored=1" special devspec.
         </li><br>
 
-    <a name="drive-down-time-to-100"></a>
     <li>drive-down-time-to-100<br>
         The time the blind needs to drive down from "open" (pos 0) to pos 100.<br>
 		In this position, the lower edge touches the window frame, but it is not completely shut.<br>
 		For a mid-size window this time is about 12 to 15 seconds.
         </li><br>
 
-    <a name="drive-down-time-to-close"></a>
     <li>drive-down-time-to-close<br>
         The time the blind needs to drive down from "open" (pos 0) to "close", the end position of the blind.<br>
         Note: If set, this value always needs to be higher than drive-down-time-to-100
 		This is about 3 to 5 seonds more than the "drive-down-time-to-100" value.
         </li><br>
 
-    <a name="drive-up-time-to-100"></a>
     <li>drive-up-time-to-100<br>
         The time the blind needs to drive up from "close" (endposition) to "pos 100".<br>
 		This usually takes about 3 to 5 seconds.
         </li><br>
 
-    <a name="drive-up-time-to-open"></a>
     <li>drive-up-time-to-open<br>
         The time the blind needs drive up from "close" (endposition) to "open" (upper endposition).<br>
         Note: If set, this value always needs to be higher than drive-down-time-to-100

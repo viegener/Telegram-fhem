@@ -100,6 +100,8 @@
 
 #   doc: favorites2Col for 2 columns favorites keyboard
 #   fix: aliasExec can be undefined - avoid error
+
+#   allow : in keyboards (either escaped or just use last : for data split) --> #msg611609
 #   
 #   
 #   
@@ -107,8 +109,8 @@
 ##############################################################################
 # TASKS 
 #   
-#   allow : in keyboards (either escaped or just use last : for data split) --> #msg611609
 #   
+#   remove keyboard after favorite confirm
 #   
 #   cleanup encodings
 #   
@@ -1784,12 +1786,19 @@ sub TelegramBot_MakeKeyboard($$$@)
   if ( ( defined( $inlinekb ) ) && ( $inlinekb ) ) {
     # inline kb
     my @parKeys = ( );
+    my $keytext;
+    my $keydata;
     
     foreach my $aKeyRow (  @keys ) {
       my @parRow = ();
       foreach my $aKey (  @$aKeyRow ) {
-        my ( $keytext, $keydata ) = split( /:/, $aKey, 2);
-        $keydata = $keytext if ( ! defined( $keydata ) );
+        $keytext = $aKey;
+        if ( $keytext =~ /^\s*(.*):([^:]+)\s*$/ ) {
+          $keytext = $1;
+          $keydata = $2;
+        } else {
+          $keydata = $keytext;
+        }
         my %oneKey = ( "text" => $keytext, "callback_data" => $keydata );
         push( @parRow, \%oneKey );
       }

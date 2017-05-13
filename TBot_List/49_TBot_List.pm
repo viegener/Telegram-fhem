@@ -62,11 +62,14 @@
 #   make unsolicited entries configurable
 #   handle multiline entries --> remove line ends
 #   handle multiline entries --> multiple entries to be created
+# 0.3 2017-03-16 
+
 #   Fix: undef errors in listhandler resolved
 #   Menu für gesamte Liste
 #   Sortierung A-Z und Z-A für Liste
-
 #   allow double entries and correct handling
+# 0.3 2017-05-13 Menu / Sort und fixes 
+
 #   
 #   
 #   

@@ -24,7 +24,7 @@
 #
 # This module interacts with TelegramBot and PostMe devices
 #
-# Discussed in FHEM Forum: <not yet> TODO
+# Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,67976.0.html
 #
 # $Id: 49_TBot_List.pm 13718 2017-03-16 22:47:36Z viegener $
 #
@@ -62,11 +62,11 @@
 #   make unsolicited entries configurable
 #   handle multiline entries --> remove line ends
 #   handle multiline entries --> multiple entries to be created
-
 #   Fix: undef errors in listhandler resolved
 #   Menu für gesamte Liste
 #   Sortierung A-Z und Z-A für Liste
-#   
+
+#   allow double entries and correct handling
 #   
 #   
 #   
@@ -106,8 +106,6 @@ sub TBot_List_Undef($$);
 
 sub TBot_List_Set($@);
 sub TBot_List_Get($@);
-
-sub TBot_List_ReplacePattern( $$;$ );
 
 sub TBot_List_handler( $$$$;$ );
 
@@ -849,12 +847,16 @@ sub TBot_List_handler($$$$;$)
     my $no = $1;
     
     if ( ( $no >= 0 ) && ( $no < scalar(@list) ) ) {
+    
       my $topentry = $list[$no];
-      my $text = $topentry;
-      foreach my $entry (  @list ) {
-        $text .= ",".$entry if ( $entry ne $topentry );
-      }
-       
+      # remove from array the entry with the index 
+      splice(@list, $no, 1);    
+      
+      # add it at the beginning
+      unshift @list, $topentry;
+
+      my $text = join(",", @list );
+      
       fhem( "set ".TBot_List_getConfigPostMe($hash)." clear $lname " );
       fhem( "set ".TBot_List_getConfigPostMe($hash)." add $lname $text" );
     
@@ -887,8 +889,14 @@ sub TBot_List_handler($$$$;$)
     
     if ( ( $no >= 0 ) && ( $no < scalar(@list) ) ) {
     
-      fhem( "set ".TBot_List_getConfigPostMe($hash)." remove $lname ".$list[$no] );
+      # remove from array the entry with the index 
+      splice(@list, $no, 1);    
 
+      my $text = join(",", @list );
+      
+      fhem( "set ".TBot_List_getConfigPostMe($hash)." clear $lname " );
+      fhem( "set ".TBot_List_getConfigPostMe($hash)." add $lname $text" );
+      
       # show updated list -> call recursively
       TBot_List_handler( $hash,  "list_edit", $tbot, $peer, " Eintrag geloescht" );
     
@@ -1110,18 +1118,6 @@ sub TBot_List_handler($$$$;$)
 ##############################################################################
 ##############################################################################
 
-
-#####################################
-#  INTERNAL: get pattern replaced
-# TODO - adapt for texts
-sub TBot_List_ReplacePattern( $$;$ ) {
-  my ( $pattern, $id, $name ) = @_;
-
- $pattern =~ s/q_id_q/$id/g if ( defined($id) );
- $pattern =~ s/q_name_q/$name/g if ( defined($name) );
-
- return $pattern;
-}
 
 #####################################
 #  notify function provide dev and 

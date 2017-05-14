@@ -109,8 +109,7 @@
 #   remove old inline favorites dialog on execution of commands
 #   allow execution of hidden favorites from inline menu
 
-#   minor
-#   
+#   Debug/log cleanup
 #   
 #   
 ##############################################################################
@@ -926,7 +925,7 @@ sub TelegramBot_SplitFavoriteDef($$) {
     Log3 $name, 1, "TelegramBot_SplitFavoriteDef invalid favorite definition :$cmd: ";
   }
   
-  Debug "TelegramBot_SplitFavoriteDef cmd :$cmd: \n      alias :".($alias?$alias:"<undef>").": desc :".($desc?$desc:"<undef>").
+  Log3 $name, 4, "TelegramBot_SplitFavoriteDef cmd :$cmd: \n      alias :".($alias?$alias:"<undef>").": desc :".($desc?$desc:"<undef>").
                   ":  parsecmd :".($parsecmd?$parsecmd:"<undef>").
                   ":   confirm: ".(($confirm eq "?")?1:0).":   result: ".(($result eq "!")?1:0).":   hidden: ".$hidden;
   
@@ -980,7 +979,7 @@ sub TelegramBot_SendFavorites($$$$$;$) {
   Log3 $name, 4, "TelegramBot_SendFavorites cmd :$cmd:   peer :$mpeernorm:   aliasExec :".$aliasExec;
   
   if ( $cmd =~ /^\s*cancel\s*$/ ) {
-    Debug "Stored msg id :".$storedMgsId.":";
+    # Debug "Stored msg id :".$storedMgsId.":";
     if ( $storedMgsId ) {
       # 10 for edit inline
       $ret = TelegramBot_SendIt( $hash, (($mchatnorm)?$mchatnorm:$mpeernorm), "Favoriten beendet", undef, 10, $storedMgsId );
@@ -2549,8 +2548,7 @@ sub TelegramBot_ParseCallbackQuery($$$)
             $fcmd .= " cancel";
           }
           # where to get chat id from ?
-          Debug "IMID: $imid";
-          Debug "REPLYMID: $replyId";
+          Log3 $name, 4, "TelegramBot_ParseCallback $name: REPLYMID: $replyId";
           Telegram_HandleCommandInMessages( $hash, $mpeernorm, $chatId, $fcmd, $replyId );
         }
       }    

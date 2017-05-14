@@ -105,16 +105,16 @@
 #   favoritesInline attribute for having favorites handled with inline keyboards
 #   INT: addtl Parameter in SendIt for options (-msgid-)
 #   Handle favorites as inline?
-
 #   document favoritesInline
 #   remove old inline favorites dialog on execution of commands
 #   allow execution of hidden favorites from inline menu
+
+#   minor
+#   
 #   
 #   
 ##############################################################################
 # TASKS 
-#   
-#   BUG: if perl is in favorites, this is evaluated twice
 #   
 #   remove keyboard after favorite confirm
 #   
@@ -1275,7 +1275,7 @@ sub TelegramBot_ExecuteCommand($$$$;$$) {
   $defpeer = undef if ( defined($defpeer) && ( $defpeer eq $mpeernorm ) );
   
   # LOCAL: External message
-  my $retMsg = AttrVal( $name, 'textResponseResult', 'TelegramBot FHEM Befehl:$cmd: (von $pname) - Ergebnis:\n$result \n ');
+  my $retMsg = AttrVal( $name, 'textResponseResult', 'TelegramBot FHEM - $peer Befehl:$cmd: - Ergebnis:\n$result \n ');
   $retMsg =~ s/\$cmd/$cmd/g;
   
   if ( defined( $defpeer ) ) {

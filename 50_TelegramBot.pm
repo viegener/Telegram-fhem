@@ -101,16 +101,20 @@
 #   doc: favorites2Col for 2 columns favorites keyboard
 #   fix: aliasExec can be undefined - avoid error
 #   allow : in keyboards (either escaped or just use last : for data split) --> #msg611609
-
 #   allow space before = in favorite
 #   favoritesInline attribute for having favorites handled with inline keyboards
 #   INT: addtl Parameter in SendIt for options (-msgid-)
 #   Handle favorites as inline?
-#   
+
+#   document favoritesInline
+#   remove old inline favorites dialog on execution of commands
+#   allow execution of hidden favorites from inline menu
 #   
 #   
 ##############################################################################
 # TASKS 
+#   
+#   BUG: if perl is in favorites, this is evaluated twice
 #   
 #   remove keyboard after favorite confirm
 #   
@@ -1040,7 +1044,7 @@ sub TelegramBot_SendFavorites($$$$$;$) {
       $ecmd = $parsecmd;
       
 #      Debug "Needsconfirm: ". $needsConfirm;
-      if ( ( $hidden ) && ( ! $aliasExec ) && ( ! $isConfirm ) ) {
+      if ( ( $hidden ) && ( ! $aliasExec ) && ( ! $isConfirm ) && ( ! $storedMgsId )  ) {
         Log3 $name, 3, "TelegramBot_SendFavorites hidden favorite (id;".($cmdId+1).") execution from ".$mpeernorm;
       } elsif ( ( ! $isConfirm ) && ( $needsConfirm ) ) {
         # ask first for confirmation
@@ -1077,6 +1081,12 @@ sub TelegramBot_SendFavorites($$$$$;$) {
         
       } else {
 #        $ecmd = $1 if ( $ecmd =~ /^\s*\?(.*)$/ );
+
+        if ( $storedMgsId ) {
+          # 10 for edit inline
+          $ret = TelegramBot_SendIt( $hash, (($mchatnorm)?$mchatnorm:$mpeernorm), "-", undef, 10, $storedMgsId );
+        }
+
         $ecmd .= " ".$cmdAddition if ( $cmdAddition );
         return TelegramBot_ExecuteCommand( $hash, $mpeernorm, $mchatnorm, $ecmd, $needsResult, $storedMgsId );
       }
@@ -1265,7 +1275,7 @@ sub TelegramBot_ExecuteCommand($$$$;$$) {
   $defpeer = undef if ( defined($defpeer) && ( $defpeer eq $mpeernorm ) );
   
   # LOCAL: External message
-  my $retMsg = AttrVal( $name, 'textResponseResult', 'TelegramBot FHEM : $peer\n    Befehl:$cmd:\n  Ergebnis:\n$result \n ');
+  my $retMsg = AttrVal( $name, 'textResponseResult', 'TelegramBot FHEM Befehl:$cmd: (von $pname) - Ergebnis:\n$result \n ');
   $retMsg =~ s/\$cmd/$cmd/g;
   
   if ( defined( $defpeer ) ) {
@@ -3482,6 +3492,8 @@ sub TelegramBot_BinaryFileWrite($$$) {
     Meaning the full format for a single favorite is <code>/alias[description]=commands</code> where the alias can be empty if the description is given or <code>/alias=command</code> or <code>/-alias=command</code> for a hidden favorite or just the <code>commands</code>. In any case the commands can be also prefixed with a '?' or a '!' (or both). Spaces are only allowed in the description and the commands, usage of spaces in other areas might lead to wrong interpretation of the definition. Spaces and also many other characters are not supported in the alias commands by telegram, so if you want to have your favorite/alias directly recognized in the telegram app, restriction to letters, digits and underscore is required. Double semicolon will be used for specifying mutliple fhem commands in a single favorites, while single semicolon is used to separate between different favorite definitions
     </li> 
     <li><code>favorites2Col &lt;1 or 0&gt;</code><br>Show favorites in 2 columns keyboard (instead of 1 column  - default)
+    </li> 
+    <li><code>favoritesInline &lt;1 or 0&gt;</code><br>When set to 1 it shows favorite dialog as inline keyboard and results will be also displayed inline (instead of as reply keyboards - default)
     </li> 
 
   <br>

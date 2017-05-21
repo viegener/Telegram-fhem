@@ -66,7 +66,7 @@
 
 #   print filtered messages - with quoted chars
 #   changed log levels to 4 for verbose / 5 will print all messages
-#   
+#   fix replacesetmagic to ensure device hash is given
 #   
 #   
 #   
@@ -457,7 +457,7 @@ Nextion_SendCommand($$$)
   Log3 $name, 4, "Nextion_SendCommand $name: send commands :".$msg.": ";
   
   # First replace any magics
-  my %dummy; 
+#  my %dummy; 
 #  my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $msg ) );
   
 #  if ( $err ) {
@@ -474,7 +474,7 @@ Nextion_SendCommand($$$)
   while(defined($singleMsg = shift @msgList)) {
     $singleMsg =~ s/SeMiCoLoN/;/g;
 
-    my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $singleMsg ) );
+    my ($err, @a) = ReplaceSetMagic($hash, 0, ( $singleMsg ) );
     if ( $err ) {
       Log3 $name, 1, "$name: Nextion_SendCommand failed on ReplaceSetmagic with :$err: on commands :$singleMsg:";
     } else {

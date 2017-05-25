@@ -104,12 +104,13 @@
 #   allow space before = in favorite
 #   favoritesInline attribute for having favorites handled with inline keyboards
 #   INT: addtl Parameter in SendIt for options (-msgid-)
-#   Handle favorites as inline?
+#   Handle favorites as inline
 #   document favoritesInline
 #   remove old inline favorites dialog on execution of commands
 #   allow execution of hidden favorites from inline menu
-
 #   Debug/log cleanup
+# 2.4 2016-05-25  favorites rework - inline / allow : in inline 
+
 #   
 #   
 ##############################################################################

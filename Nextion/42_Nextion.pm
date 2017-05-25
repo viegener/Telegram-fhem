@@ -60,13 +60,15 @@
 #   _connect/Disconnect/isConnected subs
 #   init device after notify on initialized
 #   fix connection  - to work also if nextion is unavailable
+#
+#
 #   Extended log for read function
 #   remove leading ff
 #   fault tolerant command reader allow empty commands and missing \xff
-
 #   print filtered messages - with quoted chars
 #   changed log levels to 4 for verbose / 5 will print all messages
 #   fix replacesetmagic to ensure device hash is given
+# 2016-05-25    fault tolerance in reader / fixes 
 #   
 #   
 #   

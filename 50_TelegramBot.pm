@@ -27,7 +27,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,38328.0.html
 #
-# $Id: 50_TelegramBot.pm 13824 2017-03-27 20:48:32Z viegener $
+# $Id: 50_TelegramBot.pm 14370 2017-05-25 16:09:28Z viegener $
 #
 ##############################################################################
 # 0.0 2015-09-16 Started
@@ -111,7 +111,7 @@
 #   Debug/log cleanup
 # 2.4 2016-05-25  favorites rework - inline / allow : in inline 
 
-#   
+#   fix: options remove in sendit corrected: #msg641797
 #   
 ##############################################################################
 # TASKS 
@@ -812,6 +812,18 @@ sub TelegramBot_Attr(@) {
       # wait some time before next polling is starting
       TelegramBot_ResetPolling( $hash );
 
+    } elsif ($aName eq 'disable') {
+      if ( $aVal =~ /^(1|0)$/ ) {
+        # let all existing methods run into block
+        RemoveInternalTimer($hash);
+        $hash->{POLLING} = -1;
+        
+        # wait some time before next polling is starting
+        TelegramBot_ResetPolling( $hash );
+      } else {
+        return "\"TelegramBot_Attr: \" $aName needs to be 1 or 0";
+      }
+
     } elsif ($aName eq 'pollingVerbose') {
       return "\"TelegramBot_Attr: \" Incorrect value given for pollingVerbose" if ( $aVal !~ /^((1_Digest)|(2_Log)|(0_None))$/ );
 
@@ -829,6 +841,15 @@ sub TelegramBot_Attr(@) {
 
     $_[3] = $aVal;
   
+  } elsif ($cmd eq "set") {
+    if ( ($aName eq 'pollingTimeout') || ($aName eq 'disable') ) {
+      # let all existing methods run into block
+      RemoveInternalTimer($hash);
+      $hash->{POLLING} = -1;
+      
+      # wait some time before next polling is starting
+      TelegramBot_ResetPolling( $hash );
+    }
   }
 
   return undef;
@@ -1562,7 +1583,8 @@ sub TelegramBot_SendIt($$$$$;$$$)
   if ( defined( $peers ) ) {
     # ignore return, since it is only queued
     # remove msgid from options and also replyid reset
-    my $sepoptions =~ s/-msgid-//;
+    my $sepoptions = $options;
+    $sepoptions =~ s/-msgid-//;
     TelegramBot_SendIt( $hash, $peers, $msg, $addPar, $isMedia, undef, $sepoptions );
   }
   

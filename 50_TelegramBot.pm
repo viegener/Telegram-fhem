@@ -77,7 +77,7 @@
 #   cleaned up done list
 #   ATTENTION: store api key in setkey value see patch from msg576714
 #   put values in chat/chatId even if no group involved (peer will be set)
-# 2.2 2016-02-26  msgChatId with peer / api key secured / communication with TBot_List
+# 2.2 2017-02-26  msgChatId with peer / api key secured / communication with TBot_List
 
 #   cmdSend to send the result of a command as message (used for sending SVGs)
 #   add utf8Special attribute for encoding before send
@@ -96,7 +96,7 @@
 #   reduce utf8 handling
 #   add favorite hidden zusatz
 #   favorite keyboard 2 column #msg609128
-# 2.3 2016-03-27  utf8Special for unicode issues / favorite handling / hidden favorites
+# 2.3 2017-03-27  utf8Special for unicode issues / favorite handling / hidden favorites
 
 #   doc: favorites2Col for 2 columns favorites keyboard
 #   fix: aliasExec can be undefined - avoid error
@@ -109,13 +109,13 @@
 #   remove old inline favorites dialog on execution of commands
 #   allow execution of hidden favorites from inline menu
 #   Debug/log cleanup
-# 2.4 2016-05-25  favorites rework - inline / allow : in inline 
+# 2.4 2017-05-25  favorites rework - inline / allow : in inline 
 
 #   fix: options remove in sendit corrected: #msg641797
-  
-  
 #   DOCFIX: Double semicolon for multiple commands in favorites
-#   
+#   FIX: non-local $_ - see #msg647071
+# 2.4.1 2017-05-25  favorites rework - inline / allow : in inline 
+
 #   
 #   
 #   

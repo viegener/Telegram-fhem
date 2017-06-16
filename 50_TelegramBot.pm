@@ -3240,6 +3240,7 @@ sub TelegramBot_MsgForLog($;$) {
 #  
 sub TelegramBot_BinaryFileRead($$) {
   my ($hash, $fileName) = @_;
+  my $_;
 
   return '' if ( ! (-e $fileName) );
   

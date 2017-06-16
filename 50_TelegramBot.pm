@@ -114,7 +114,7 @@
 #   fix: options remove in sendit corrected: #msg641797
 #   DOCFIX: Double semicolon for multiple commands in favorites
 #   FIX: non-local $_ - see #msg647071
-# 2.4.1 2017-05-25  favorites rework - inline / allow : in inline 
+# 2.4.1 2017-06-16  minor fixes - #msg641797 / #msg647071
 
 #   
 #   

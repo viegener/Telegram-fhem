@@ -108,7 +108,7 @@
 #   thumbnail org name / timestamp sa reading
 
 #   get liveview - live video - msg539729
-#   
+#   FIX: Warnings on usage of reference #msg648612
 #   
 ##############################################################################
 # TASKS 
@@ -938,7 +938,7 @@ sub BlinkCamera_ParseHomescreen($$$)
   
   # loop through readings to reset all existing Cameras - but leave Img (otherwise too many events on thumbnails)
   if ( defined($hash->{READINGS}) ) {
-    foreach my $cam ( keys  $hash->{READINGS} ) {
+    foreach my $cam ( keys  %{$hash->{READINGS}} ) {
       $readUpdates->{$cam} = undef if ( ( $cam =~ /^networkCamera/ ) && ( $cam !~ /^networkCamera.*Img/ ) );
     }
   }
@@ -1042,7 +1042,7 @@ sub BlinkCamera_ParseStartAlerts($;$$$)
   } else {
     # Store results
     my $v = $result->{videos}; 
-    push( $hash->{alertResults}, @$v );
+    push( @{$hash->{alertResults}}, @$v );
     
     $isLast = ( BlinkCamera_IsLastAlertPage( $hash, $result ) ); 
   }
@@ -1488,7 +1488,7 @@ sub BlinkCamera_Setup($) {
   CommandDeleteReading(undef, "$name .*");
   readingsSingleUpdate($hash, "eventTimestamp", $eventTime, 0 ) if ( defined( $eventTime ) );
 
-  foreach my $aKey ( keys  $hash ) {
+  foreach my $aKey ( keys  %{$hash} ) {
     # "thumbnail".$device->{device_id}."Req"
     delete( $hash->{$aKey} ) if ( $aKey =~ /^thumbnail/ );
   }

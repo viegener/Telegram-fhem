@@ -56,6 +56,12 @@
 # - remove dummy attribute
 # - special cases for pos to avoid mypos being used since stop signal is sent after automatic stop
 # 
+# - changed Ys format only . no 0
+# - doc rework on set commands
+# - allow define with encryption key without starting with A
+# - added manual function for setting position manually without movement commands
+#
+#
 ###############################################################################
 #
 #
@@ -120,6 +126,7 @@ my %somfy_sets = (
 my %somfy_sets_addition = (
 	"go-my" => "noArg",
 	"pos" => "100,90,80,70,60,50,40,30,20,10,0",
+	"manual" => "200,100,90,80,70,60,50,40,30,20,10,0,on,off",
   "wind_sun_9" => "noArg",
   "wind_only_a" => "noArg",
 );
@@ -202,7 +209,8 @@ sub SOMFY_Initialize($) {
 	}
 
 	#                       YsKKC0RRRRAAAAAA
-	$hash->{Match}	= "^Ys...0..........\$";
+#	$hash->{Match}	= "^Ys...0..........\$";
+	$hash->{Match}	= "^Ys..............\$";
 	$hash->{SetFn}		= "SOMFY_Set";
 	#$hash->{StateFn} 	= "SOMFY_SetState";
 	$hash->{DefFn}   	= "SOMFY_Define";
@@ -266,9 +274,9 @@ sub SOMFY_Define($$) {
 	if ( int(@a) > 3 ) {
 
 		# check encryption key (2 hex digits, first must be "A")
-		if ( ( $a[3] !~ m/^[aA][a-fA-F0-9]{1}$/i ) ) {
+		if ( ( $a[3] !~ m/^[a-fA-F0-9]{2}$/i ) ) {
 			return "Define $a[0]: wrong encryption key format:"
-			  . "specify a 2 digits hex value (first nibble = A) "
+			  . "specify a 2 digits hex value "
 		}
 
     # reset reading time on def to 0 seconds (1970)
@@ -646,13 +654,21 @@ sub SOMFY_InternalSet($@) {
   # do conversions
   if ( AttrVal( $name, "positionInverse", 0 ) ) {
     Log3($name,4,"SOMFY_set: $name Inverse before cmd:$cmd: arg1:$arg1: pos:$pos:");
-    $arg1 = SOMFY_ConvertFrom100To0( $arg1 ) if($cmd eq 'pos');
+    $arg1 = SOMFY_ConvertFrom100To0( $arg1 ) if( ($cmd eq 'pos') || ($cmd eq 'manual') ) ;
     $pos = SOMFY_ConvertFrom100To0( $pos ); 	
     
     Log3($name,4,"SOMFY_set: $name Inverse after  cmd:$cmd: arg1:$arg1: pos:$pos:");
   }
   
-	if($cmd eq 'pos') {
+	if($cmd eq 'manual') {
+    $mode = 'virtual';   # manual is virtual setting - no command to be sent
+		return "SOMFY_set: No manual position given"  if(!defined($arg1));
+		return  "SOMFY_set: $arg1 must be between 0 and 100 or on/off for manual " if($arg1 !~ /^(on|off|200|150|[1-9]?0)$/ );
+    
+    $arg1 = 200 if ( $arg1 eq "on" ); 
+    $arg1 = 0 if ( $arg1 eq "off" ); 
+    
+	} elsif($cmd eq 'pos') {
 		return "SOMFY_set: No pos specification"  if(!defined($arg1));
 		return  "SOMFY_set: $arg1 must be between 0 and 100 for pos" if($arg1 < 0 || $arg1 > 200);
 		return "SOMFY_set: Please set attr drive-down-time-to-100, drive-down-time-to-close, etc" 
@@ -664,7 +680,7 @@ sub SOMFY_InternalSet($@) {
 	}
 
   
-		### initialize locals
+  ### initialize locals
 	my $drivetime = 0; # timings until halt command to be sent for on/off-for-timer and pos <value> -> move by time
 	my $updatetime = 0; # timing until update of pos to be done for any unlimited move move to endpos or go-my / stop
 	my $move = $cmd;
@@ -756,6 +772,9 @@ sub SOMFY_InternalSet($@) {
 		} elsif($cmd =~m/stop/) { 
 			$move = 'stop';
 			$newState = $state;
+
+		} elsif($cmd =~m/manual/) { 
+			$newState = $arg1;
 
 		} else {
 			$newState = $state;
@@ -865,6 +884,9 @@ sub SOMFY_InternalSet($@) {
 			} else {
 				$updateState = SOMFY_CalcCurrentPos( $hash, $move, $pos, $arg1 );
 			}
+
+		} elsif($cmd =~m/manual/) { 
+			$newState = $arg1;
 
 		}			
 
@@ -1092,6 +1114,7 @@ sub SOMFY_ConvertFrom100To0($) {
   
   return $v if ( ! defined($v) );
   return $v if ( length($v) == 0 );
+  return $v if ( $v =~ /^(on|off)$/);
   
   $v = minNum( 100, maxNum( 0, $v ) );
   
@@ -1706,8 +1729,11 @@ sub SOMFY_SendCommand($@)
     stop
     pos value (0..100) # see note
     prog  # Special, see note
+    wind_sun_9 
+    wind_only_a
     on-for-timer
     off-for-timer
+    manual 0,...,100,200,on,off
 	</pre>
     Examples:
     <ul>
@@ -1736,7 +1762,11 @@ sub SOMFY_SendCommand($@)
 			attributes drive-down-time-to-100, drive-down-time-to-close,
 			drive-up-time-to-100 and drive-up-time-to-open must be set. See also positionInverse attribute.<br>
 			</li>
-			</ul>
+      <li>wind_sun_9 and wind_only_a send special commands to the Somfy device that to represent the codes sent from wind and sun detector (with the respective code contained in the set command name)
+      </li>
+      <li>manual will only set the position without sending any commands to the somfy device - can be used to correct the position manually
+      </li>
+    </ul>
 
 		The position reading distinuishes between multiple cases
     <ul>

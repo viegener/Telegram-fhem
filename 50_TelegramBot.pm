@@ -117,6 +117,7 @@
 # 2.4.1 2017-06-16  minor fixes - #msg641797 / #msg647071
 
 #   FIX: make fileread work for both old and new perl versions
+# 2.4.2 2017-07-01  rewrite read file function due to $_ warning - #msg651947
 #   
 #   
 ##############################################################################

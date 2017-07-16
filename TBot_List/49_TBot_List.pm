@@ -76,7 +76,7 @@
 #   
 #   confirm delete configurable as attribute confirmDelete 
 #   confirm add unsolicited configurable as attribute confirmUnsolicited 
-#   
+# 0.6 2017-07-16   confirmDelete & confirmUnsolicited
 #   
 ##############################################################################
 # TASKS 

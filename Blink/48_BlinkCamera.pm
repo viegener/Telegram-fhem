@@ -110,11 +110,10 @@
 #   FIX: Warnings on usage of reference #msg648612
 #   
 #   Docu correction
-
 #   New attribute imgOriginalFile --> for thumbnails store original filename
 #      (no cleanup of old filenames)
 #   Docu for imgOriginalFile
-#   
+#   fix debug output
 #   
 ##############################################################################
 # TASKS 
@@ -714,7 +713,6 @@ sub BlinkCamera_DoCmd($$;$$$)
         if ( AttrVal( $name, "imgOriginalFile", 0 ) ) {
           if ( $curl =~ /^.*\/([^\/]+)/ ) {
             my $orgthumbfile = $1;
-            Debug "org :$orgthumbfile:";
             $hash->{HU_DO_PARAMS}->{filename} = BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $par1."_".$orgthumbfile, $name );
           } else {
             $ret = "BlinkCamera_DoCmd $name: url did not contain filename " 

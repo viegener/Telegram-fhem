@@ -27,7 +27,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,38328.0.html
 #
-# $Id: 50_TelegramBot.pm 14890 2017-08-13 12:43:14Z viegener $
+# $Id: 50_TelegramBot.pm 14892 2017-08-13 13:14:45Z viegener $
 #
 ##############################################################################
 # 0.0 2015-09-16 Started
@@ -123,7 +123,8 @@
 #   rename of bot also works with token encryption - #msg668108
 # 2.4.3 2017-08-13  delayed retry & rename (#msg668108) 
 
-#   remove debug
+#   remove debug / addtl testing
+#   adapt prototypes for token
   
 #   
 #   
@@ -179,8 +180,8 @@ sub TelegramBot_AttrNum($$$);
 sub TelegramBot_MakeKeyboard($$$@);
 sub TelegramBot_ExecuteCommand($$$$;$$);
 
-sub TelegramBot_readToken($);
-sub TelegramBot_storeToken($$);
+sub TelegramBot_readToken($;$);
+sub TelegramBot_storeToken($$;$);
 
 #########################
 # Globals

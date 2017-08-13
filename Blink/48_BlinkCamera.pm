@@ -114,6 +114,11 @@
 #      (no cleanup of old filenames)
 #   Docu for imgOriginalFile
 #   fix debug output
+
+#   set no caching for web content
+#   fix url path separators
+#   
+#   
 #   
 ##############################################################################
 # TASKS 
@@ -1236,7 +1241,7 @@ sub BlinkCamera_Callback($$$)
         
 #        $readUpdates{"networkCamera".$par1."Url"} = "/fhem/".
 #            BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $par1, $name ); 
-        $readUpdates{"networkCamera".$par1."Url"} = "/fhem/".$repfilename;
+        $readUpdates{"networkCamera".$par1."Url"} = "/fhem/".$filename;
 
         my $proxyDir = AttrVal($name,"proxyDir","/tmp/");
         $readUpdates{"networkCamera".$par1."File"} = $proxyDir.$repfilename;
@@ -1391,7 +1396,7 @@ sub BlinkCamera_WebCallback($) {
 				
         $urlfile =~ m/^(.*)\.(.*)$/;
 
-				FW_serveSpecial($1, $2, $proxyDir, 1);
+				FW_serveSpecial($1, $2, $proxyDir, 0);
 				
 				return(undef, undef);
     } else {

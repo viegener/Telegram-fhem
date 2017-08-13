@@ -106,9 +106,15 @@
 #   reading for camera battery status - msg539729
 #   reading for camera temperature - msg539729
 #   thumbnail org name / timestamp sa reading
-
 #   get liveview - live video - msg539729
 #   FIX: Warnings on usage of reference #msg648612
+#   
+#   Docu correction
+
+#   New attribute imgOriginalFile --> for thumbnails store original filename
+#      (no cleanup of old filenames)
+#   Docu for imgOriginalFile
+#   
 #   
 ##############################################################################
 # TASKS 
@@ -238,6 +244,7 @@ sub BlinkCamera_Initialize($) {
   $hash->{AttrFn}     = "BlinkCamera_Attr";
   $hash->{AttrList}   = " maxRetries:0,1,2,3,4,5 ".
           "imgTemplate:textField ".
+          "imgOriginalFile:0,1 ".
           "videoTemplate:textField ".
           "proxyDir:textField ".
           "network ".
@@ -704,9 +711,17 @@ sub BlinkCamera_DoCmd($$;$$$)
       $hash->{HU_DO_PARAMS}->{method} = "GET";
       if ( defined( $curl ) ) {
         $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}.$curl.".jpg";
-        #     --> /tmp/BlinkCamera_<device>_thumbnail_<id>_<something 1 or 2>.<ext=jpg>
-        $hash->{HU_DO_PARAMS}->{filename} = BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $par1, $name );
-        
+        if ( AttrVal( $name, "imgOriginalFile", 0 ) ) {
+          if ( $curl =~ /^.*\/([^\/]+)/ ) {
+            my $orgthumbfile = $1;
+            Debug "org :$orgthumbfile:";
+            $hash->{HU_DO_PARAMS}->{filename} = BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $par1."_".$orgthumbfile, $name );
+          } else {
+            $ret = "BlinkCamera_DoCmd $name: url did not contain filename " 
+          }
+        } else {
+          $hash->{HU_DO_PARAMS}->{filename} = BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $par1, $name );
+        }
       } else {
         $ret = "BlinkCamera_DoCmd $name: no url found " 
       }
@@ -1220,11 +1235,13 @@ sub BlinkCamera_Callback($$$)
         # Store which thumbnail file is loaded already
         $hash->{"thumbnail".$par1."Url"} = $hash->{"thumbnail".$par1."Req"};
         delete( $hash->{"thumbnail".$par1."Req"} );
-        $readUpdates{"networkCamera".$par1."Url"} = "/fhem/".
-            BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $par1, $name ); 
+        
+#        $readUpdates{"networkCamera".$par1."Url"} = "/fhem/".
+#            BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $par1, $name ); 
+        $readUpdates{"networkCamera".$par1."Url"} = "/fhem/".$repfilename;
+
         my $proxyDir = AttrVal($name,"proxyDir","/tmp/");
         $readUpdates{"networkCamera".$par1."File"} = $proxyDir.$repfilename;
-        
       }
       $readTemplate =~ s/#URL#/$fullurl/g;
       $readTemplate =~ s/#ID#/$par1/g;
@@ -1372,7 +1389,7 @@ sub BlinkCamera_WebCallback($) {
     # let fhemweb handle the rest
     my $fullfile = $proxyDir.$urlfile;
     if ( -e $fullfile ) {
-				Log3 undef, 5, "Found file in proxydir".$urlfile.' from ('.$URL.')';
+				Log3 undef, 5, "Found file in proxydir ".$urlfile.' from ('.$URL.')';
 				
         $urlfile =~ m/^(.*)\.(.*)$/;
 
@@ -1380,7 +1397,7 @@ sub BlinkCamera_WebCallback($) {
 				
 				return(undef, undef);
     } else {
-      Log3 undef, 2, "File not found in proxydir".$urlfile.' from ('.$URL.')';
+      Log3 undef, 2, "File not found in proxydir ".$urlfile.' from ('.$URL.')';
     }
     
   }
@@ -2021,7 +2038,7 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
   <br><br>
 
   <a name="BlinkCameraget"></a>
-  <b>Set</b>
+  <b>Get</b>
   <ul>
     <code>get &lt;name&gt; &lt;what&gt; [&lt;value&gt;]</code>
     <br><br>
@@ -2063,6 +2080,10 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
     </li> 
 
     <li><code>imgTemplate &lt;HTML template for reading&gt;</code><br>Give an HTML template for the image reading that shows the thumbnail of a camera. Default is a template which shows the image a link to the image and also the url as text. In the template the string #URL# will be replaced with the actual URL
+    </li> 
+
+    <li><code>imgOriginalFile &lt;1 or 0&gt;</code><br>If set to 1 it will keep the original filename of the thumbnail when storing ti. With setting this new thumbnails will not overwrite existing ones. <br>
+    NOTE: No cleanup of thumbnails is done, so over time more and more thumbnails will be stored in the proxydir. 
     </li> 
 
     <li><code>vidTemplate &lt;HTML template for reading&gt;</code><br>Give an HTML template for the video reading that shows the video of a notification from the camera. Default is a template which shows the video a link to the video and also the url and id as text. In the template the string #URL# will be replaced with the actual URL of the video and #ID# will be replaced by the video ID.

@@ -27,7 +27,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,38328.0.html
 #
-# $Id: 50_TelegramBot.pm 14370 2017-05-25 16:09:28Z viegener $
+# $Id: 50_TelegramBot.pm 14890 2017-08-13 12:43:14Z viegener $
 #
 ##############################################################################
 # 0.0 2015-09-16 Started
@@ -118,10 +118,11 @@
 
 #   FIX: make fileread work for both old and new perl versions
 # 2.4.2 2017-07-01  rewrite read file function due to $_ warning - #msg651947
-#   
 
 #   FIX: make delayed retry work again
 #   rename of bot also works with token encryption - #msg668108
+# 2.4.3 2017-08-13  delayed retry & rename (#msg668108) 
+
 #   
 #   
 ##############################################################################

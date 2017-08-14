@@ -114,16 +114,20 @@
 #      (no cleanup of old filenames)
 #   Docu for imgOriginalFile
 #   fix debug output
-
 #   set no caching for web content
 #   fix url path separators
+
+#   Add automatic homescreen after cameraThumbnail
+#   avoid logging set/get with ? cmd
+#   added wait for transaction finish also for cameraThumbnail
+#   
 #   
 #   
 #   
 ##############################################################################
 # TASKS 
 #   
-#   
+#   might need to check for transaction id on command post
 #   
 #   store poll failures / digest?
 #   
@@ -334,8 +338,6 @@ sub BlinkCamera_Set($@)
 {
   my ( $hash, $name, @args ) = @_;
   
-  Log3 $name, 5, "BlinkCamera_Set $name: called ";
-
   ### Check Args
   my $numberOfArgs  = int(@args);
   return "BlinkCamera_Set: No cmd specified for set" if ( $numberOfArgs < 1 );
@@ -344,7 +346,7 @@ sub BlinkCamera_Set($@)
 
   my $addArg = ($args[0] ? join(" ", @args ) : undef);
 
-  Log3 $name, 5, "BlinkCamera_Set $name: Processing BlinkCamera_Set( $cmd ) - args :".(defined($addArg)?$addArg:"<undef>").":";
+  Log3 $name, 5, "BlinkCamera_Set $name: Processing BlinkCamera_Set( $cmd ) - args :".(defined($addArg)?$addArg:"<undef>").":" if ( $cmd ne "?" );
 
   # check cmd / handle ?
   my $ret = BlinkCamera_CheckSetGet( $hash, $cmd, $hash->{setoptions} );
@@ -379,7 +381,8 @@ sub BlinkCamera_Set($@)
 
   }
 
-  Log3 $name, 5, "BlinkCamera_Set $name: $cmd ".((defined( $ret ))?"failed with :$ret: ":"done succesful ");
+  Log3 $name, 5, "BlinkCamera_Set $name: $cmd ".((defined( $ret ))?"failed with :$ret: ":"done succesful ") 
+    if ( $cmd ne "?" );
   return $ret
 }
 
@@ -389,8 +392,6 @@ sub BlinkCamera_Get($@)
 {
   my ( $hash, $name, @args ) = @_;
   
-  Log3 $name, 5, "BlinkCamera_Get $name: called ";
-
   ### Check Args
   my $numberOfArgs  = int(@args);
   return "BlinkCamera_Get: No value specified for get" if ( $numberOfArgs < 1 );
@@ -398,7 +399,7 @@ sub BlinkCamera_Get($@)
   my $cmd = $args[0];
   my $arg = $args[1];
 
-  Log3 $name, 5, "BlinkCamera_Get $name: Processing BlinkCamera_Get( $cmd )";
+  Log3 $name, 5, "BlinkCamera_Get $name: Processing BlinkCamera_Get( $cmd )" if ( $cmd ne "?" );
 
   # check cmd / handle ?
   my $ret = BlinkCamera_CheckSetGet( $hash, $cmd, $hash->{getoptions} );
@@ -421,7 +422,7 @@ sub BlinkCamera_Get($@)
     $ret = BlinkCamera_CameraDoCmd( $hash, "liveview", $arg );
   }
   
-  Log3 $name, 5, "BlinkCamera_Get $name: $cmd ".((defined( $ret ))?"failed with :$ret: ":"done succesful ");
+  Log3 $name, 5, "BlinkCamera_Get $name: $cmd ".((defined( $ret ))?"failed with :$ret: ":"done succesful ") if ( $cmd ne "?" );
 
   return $ret
 }
@@ -1105,7 +1106,7 @@ sub BlinkCamera_Callback($$$)
   
   my $filename = $param->{filename};
   my $cmd = $param->{cmd};
-  my $par1 = $param->{par1};
+  my $par1 = $param->{par1};  
   my $par2 = $param->{par2};
 
   my $polling = ( defined($par2) ) && ($par2 eq "POLLING" );
@@ -1212,6 +1213,14 @@ sub BlinkCamera_Callback($$$)
     } elsif ($cmd eq "homescreen" ) {
       $ret = BlinkCamera_ParseHomescreen( $hash, $result, \%readUpdates );
     
+    } elsif ( ($cmd eq "cameraThumbnail")  ) {
+      # store cmd id also for thumbnail to wait for result
+      $cmdId = $result->{id} if ( defined( $result->{id} ) );
+#      if ( ! defined($cmdId) ) {
+#        # no commandid means done already --> so get the full update
+#        BlinkCamera_DoCmd( $hash, "homescreen", undef, "POLLING" );
+#      }
+
     } elsif ($cmd eq "command" ) {
       if ( defined( $result->{complete} ) ) {
         if ( $result->{complete} ) {
@@ -1654,7 +1663,7 @@ sub BlinkCamera_CheckSetGet( $$$ ) {
       }
     } # end foreach
 
-    return "BlinkCamera_Set: Unknown argument $cmd, choose one of " . join(" ", @cList);
+    return "BlinkCamera_CheckSetGet: Unknown argument $cmd, choose one of " . join(" ", @cList);
   } # error unknown cmd handling
   return undef;
 }

@@ -126,12 +126,18 @@
 #   remove debug / addtl testing
 #   adapt prototypes for token
   
+#   additional logs / removed debugs
+#   
+#   
 #   
 #   
 ##############################################################################
 # TASKS 
 #   
-#
+#   SSL wants a read first to be ignored --> make two requests in the beginning?
+#   
+#   
+#   
 #   remove keyboard after favorite confirm
 #   
 #   cleanup encodings
@@ -287,8 +293,6 @@ sub TelegramBot_Define($$) {
   my $errmsg = '';
   
   # Check parameter(s)
-  
-  # Debug "Token : ".TelegramBot_readToken($hash);
   
   # If api token is given check for syntax and remove from hash
   if ( ( int(@a) == 3 ) && ( $a[2] !~ /^([[:alnum:]]|[-:_])+[[:alnum:]]+([[:alnum:]]|[-:_])+$/ ) ) {
@@ -1020,7 +1024,6 @@ sub TelegramBot_SendFavorites($$$$$;$) {
   Log3 $name, 4, "TelegramBot_SendFavorites cmd :$cmd:   peer :$mpeernorm:   aliasExec :".$aliasExec;
   
   if ( $cmd =~ /^\s*cancel\s*$/ ) {
-    # Debug "Stored msg id :".$storedMgsId.":";
     if ( $storedMgsId ) {
       # 10 for edit inline
       $ret = TelegramBot_SendIt( $hash, (($mchatnorm)?$mchatnorm:$mpeernorm), "Favoriten beendet", undef, 10, $storedMgsId );
@@ -1083,7 +1086,6 @@ sub TelegramBot_SendFavorites($$$$$;$) {
 
       $ecmd = $parsecmd;
       
-#      Debug "Needsconfirm: ". $needsConfirm;
       if ( ( $hidden ) && ( ! $aliasExec ) && ( ! $isConfirm ) && ( ! $storedMgsId )  ) {
         Log3 $name, 3, "TelegramBot_SendFavorites hidden favorite (id;".($cmdId+1).") execution from ".$mpeernorm;
       } elsif ( ( ! $isConfirm ) && ( $needsConfirm ) ) {
@@ -1633,10 +1635,6 @@ sub TelegramBot_SendIt($$$$$;$$$)
   my $timeout =   AttrVal($name,'cmdTimeout',30);
   $hash->{HU_DO_PARAMS}->{timeout} = $timeout;
 
-  
-  # only for test / debug               
-#  $hash->{HU_DO_PARAMS}->{loglevel} = 3;
-
   # handle data creation only if no error so far
   if ( ! defined( $ret ) ) {
 
@@ -1682,9 +1680,6 @@ sub TelegramBot_SendIt($$$$$;$$$)
       $msg =~ s/(?<![\\])\\n/\x0A/g;
       $msg =~ s/(?<![\\])\\t/\x09/g;
 
-      ## JVI
-#      Debug "send conv msg  :".$msg.":";
-  
       # add msg (no file)
       $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "text", undef, $msg, 0 ) if ( ! defined( $ret ) );
 
@@ -1770,9 +1765,6 @@ sub TelegramBot_SendIt($$$$$;$$$)
     $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, undef, undef, undef, 0 ) if ( ! defined( $ret ) );
 
   }
-  
-  ## JVI
-#  Debug "send command  :".$hash->{HU_DO_PARAMS}->{data}.":";
   
   if ( defined( $ret ) ) {
     Log3 $name, 3, "TelegramBot_SendIt $name: Failed with :$ret:";
@@ -1931,8 +1923,6 @@ sub TelegramBot_MakeKeyboard($$$@)
     Log3 $name, 4, "TelegramBot_MakeKeyboard $name: json downgraded :$ret: is utf8? ".(utf8::is_utf8($ret)?"yes":"no");
   }
   
-#  Debug "json_keyboard :$ret:";
-
   return $ret;
 }
   
@@ -1985,6 +1975,8 @@ sub TelegramBot_UpdatePoll($;$)
     }
   }
     
+  Log3 $name, 5, "TelegramBot_UpdatePoll $name: - Initiate non blocking polling - ".(defined($hash->{HU_UPD_PARAMS}->{callback})?"With callback set":"no callback");
+
   # get next offset id
   my $offset = $hash->{offset_id};
   $offset = 0 if ( ! defined($offset) );
@@ -1999,9 +1991,14 @@ sub TelegramBot_UpdatePoll($;$)
 
   $hash->{STATE} = "Polling";
 
+#  Debug option
+#  $hash->{HU_UPD_PARAMS}->{loglevel} = 1;
+  
   $hash->{POLLING} = ( ( defined( $hash->{OLD_POLLING} ) )?$hash->{OLD_POLLING}:1 );
   Log3 $name, 4, "TelegramBot_UpdatePoll $name: initiate polling with nonblockingGet with ".$timeout."s";
   HttpUtils_NonblockingGet( $hash->{HU_UPD_PARAMS} ); 
+
+  Log3 $name, 5, "TelegramBot_UpdatePoll $name: - Ende > next polling started";
 }
 
 
@@ -2273,6 +2270,7 @@ sub TelegramBot_Callback($$$)
     }
   }
   
+  Log3 $name, 5, "TelegramBot_Callback $name: - Ende > Control back to FHEM";
 }
 
 #####################################
@@ -2514,7 +2512,6 @@ sub TelegramBot_ParseCallbackQuery($$$)
       $chatId = $chat->{id};
     }
   }
-  
   
   my $imid = $callback->{inline_message_id};
   my $chat= $callback->{chat_instance};

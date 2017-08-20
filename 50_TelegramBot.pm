@@ -127,7 +127,7 @@
 #   adapt prototypes for token
   
 #   additional logs / removed debugs
-#   special 
+#   special httputils debug lines added
 #   
 #   
 #   

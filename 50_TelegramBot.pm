@@ -127,7 +127,7 @@
 #   adapt prototypes for token
   
 #   additional logs / removed debugs
-#   
+#   special 
 #   
 #   
 #   
@@ -1635,7 +1635,11 @@ sub TelegramBot_SendIt($$$$$;$$$)
   my $timeout =   AttrVal($name,'cmdTimeout',30);
   $hash->{HU_DO_PARAMS}->{timeout} = $timeout;
 
-  # handle data creation only if no error so far
+  $hash->{HU_DO_PARAMS}->{loglevel} = 4;
+#  Debug option - switch this on for detailed logging of httputils
+#  $hash->{HU_DO_PARAMS}->{loglevel} = 1;
+
+# handle data creation only if no error so far
   if ( ! defined( $ret ) ) {
 
     # add chat / user id (no file) --> this will also do init
@@ -1991,7 +1995,8 @@ sub TelegramBot_UpdatePoll($;$)
 
   $hash->{STATE} = "Polling";
 
-#  Debug option
+  $hash->{HU_UPD_PARAMS}->{loglevel} = 4;
+#  Debug option - switch this on for detailed logging of httputils
 #  $hash->{HU_UPD_PARAMS}->{loglevel} = 1;
   
   $hash->{POLLING} = ( ( defined( $hash->{OLD_POLLING} ) )?$hash->{OLD_POLLING}:1 );

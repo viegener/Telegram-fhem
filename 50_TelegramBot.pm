@@ -125,10 +125,10 @@
 
 #   remove debug / addtl testing
 #   adapt prototypes for token
-  
 #   additional logs / removed debugs
 #   special httputils debug lines added
-#   
+
+#   add msgDelete function to delete messages sent before from the bot
 #   
 #   
 ##############################################################################
@@ -196,6 +196,8 @@ my %sets = (
   "message" => "textField",
   "msg" => "textField",
   "send" => "textField",
+
+  "msgDelete" => "textField",
 
   "msgEdit" => "textField",
   "msgForceReply" => "textField",
@@ -624,6 +626,34 @@ sub TelegramBot_Set($@)
     Log3 $name, 5, "TelegramBot_Set $name: start send for cmd :$cmd: and isMediaStream :$isMediaStream:";
     $ret = TelegramBot_SendIt( $hash, $peers, $msg, undef, $isMediaStream, undef );
     
+  } elsif($cmd eq 'msgDelete') {
+
+    my $peers;
+    my $sendType = 20;
+    
+    return "TelegramBot_Set: Command $cmd, no peer and no msgid specified" if ( $numberOfArgs < 2 );
+    my $msgid = shift @args; 
+    $numberOfArgs--;
+      
+    while ( $args[0] =~ /^@(..+)$/ ) {
+      my $ppart = $1;
+      return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( defined( $peers ) );
+      $peers .= " " if ( defined( $peers ) );
+      $peers = "" if ( ! defined( $peers ) );
+      $peers .= $ppart;
+      
+      shift @args;
+      last if ( int(@args) == 0 );
+    }
+
+    if ( ! defined( $peers ) ) {
+      $peers = AttrVal($name,'defaultPeer',undef);
+      return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peers) );
+    }
+    
+    Log3 $name, 5, "TelegramBot_Set $name: start send for cmd :$cmd: and sendType :$sendType:";
+    $ret = TelegramBot_SendIt( $hash, $peers, "", undef, $sendType, $msgid );
+
   } elsif($cmd eq 'zDebug') {
     # for internal testing only
     Log3 $name, 5, "TelegramBot_Set $name: start debug option ";
@@ -1504,9 +1534,10 @@ sub Telegram_HandleCommandInMessages($$$$$)
 #   hash
 #   url - url including parameters
 #   > returns string in case of error or the content of the result object if ok
-sub TelegramBot_DoUrlCommand($$)
+#   ignore set means no error is logged
+sub TelegramBot_DoUrlCommand($$;$)
 {
-  my ( $hash, $url ) = @_;
+  my ( $hash, $url, $ignore ) = @_;
   my $name = $hash->{NAME};
 
   my $ret;
@@ -1525,7 +1556,7 @@ sub TelegramBot_DoUrlCommand($$)
   if ( $err ne "" ) {
     # http returned error
     $ret = "FAILED http access returned error :$err:";
-    Log3 $name, 2, "TelegramBot_DoUrlCommand $name: ".$ret;
+    Log3 $name, ($ignore?5:2), "TelegramBot_DoUrlCommand $name: ".$ret;
   } else {
     my $jo;
     
@@ -1535,13 +1566,13 @@ sub TelegramBot_DoUrlCommand($$)
 
     if ( ! defined( $jo ) ) {
       $ret = "FAILED invalid JSON returned";
-      Log3 $name, 2, "TelegramBot_DoUrlCommand $name: ".$ret;
+      Log3 $name, ($ignore?5:2), "TelegramBot_DoUrlCommand $name: ".$ret;
     } elsif ( $jo->{ok} ) {
       $ret = $jo->{result};
       Log3 $name, 4, "TelegramBot_DoUrlCommand OK with result";
     } else {
       my $ret = "FAILED Telegram returned error: ".$jo->{description};
-      Log3 $name, 2, "TelegramBot_DoUrlCommand $name: ".$ret;
+      Log3 $name, ($ignore?5:2), "TelegramBot_DoUrlCommand $name: ".$ret;
     }    
 
   }
@@ -1645,9 +1676,13 @@ sub TelegramBot_SendIt($$$$$;$$$)
     # add chat / user id (no file) --> this will also do init
     $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "chat_id", undef, $peer2, 0 );
 
-    if ( ( $isMedia == 0 ) || ( $isMedia == 10 ) ) {
+    if ( ( $isMedia == 0 ) || ( $isMedia == 10 ) || ( $isMedia == 20 ) ) {
       if ( $isMedia == 0 ) {
         $hash->{HU_DO_PARAMS}->{url} = TelegramBot_getBaseURL($hash)."sendMessage";
+      } elsif ( $isMedia == 20 ) {
+        $hash->{HU_DO_PARAMS}->{url} = TelegramBot_getBaseURL($hash)."deleteMessage";
+        $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "message_id", undef, $replyid, 0 ) if ( ! defined( $ret ) );
+        $replyid = undef;
       } else {
         $hash->{HU_DO_PARAMS}->{url} = TelegramBot_getBaseURL($hash)."editMessageText";
         $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "message_id", undef, $replyid, 0 ) if ( ! defined( $ret ) );
@@ -1732,7 +1767,7 @@ sub TelegramBot_SendIt($$$$$;$$$)
       }
       
       # add msg or file or stream
-      Log3 $name, 4, "TelegramBot_SendIt $name: Filename for image file :".
+        Log3 $name, 4, "TelegramBot_SendIt $name: Filename for image file :".
       TelegramBot_MsgForLog($msg, ($isMedia<0) ).":";
       $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "photo", undef, $msg, $isMedia ) if ( ! defined( $ret ) );
       
@@ -2718,7 +2753,7 @@ sub TelegramBot_Setup($) {
   } else {
     # getMe as connectivity check and set internals accordingly
     my $url = TelegramBot_getBaseURL($hash)."getMe";
-    my $meret = TelegramBot_DoUrlCommand( $hash, $url );
+    my $meret = TelegramBot_DoUrlCommand( $hash, $url, 1 );   # ignore first error
     if ( ( ! defined($meret) ) || ( ref($meret) ne "HASH" ) ) {
       # retry on first failure
       $meret = TelegramBot_DoUrlCommand( $hash, $url );
@@ -3404,6 +3439,9 @@ sub TelegramBot_BinaryFileWrite($$$) {
     </li>
 
     <li><code>msgEdit &lt;msgid&gt; [ @&lt;peer1&gt; ] &lt;text&gt;</code><br>Changes the given message on the recipients clients. The msgid of the message to be changed must match a valid msgId and the peers need to match the original recipient, so only a single peer can be given or if peer is ommitted the defined default peer user is used. Beside the handling of a change of an existing message, the peer and message handling is otherwise identical to the msg command. 
+    </li>
+
+    <li><code>msgDelete &lt;msgid&gt; [ @&lt;peer1&gt; ] </code><br>Deletes the given message on the recipients clients. The msgid of the message to be changed must match a valid msgId and the peers need to match the original recipient, so only a single peer can be given or if peer is ommitted the defined default peer user is used. Restrictions apply for deleting messages in the Bot API as currently specified here (<a href=https://core.telegram.org/bots/api#deletemessage>deleteMessage</a>)
     </li>
 
     <li><code>cmdSend [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;fhem command&gt;</code><br>Executes the given fhem command and then sends the result to the given peers or the default peer.<br>

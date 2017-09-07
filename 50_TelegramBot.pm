@@ -127,14 +127,12 @@
 #   adapt prototypes for token
 #   additional logs / removed debugs
 #   special httputils debug lines added
-
 #   add msgDelete function to delete messages sent before from the bot
-#   
+
+#   added check for msgId not given as first parameter (e.g. msgDelete / msgEdit)
 #   
 ##############################################################################
 # TASKS 
-#   
-#   SSL wants a read first to be ignored --> make two requests in the beginning?
 #   
 #   
 #   
@@ -465,6 +463,7 @@ sub TelegramBot_Set($@)
     if ( ($cmd eq 'reply') || ($cmd eq 'msgEdit' ) || ($cmd eq 'queryEditInline' ) ) {
       return "TelegramBot_Set: Command $cmd, no peer, msgid and no text/file specified" if ( $numberOfArgs < 3 );
       $msgid = shift @args; 
+      return "TelegramBot_Set: Command $cmd, msgId must be given as first parameter before peer" if ( $msgid =~ /^@/ );
       $numberOfArgs--;
       $inline = 1 if ($cmd eq 'queryEditInline');
     } elsif ($cmd eq 'msgForceReply')  {
@@ -633,6 +632,7 @@ sub TelegramBot_Set($@)
     
     return "TelegramBot_Set: Command $cmd, no peer and no msgid specified" if ( $numberOfArgs < 2 );
     my $msgid = shift @args; 
+    return "TelegramBot_Set: Command $cmd, msgId must be given as first parameter before peer" if ( $msgid =~ /^@/ );
     $numberOfArgs--;
       
     while ( $args[0] =~ /^@(..+)$/ ) {

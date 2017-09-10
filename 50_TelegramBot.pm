@@ -27,7 +27,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,38328.0.html
 #
-# $Id: 50_TelegramBot.pm 14892 2017-08-13 13:14:45Z viegener $
+# $Id: 50_TelegramBot.pm 15046 2017-09-10 15:49:32Z viegener $
 #
 ##############################################################################
 # 0.0 2015-09-16 Started
@@ -128,8 +128,9 @@
 #   additional logs / removed debugs
 #   special httputils debug lines added
 #   add msgDelete function to delete messages sent before from the bot
-
 #   added check for msgId not given as first parameter (e.g. msgDelete / msgEdit)
+# 2.5 2017-09-10  new set cmd msgDelete
+
 #   
 ##############################################################################
 # TASKS 

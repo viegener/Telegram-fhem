@@ -132,12 +132,14 @@
 # 2.5 2017-09-10  new set cmd msgDelete
 
 #   add - in description will not show favorite command in menu #msg686352
+#   Issue: when direct favorite confirm is cancelled - do not jump to favorite menu
+
+#   
+#   
 #   
 ##############################################################################
 # TASKS 
 #   
-#   
-#   Issue: when direct favorite confirm is cancelled - do not jump to favorite menu
 #   
 #   remove keyboard after favorite confirm
 #   
@@ -1036,8 +1038,8 @@ sub TelegramBot_SplitFavoriteDef($$) {
 #   -[0-9]+- = <description or cmd> =; <addition> --> confirmed automatically with addition
 #   
 #
-sub TelegramBot_SendFavorites($$$$$;$) {
-  my ($hash, $mpeernorm, $mchatnorm, $cmd, $mid, $aliasExec ) = @_;
+sub TelegramBot_SendFavorites($$$$$;$$) {
+  my ($hash, $mpeernorm, $mchatnorm, $cmd, $mid, $aliasExec, $iscallback ) = @_;
   my $name = $hash->{NAME};
   
   $aliasExec = 0 if ( ! $aliasExec );
@@ -1146,7 +1148,11 @@ sub TelegramBot_SendFavorites($$$$$;$) {
         my @tmparr1 = ( $tmptxt );
         push( @keys, \@tmparr1 );
         if ( $isInline ) {
-          $tmptxt =  "Zurueck:TBOT_FAVORITE_MENU";
+          if ( $iscallback ) {
+            $tmptxt =  "Zurueck:TBOT_FAVORITE_MENU";
+          } else {
+            $tmptxt =  "Abbruch:TBOT_FAVORITE_CANCEL";
+          }
         } else {
           $tmptxt = "Abbruch";
         }
@@ -1469,9 +1475,9 @@ sub TelegramBot_AddStoredCommands($$) {
 # INTERNAL: Function to check for commands in messages 
 # Always executes and returns on first match also in case of error 
 # mid contains the message that might be needed to editinline for favorites
-sub Telegram_HandleCommandInMessages($$$$$)
+sub Telegram_HandleCommandInMessages($$$$$$)
 {
-  my ( $hash, $mpeernorm, $mchatnorm, $mtext, $mid ) = @_;
+  my ( $hash, $mpeernorm, $mchatnorm, $mtext, $mid, $iscallback ) = @_;
   my $name = $hash->{NAME};
 
   my $cmdRet;
@@ -1506,7 +1512,7 @@ sub Telegram_HandleCommandInMessages($$$$$)
   # Check for favorites Keyword in msg
   ( $cmd, $doRet ) = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mchatnorm, $mtext, AttrVal($name,'cmdFavorites',undef), 0 );
   if ( defined( $cmd ) ) {
-    $cmdRet = TelegramBot_SendFavorites( $hash, $mpeernorm, $mchatnorm, $cmd, $mid );
+    $cmdRet = TelegramBot_SendFavorites( $hash, $mpeernorm, $mchatnorm, $cmd, $mid, 0, $iscallback );
     Log3 $name, 4, "TelegramBot_ParseMsg $name: SendFavorites returned :$cmdRet:" if ( defined($cmdRet) );
     return;
   } elsif ( $doRet ) {
@@ -1519,7 +1525,7 @@ sub Telegram_HandleCommandInMessages($$$$$)
       ( $cmd, $doRet ) = TelegramBot_checkCmdKeyword( $hash, $mpeernorm, $mchatnorm, $mtext, $aliasKey, 1 );
       if ( defined( $cmd ) ) {
         $cmd = $hash->{AliasCmds}{$aliasKey}." ".$cmd;
-        $cmdRet = TelegramBot_SendFavorites( $hash, $mpeernorm, $mchatnorm, $cmd, $mid, 1 ); # call with aliasesxec set
+        $cmdRet = TelegramBot_SendFavorites( $hash, $mpeernorm, $mchatnorm, $cmd, $mid, 1, $iscallback ); # call with aliasesxec set
         Log3 $name, 4, "TelegramBot_ParseMsg $name: SendFavorites (alias) returned :$cmdRet:" if ( defined($cmdRet) );
         return;
       } elsif ( $doRet ) {
@@ -2522,7 +2528,7 @@ sub TelegramBot_ParseMsg($$$)
     readingsEndUpdate($hash, 1);
     
     # COMMAND Handling (only if no fileid found
-    Telegram_HandleCommandInMessages( $hash, $mpeernorm, $mchatnorm, $mtext, undef ) if ( ! defined( $mfileid ) );
+    Telegram_HandleCommandInMessages( $hash, $mpeernorm, $mchatnorm, $mtext, undef, 0 ) if ( ! defined( $mfileid ) );
    
   } elsif ( scalar(@contacts) > 0 )  {
     # will also update reading
@@ -2645,7 +2651,7 @@ sub TelegramBot_ParseCallbackQuery($$$)
           }
           # where to get chat id from ?
           Log3 $name, 4, "TelegramBot_ParseCallback $name: REPLYMID: $replyId";
-          Telegram_HandleCommandInMessages( $hash, $mpeernorm, $chatId, $fcmd, $replyId );
+          Telegram_HandleCommandInMessages( $hash, $mpeernorm, $chatId, $fcmd, $replyId, 1 );
         }
       }    
     }

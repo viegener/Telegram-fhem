@@ -133,12 +133,15 @@
 
 #   add - in description will not show favorite command in menu #msg686352
 #   Issue: when direct favorite confirm is cancelled - do not jump to favorite menu
+#   json_decode mit nonref   #msg687580
+# 2.6 2017-09-24  hide command in favorites/change direct favorites confirm
 
 #   
 #   
 #   
 ##############################################################################
 # TASKS 
+#   
 #   
 #   
 #   remove keyboard after favorite confirm
@@ -1581,7 +1584,9 @@ sub TelegramBot_DoUrlCommand($$;$)
     my $jo;
     
     eval {
-      $jo = decode_json( $data );
+#      $jo = decode_json( $data );
+     my $json = JSON->new->allow_nonref;
+     $jo = $json->decode(Encode::encode_utf8($data));
     };
 
     if ( ! defined( $jo ) ) {
@@ -2158,7 +2163,9 @@ sub TelegramBot_Callback($$$)
        $data = encode_utf8( $data );
 #       $data = decode_utf8( $data );
 # Debug "-----AFTER------\n".$data."\n-------UC=".${^UNICODE} ."-----\n";
-       $jo = decode_json( $data );
+#       $jo = decode_json( $data );
+       my $json = JSON->new->allow_nonref;
+       $jo = $json->decode(Encode::encode_utf8($data));
        $jo = TelegramBot_Deepencode( $name, $jo );
     };
  

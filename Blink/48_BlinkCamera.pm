@@ -122,12 +122,16 @@
 #   add region for readings
 #   host calculated dynamically starting with prod - then region from login
 #   CommandDeleteReading(undef,$readName);  instead of manually deleting
-
 #   Fix - wait undefined when error before in DoCmd
+
+#   
+#   
 #   
 #   
 ##############################################################################
 # TASKS 
+#   
+#   FIX: getThumbnail url failing sometimes
 #   
 #   might need to check for transaction id on command post
 #   
@@ -727,6 +731,7 @@ sub BlinkCamera_DoCmd($$;$$$)
     #######################
     } elsif ($cmd eq "thumbnail") {
       # camera id in par
+      
       my $curl =  $hash->{"thumbnail".$par1."Req"};
       
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
@@ -1298,7 +1303,7 @@ sub BlinkCamera_Callback($$$)
   }
   
   $ret = "SUCCESS" if ( ! defined( $ret ) );
-  Log3 $name, $ll, "BlinkCamera_Callback $name: for cmd :$cmd:  retry :".$param->{args}[3]."  resulted in :$ret:  cmdId :".(defined($cmdId)?$cmdId:"--")." from ".($polling?"Polling":($hidden?"Hidden":"DoCmd"));
+  Log3 $name, $ll, "BlinkCamera_Callback $name: for cmd :$cmd:  retry :".(defined($param->{args}[3])?$param->{args}[3]:"----")."  resulted in :$ret:  cmdId :".(defined($cmdId)?$cmdId:"--")." from ".($polling?"Polling":($hidden?"Hidden":"DoCmd"));
 
   if ( ! $polling ) {
 
@@ -1334,7 +1339,7 @@ sub BlinkCamera_Callback($$$)
         return;
       }
 
-      Log3 $name, 3, "BlinkCamera_Callback $name: Reached max retries (ret: $ret) for cmd ".$param->{args}[0];
+    Log3 $name, 3, "BlinkCamera_Callback $name: Reached max retries (ret: $ret) for cmd ".$cmd;
       
     }
     

@@ -116,11 +116,13 @@
 #   fix debug output
 #   set no caching for web content
 #   fix url path separators
-
 #   Add automatic homescreen after cameraThumbnail
 #   avoid logging set/get with ? cmd
 #   added wait for transaction finish also for cameraThumbnail
-#   
+
+#   add region for readings
+#   host calculated dynamically starting with prod - then region from login
+#   CommandDeleteReading(undef,$readName);  instead of manually deleting
 #   
 #   
 #   
@@ -139,6 +141,7 @@
 #   
 ##############################################################################
 # Ideas
+#   
 #   
 #   get camera config in different device or detailed
 #   
@@ -200,7 +203,11 @@ sub BlinkCamera_AnalyzeAlertPage( $$$ );
 #########################
 # Globals
 # OLD? my $BlinkCamera_host = "prod.immedia-semi.com";
-my $BlinkCamera_host = "rest.prir.immedia-semi.com";
+#my $BlinkCamera_host = "rest.prir.immedia-semi.com";
+#my $BlinkCamera_host = "rest.prde.immedia-semi.com";
+
+my $BlinkCamera_hostpattern = "rest.##region##.immedia-semi.com";
+
 
 my $BlinkCamera_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0";
 # my $BlinkCamera_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0\r\nAccept-Charset: utf-8";
@@ -576,8 +583,18 @@ sub BlinkCamera_DoCmd($$;$$$)
   if ( ! defined( $ret ) ) {
 
     $hash->{HU_DO_PARAMS}->{method} = "POST";
+    
+    my $dynhost = $BlinkCamera_hostpattern;
+    my $region = ReadingsVal( $name, "networkRegion", "prde" );
+    if ($cmd eq "login") {
+      $dynhost =~ s/##region##/prod/;
+    } else {
+      $dynhost =~ s/##region##/$region/;
+    }
+    $hash->{URL} = "https://".$dynhost;
+  
     $hash->{HU_DO_PARAMS}->{header} = $BlinkCamera_header.
-      "\r\n"."Host: ".$BlinkCamera_host;
+      "\r\n"."Host: ".$dynhost;
 
     #######################
     if ($cmd eq "login") {
@@ -912,7 +929,16 @@ sub BlinkCamera_ParseLogin($$$)
     }
   }
   $readUpdates->{networks} = $netlist;
-
+  my $resreg = $result->{region};
+  if ( defined( $resreg ) ) {
+    my $regkey = ( keys %$resreg )[0];
+    $readUpdates->{region} = $regkey;
+    $readUpdates->{regionName} = $resreg->{$regkey};
+  } else {
+    $readUpdates->{region} = undef;    
+    $readUpdates->{regionName} = undef;    
+  }
+  
   return $ret;
 }
 
@@ -1329,7 +1355,7 @@ sub BlinkCamera_Callback($$$)
       if ( defined( $readUpdates{$readName} ) ) {
         readingsBulkUpdate($hash, $readName, $readUpdates{$readName} );        
       } else {
-        delete($hash->{READINGS}{$readName}); 
+        CommandDeleteReading(undef,$readName)
       }
     }
   }
@@ -1594,6 +1620,8 @@ sub BlinkCamera_Setup($) {
   delete( $hash->{alertUpdate} );
   delete( $hash->{alertResults} );
   
+  delete( $hash->{URL} );
+  
   # remove timer for retry
   RemoveInternalTimer($hash->{HU_DO_PARAMS});
   
@@ -1610,7 +1638,7 @@ sub BlinkCamera_Setup($) {
     closedir(DH); 
   }
 
-  $hash->{URL} = "https://".$BlinkCamera_host;
+  $hash->{URL} = "";
 
   $hash->{STATE} = "Defined";
 

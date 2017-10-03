@@ -119,11 +119,11 @@
 #   Add automatic homescreen after cameraThumbnail
 #   avoid logging set/get with ? cmd
 #   added wait for transaction finish also for cameraThumbnail
-
 #   add region for readings
 #   host calculated dynamically starting with prod - then region from login
 #   CommandDeleteReading(undef,$readName);  instead of manually deleting
-#   
+
+#   Fix - wait undefined when error before in DoCmd
 #   
 #   
 ##############################################################################
@@ -1320,7 +1320,7 @@ sub BlinkCamera_Callback($$$)
       my $wait = $param->{args}[3];
       
       $maxRetries =  AttrVal($name,'maxRetries',0) if ( ! defined( $maxRetries ) );
-      if ( $wait <= $maxRetries ) {
+      if ( ( defined($wait) ) && ( $wait <= $maxRetries ) ) {
         # calculate wait time 10s / 100s / 1000s ~ 17min / 10000s ~ 3h / 100000s ~ 30h
         $wait = 3**$wait;
         

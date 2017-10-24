@@ -124,7 +124,7 @@
 #   CommandDeleteReading(undef,$readName);  instead of manually deleting
 #   Fix - wait undefined when error before in DoCmd
 
-#   
+#   Fix: handle unicode in json - e.g. names
 #   
 #   
 #   
@@ -132,6 +132,8 @@
 # TASKS 
 #   
 #   FIX: getThumbnail url failing sometimes
+#   
+#   FIX: imgOriginalFile not fully working
 #   
 #   might need to check for transaction id on command post
 #   
@@ -733,6 +735,8 @@ sub BlinkCamera_DoCmd($$;$$$)
       # camera id in par
       
       my $curl =  $hash->{"thumbnail".$par1."Req"};
+      Log3 $name, 5, "BlinkCamera_DoCmd $name:   par1 :".$par1.":";
+      Log3 $name, 5, "BlinkCamera_DoCmd $name:   curl :".$curl.":";
       
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
       $hash->{HU_DO_PARAMS}->{method} = "GET";
@@ -1189,11 +1193,12 @@ sub BlinkCamera_Callback($$$)
     } else {
       Log3 $name, 5, "BlinkCamera_Callback $name: data returned :$data:";
       eval {
-         $data = encode_utf8( $data );
-         $jo = decode_json( $data );
-         $jo = BlinkCamera_Deepencode( $name, $jo );
+         my $json = JSON->new->allow_nonref;
+#         $jo = $json->decode(Encode::encode_utf8($data));
+         $jo = $json->decode($data);
+#         $jo = BlinkCamera_Deepencode( $name, $jo );
       };
- 
+      
       if ( $@ ) {
         $ret = "Callback returned no valid JSON: $@ ";
       } elsif ( ! defined( $jo ) ) {

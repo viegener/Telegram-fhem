@@ -138,16 +138,16 @@
 
 #   Fix minusdesc undefined issue
 #   Cleanup old code
+#   add favoritesMenu to send favorites 
+#   doc favoritesMenu
 
 #   
 ##############################################################################
 # TASKS 
 #   
-#   \n in inline keyboards
+#   
 #   
 #   queryDialogStart / queryDialogEnd - keep msg id 
-#   
-#   
 #   
 #   remove keyboard after favorite confirm
 #   
@@ -156,6 +156,7 @@
 #   replyKeyboardRemove - #msg592808
 #   
 #   add an option to send silent messages - msg556631
+#   \n in inline keyboards - not possible currently
 #   
 ##############################################################################
 
@@ -223,9 +224,11 @@ my %sets = (
   "sendDocument" => "textField",
   "sendMedia" => "textField",
   "sendVoice" => "textField",
-
+  
   "sendLocation" => "textField",
 
+  "favoritesMenu" => "noArg",
+  
   "cmdSend" => "textField",
 
   "replaceContacts" => "textField",
@@ -590,6 +593,29 @@ sub TelegramBot_Set($@)
     $ret = TelegramBot_SendIt( $hash, $peers, $msg, $addPar, $sendType, $msgid );
 
 
+  } elsif($cmd eq 'favoritesMenu') {
+
+    my $peers;
+    if ( int(@args) > 0 ) {
+      while ( $args[0] =~ /^@(..+)$/ ) {
+        my $ppart = $1;
+        return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( ( defined( $peers ) ) );
+        $peers = (defined($peers)?$peers." ":"").$ppart;
+        shift @args;
+        last if ( int(@args) == 0 );
+      }   
+      return "TelegramBot_Set: Command $cmd, addiitonal parameter specified" if ( int(@args) >= 1 );
+    }
+    
+    if ( ! defined( $peers ) ) {
+      $peers = AttrVal($name,'defaultPeer',undef);
+      return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peers) );
+    }
+    
+    return "TelegramBot_Set: Command $cmd, no favorites defined" if ( ! defined( AttrVal($name,'favorites',undef) ) );
+
+    TelegramBot_SendFavorites($hash, $peers, undef, "", undef, undef, 0);
+  
   } elsif($cmd eq 'cmdSend') {
 
     return "TelegramBot_Set: Command $cmd, no peers and no text/file specified" if ( $numberOfArgs < 2 );
@@ -598,7 +624,7 @@ sub TelegramBot_Set($@)
     my $peers;
     while ( $args[0] =~ /^@(..+)$/ ) {
       my $ppart = $1;
-      return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( ($cmd eq 'reply') && ( defined( $peers ) ) );
+      return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( ( defined( $peers ) ) );
       $peers .= " " if ( defined( $peers ) );
       $peers = "" if ( ! defined( $peers ) );
       $peers .= $ppart;
@@ -1052,6 +1078,7 @@ sub TelegramBot_SendFavorites($$$$$;$$) {
   my $name = $hash->{NAME};
   
   $aliasExec = 0 if ( ! $aliasExec );
+  $iscallback = 0 if ( ! $iscallback );
 
   my $ret;
   
@@ -3436,6 +3463,9 @@ sub TelegramBot_BinaryFileWrite($$$) {
     </li>
 
     <li><code>msgDelete &lt;msgid&gt; [ @&lt;peer1&gt; ] </code><br>Deletes the given message on the recipients clients. The msgid of the message to be changed must match a valid msgId and the peers need to match the original recipient, so only a single peer can be given or if peer is ommitted the defined default peer user is used. Restrictions apply for deleting messages in the Bot API as currently specified here (<a href=https://core.telegram.org/bots/api#deletemessage>deleteMessage</a>)
+    </li>
+
+    <li><code>favoritesMenu [ @&lt;peer&gt; ] </code><br>send the favorites menu to the corresponding peer if defined</code>
     </li>
 
     <li><code>cmdSend [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;fhem command&gt;</code><br>Executes the given fhem command and then sends the result to the given peers or the default peer.<br>

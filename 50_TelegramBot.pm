@@ -141,6 +141,8 @@
 #   add favoritesMenu to send favorites 
 #   doc favoritesMenu
 
+#   correct favoritesMenu to allow parameter
+  
 #   
 ##############################################################################
 # TASKS 
@@ -227,7 +229,7 @@ my %sets = (
   
   "sendLocation" => "textField",
 
-  "favoritesMenu" => "noArg",
+  "favoritesMenu" => "textField",
   
   "cmdSend" => "textField",
 

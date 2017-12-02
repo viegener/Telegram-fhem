@@ -42,6 +42,9 @@
 ## - send allows multiple codes
 ## 0.0.3 send improvements
 
+## - Queuing and absent handling corrected
+## 0.0.4 corrections on queuing
+
 ##
 ###############################################################################
 ###############################################################################
@@ -50,6 +53,7 @@
 ## 
 ## - attribute handling complete
 ## - documentation 
+## - prefix change
 ## 
 ## - IDEA: Grab received codes
 ## - IDEA: allow step by step configuration of commands
@@ -74,7 +78,7 @@ use HttpUtils;
 use Blocking;
 
 
-my $version = "0.0.3";
+my $version = "0.0.4";
 
 # Declare functions
 sub IrBlaster_Define($$);
@@ -107,6 +111,7 @@ sub IrBlaster_Initialize($) {
 
     $hash->{AttrList}   =  
                         "disable:1,0 disabledForIntervals ".
+                        "interval ".
                         "maxRetries:4,3,2,1,0 ".
                         $readingFnAttributes;
                          
@@ -339,6 +344,15 @@ sub IrBlaster_TimerStatusRequest($) {
         
           Log3 $name, 4, "Sub IrBlaster_TimerStatusRequest ($name) - is present";
           
+          # restart queue processing if PAUSED status
+          if ( ( defined( $hash->{doStatus} ) ) && ( $hash->{doStatus} =~ /^PAUSED/ ) ) {
+            # set timer - use param hash here to get a different timer!!!!
+            Log3 $name, 4, "Sub IrBlaster_TimerStatusRequest ($name) - restart paused queuing";
+            RemoveInternalTimer($hash->{HU_SR_PARAMS});
+            $hash->{doStatus} = "";
+            InternalTimer(gettimeofday()+5, "IrBlaster_HU_RunQueue", $hash->{HU_SR_PARAMS},0); 
+          }
+          
         } else {
           # update state
           readingsSingleUpdate($hash,'state','off',1);
@@ -397,7 +411,7 @@ sub IrBlaster_SendRequest($$;$$$) {
       return "IrBlaster_SendRequest: action url malformed (no ...?...=... format) in $action";
     }
       
-    $actPar1 = TimeNow() if ( ! defined( $actPar1 ) );
+    $actPar1 = gettimeofday() if ( ! defined( $actPar1 ) );
     $args[1] = $actPar1;
     
     $retryCount = 0 if ( ! defined( $retryCount ) );
@@ -421,15 +435,19 @@ sub IrBlaster_SendRequest($$;$$$) {
       # add to queue
       Log3 $name, 4, "IrBlaster_SendRequest $name: add action to queue - args: ".$actionString;
       push( @{ $hash->{actionQueue} }, \@args );
+      
+      $hash->{doStatus} = "PAUSED" if ( ( $hash->{INTERVAL} > 0 ) && ( ! IrBlaster_IsPresent( $hash ) ) );
+      Log3 $name, 4, "Sub IrBlaster_TimerStatusRequest ($name) - pause queuing "  if ( $hash->{doStatus} eq "PAUSED" );
+      
       return;
     }  
   
     $hash->{doStatus} = "WAITING";
     $hash->{doStatus} .= " retry $retryCount" if ( $retryCount > 0 );
     
-    Log3 $name, 5, "STARTING SENDREQUEST: $url";
-    
     $url = "http://".$hash->{HOST}.":80".$urlaction.(defined($hash->{PASS})?"&pass=".urlEncode($hash->{PASS}):"");
+    
+    Log3 $name, 5, "STARTING SENDREQUEST: $url";
     
     # ??? hash for params need to be moved to initialize
     my %hu_sr_params = (
@@ -448,10 +466,12 @@ sub IrBlaster_SendRequest($$;$$$) {
 
     $hash->{HU_SR_PARAMS}->{hash} = $hash;
 
+    $hash->{HU_SR_PARAMS}->{action} = $action;
+
     Log3 $name, 5, "Sub IrBlaster_SendRequest ($name) - Action ".$actionString;
     
     # send the request non blocking
-    $hash->{HU_DO_PARAMS}->{args} = \@args;    # add args now always
+    $hash->{HU_SR_PARAMS}->{args} = \@args;    # add args now always
     if ( defined( $ret ) ) {
       Log3 $name, 1, "IrBlaster_SendRequest $name: Failed with :$ret:";
       IrBlaster_HU_Callback( $hash->{HU_SR_PARAMS}, $ret, "");
@@ -528,7 +548,7 @@ sub IrBlaster_HU_Callback($$$)
       
       if ( $wait <= $maxRetries ) {
         # calculate wait time 5s * retries (will be stopped anyhow if not present)
-        $wait = $wait*5;
+        $wait = $wait*20;
         
         Log3 $name, 4, "IrBlaster_HU_Callback $name: do retry for send request ".$param->{args}[0]." : ";
 
@@ -662,15 +682,19 @@ sub IrBlaster_HU_RunQueue($)
     while ( scalar( @{ $hash->{actionQueue} } ) > 0 ) { 
       $ref  = shift @{ $hash->{actionQueue} };
       # check for excess age
-      if ( ((@$ref[1]) + 30) > TimeNow() ) {
+      if ( ((@$ref[1]) + 300) > gettimeofday() ) {
         last;
       } else {
+        Log3 $name, 4, "IrBlaster_HU_RunQueue $name: remove queued command with time :".(@$ref[1]).
+            ": action :@$ref[0]:   remaining: ".scalar( @{ $hash->{actionQueue} } );
+
         $ref = undef;
       }
     }
-   
-    Log3 $name, 4, "IrBlaster_HU_RunQueue $name: handle queued cmd with :@$ref[0]: ";
-    IrBlaster_SendRequest( $hash, @$ref[0], @$ref[1], @$ref[2] ) if ( defined($ref) );
+    if ( defined($ref) ) {
+      Log3 $name, 4, "IrBlaster_HU_RunQueue $name: handle queued cmd with :@$ref[0]:   remaining: ".scalar( @{ $hash->{actionQueue} } );
+      IrBlaster_SendRequest( $hash, @$ref[0], @$ref[1], @$ref[2] );
+    }
   }
 }
 

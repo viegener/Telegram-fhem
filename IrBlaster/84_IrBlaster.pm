@@ -1,6 +1,5 @@
 ###############################################################################
 #
-#  (c) 2017 Copyright: Johannes Viegener (fhem@viegener.de)
 #  All rights reserved
 #
 #  This script is free software; you can redistribute it and/or modify
@@ -18,6 +17,12 @@
 #  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #  GNU General Public License for more details.
 #
+###############################################################################
+#
+#  (c) 2017 Copyright: Johannes Viegener fhem at viegener.de)
+#
+# This module handles sending remote codes to the IR WLAN Gateway 
+# https://forum.fhem.de/index.php/topic,72950.315.html
 #
 # $Id$
 #
@@ -30,20 +35,24 @@
 ## - kill queue after some time (also when disabled etc) - currently 30
 ## - add
 ## - send
-##
-##
-##
-##
-##
+## 0.0.2 first working version
+
+## - correction for queue handling (timestamp not given)
+## - added _send
+## - send allows multiple codes
+## 0.0.3 send improvements
 
 ##
 ###############################################################################
 ###############################################################################
 ##  TODO
 ###############################################################################
-## - attribute handling
-## - set new command to prefix
-## - 
+## 
+## - attribute handling complete
+## - documentation 
+## 
+## - IDEA: Grab received codes
+## - IDEA: allow step by step configuration of commands
 ## - 
 ###############################################################################
 
@@ -65,7 +74,7 @@ use HttpUtils;
 use Blocking;
 
 
-my $version = "0.0.1";
+my $version = "0.0.2";
 
 # Declare functions
 sub IrBlaster_Define($$);
@@ -237,35 +246,41 @@ sub IrBlaster_Attr(@) {
     return undef;
 }
 
+#######################################################
+############ set                      #################
+#######################################################
 sub IrBlaster_Set($@) {
     
     my ($hash, $name, $cmd, @args) = @_;
     
-    if ( ( lc $cmd eq 'send' ) || ( lc $cmd eq 'direct' ) ) {
-      return "$cmd needs code/alias " if ( scalar( @args ) != 1 ); 
+    if ( ( lc $cmd eq 'send' ) || ( lc $cmd eq '_send' )  ) {
+      return "$cmd needs code/alias " if ( scalar( @args ) < 1 ); 
       my $action;
+      my $prefix = $hash->{PREFIX};
+      my $ret;
       
-      if( lc $cmd eq 'direct' ) {
-        $action = join(" ", @args);
-      } else {
-        my $prefix = $hash->{PREFIX};
-        my $alias = $args[0];
+      foreach my $alias ( @args ) {
       
-        $action = AttrVal($name, $prefix.$alias, undef );
+        my $action = AttrVal($name, $prefix.$alias, undef );
         $action = AttrVal($name, $alias, undef ) if ( ( ! defined( $action) ) && ( $alias =~ /^$prefix.+/ ) );
       
-        return "$cmd - attribute not found (".$alias.")" if ( ! defined( $action) );
+        if ( ! defined( $action) ) {
+          $ret = ($ret?$ret:"")."$cmd - attribute not found (".$alias.")";
+        } else {
+          my $tmp = IrBlaster_SendRequest( $hash, $action );
+          if ( $tmp ) {
+            $ret = ($ret?$ret:"").$tmp;
+          }
+        }
       }
+      return $ret if ( $ret );
       
-      if ( $action =~ /\[/ ) {
-        $action = "/json?plain=".$action;
-      } elsif ( $action =~ '/' ) {
-        # ok full path given
-      } else {
-        return "$cmd needs code as full path starting with / or plain data starting with [ "; 
-      }
+    } elsif( lc $cmd eq 'direct' ) {
+      return "$cmd needs code/alias " if ( scalar( @args ) < 1 ); 
+      my $action = join(" ", @args);
       
-      IrBlaster_SendRequest( $hash, $action );
+      my $ret = IrBlaster_SendRequest( $hash, $action );
+      return $ret if ( $ret );
       
     } elsif( lc $cmd eq 'add' ) {
       return "$cmd needs alias and code " if ( scalar( @args ) < 2 ); 
@@ -299,7 +314,7 @@ sub IrBlaster_Set($@) {
     
     } else {
     
-        my $list    = "send add reset:noArg presence:noArg direct";
+        my $list    = "_send send add reset:noArg presence:noArg direct";
         return "Unknown argument $cmd, choose one of $list";
     }
 
@@ -341,6 +356,9 @@ sub IrBlaster_TimerStatusRequest($) {
 
 }
 
+#######################################################
+############ sending                  #################
+#######################################################
 
 # Pars
 #   hash
@@ -357,10 +375,30 @@ sub IrBlaster_SendRequest($$;$$$) {
   
     my $ret;
     my $alphabet;
+    my $url;
+    my $urlaction = "";
   
-    $actPar1 = TimeNow() if ( ! defined( $actPar1 ) );
-
     Log3 $name, 5, "IrBlaster_SendRequest $name: ";
+    
+    if ( $action =~ /\[/ ) {
+      $action = "/json?plain=".$action;
+    } elsif ( $action =~ '/' ) {
+      # ok full path given
+    } else {
+      Log3 $name, 2, "IrBlaster_SendRequest $name: action needs to start with / or plain data starting with [ :".$action.":";
+      return "IrBlaster_SendRequest: action needs to start with / or plain data starting with [ "; 
+    }
+      
+    # dirty hack with internal knowledge about url being /json?plain=<parameter> also /....?....=....
+    if ( $action =~ /^([^?]+\?[^=]+=)(.+)$/ ) {
+      $urlaction = $1.urlEncode($2);
+    } else {
+      Log3 $name, 2, "IrBlaster_SendRequest $name: action url malformed (no ...?...=... format) in :".$action.":";
+      return "IrBlaster_SendRequest: action url malformed (no ...?...=... format) in $action";
+    }
+      
+    $actPar1 = TimeNow() if ( ! defined( $actPar1 ) );
+    $args[1] = $actPar1;
     
     $retryCount = 0 if ( ! defined( $retryCount ) );
     # increase retrycount for next try
@@ -389,22 +427,11 @@ sub IrBlaster_SendRequest($$;$$$) {
     $hash->{doStatus} = "WAITING";
     $hash->{doStatus} .= " retry $retryCount" if ( $retryCount > 0 );
     
-    my $url;
-    my $urlaction = "";
-
-
-    # dirty hack with internal knowledge about url being /json?plain=<parameter> also /....?....=....
-    if ( $action =~ /^([^?]+\?[^=]+=)(.+)$/ ) {
-      $urlaction = $1.urlEncode($2);
-    } else {
-      $ret = "action url malformed (no ...?...=... format) in $action";
-    }
+    Log3 $name, 5, "STARTING SENDREQUEST: $url";
     
     $url = "http://".$hash->{HOST}.":80".$urlaction.(defined($hash->{PASS})?"&pass=".urlEncode($hash->{PASS}):"");
-   
+    
     # ??? hash for params need to be moved to initialize
-    Log3 $name, 5, "STARTING SENDREQUEST: $url";
-     
     my %hu_sr_params = (
                   url        => $url,
                   timeout    => 30,
@@ -412,30 +439,12 @@ sub IrBlaster_SendRequest($$;$$$) {
                   header     => "",
                   callback   => \&IrBlaster_HU_Callback
     );
-      
-
+    
     $hash->{HU_SR_PARAMS} = \%hu_sr_params;
     
     # create hash for storing readings for update
     my %hu_sr_readings = ();
     $hash->{HU_SR_PARAMS}->{SR_READINGS} = \%hu_sr_readings;
-    
-
-    # construct the HTTP header
-    
-    # ??? move to global
-    my $IrBlaster_header = "User-Agent: Assist Media/23 CFNetwork/808 Darwin/16.0.0\r\n".
-      "Accept: */*\r\n".
-      "Accept-Encoding: gzip, deflate\r\n".
-      "Accept-Language: de-de\r\n".
-      "Content-Type: application/soap+xml; charset=utf-8\r\n".
-      "Connection: keep-alive";
-
-#    $hash->{HU_SR_PARAMS}->{header} = $IrBlaster_header;
-
-#    $hash->{HU_SR_PARAMS}->{data} = $message;
-
-    $hash->{HU_SR_PARAMS}->{action} = $action;
 
     $hash->{HU_SR_PARAMS}->{hash} = $hash;
 

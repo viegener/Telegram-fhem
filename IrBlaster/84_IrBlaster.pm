@@ -22,7 +22,7 @@
 #  (c) 2017 Copyright: Johannes Viegener fhem at viegener.de)
 #
 # This module handles sending remote codes to the IR WLAN Gateway 
-# https://forum.fhem.de/index.php/topic,72950.315.html
+# https://forum.fhem.de/index.php/topic,72950.msg724807.html#msg724807
 #
 # $Id$
 #
@@ -74,7 +74,7 @@ use HttpUtils;
 use Blocking;
 
 
-my $version = "0.0.2";
+my $version = "0.0.3";
 
 # Declare functions
 sub IrBlaster_Define($$);

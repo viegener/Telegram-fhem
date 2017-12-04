@@ -68,7 +68,7 @@ package main;
 use strict;
 use warnings;
 
-use Data::Dumper::Simple;    # for debug
+#use Data::Dumper::Simple;    # for debug
 
 my $missingModul = "";
 eval "use LWP::UserAgent;1" or $missingModul .= "LWP::UserAgent ";

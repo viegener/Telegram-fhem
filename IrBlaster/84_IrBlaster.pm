@@ -45,14 +45,24 @@
 ## - Queuing and absent handling corrected
 ## 0.0.4 corrections on queuing
 
+## - removed dumper
+## - fixed eol issue - unix
+## - added initial documentation
+## 0.0.5 documentation
+  
 ##
 ###############################################################################
 ###############################################################################
 ##  TODO
 ###############################################################################
 ## 
+## - add sleep times for codes
+## - 
+## - status
+## - 
+## - configure timeout for queued commands
+## - 
 ## - attribute handling complete
-## - documentation 
 ## - prefix change
 ## 
 ## - IDEA: Grab received codes
@@ -68,7 +78,7 @@ package main;
 use strict;
 use warnings;
 
-#use Data::Dumper::Simple;    # for debug
+# currently not used - use Data::Dumper::Simple;    # for debug
 
 my $missingModul = "";
 eval "use LWP::UserAgent;1" or $missingModul .= "LWP::UserAgent ";
@@ -77,8 +87,7 @@ eval "use HTTP::Request::Common;1" or $missingModul .= "HTTP::Request::Common ";
 use HttpUtils; 
 use Blocking;
 
-
-my $version = "0.0.4";
+my $version = "0.0.5";
 
 # Declare functions
 sub IrBlaster_Define($$);
@@ -711,17 +720,119 @@ sub IrBlaster_IsPresent($) {
 
 
 #######################################################
+
 1;
 
 =pod
-=item device
 =item summary send IR codes to IR WLAN Gateway
 =item summary_DE IR Infrarot-Befehle via IR WLAN Gateway
 =begin html
 
 <a name="IrBlaster"></a>
-<h3>IrBlaster</h3>
+<h3>IrBlaster</h3><ul>
 
+  This module allows the communication with the so-called (360 Grad) IR WLAN Gateway (in short IR gateway) a physical device to send and receive IR codes based on an ESP8266. The IR WLAN Gateway is described in this thread in the FHEM Forum: 
+  <a href="https://forum.fhem.de/index.php/topic,72950.0.html">https://forum.fhem.de/index.php/topic,72950.0.html</a>
+  <br><br>   
+  
+  The IrBlaster module can send codes, that are stored in attributes to the corresponding IR gateway via http requests. The attributes share a common prefix that is created during definition of the device in FHEM. New codes are added by giving a specific name for the code (e.g. "tv_onoff") and specifying the code/url part that is used by the IR gateway. Codes are stored as attributes with a given prefix (see define).
+  <br><br>   
+  
+  The network presence of the IR gateway is checked regularly on request and commands are only sent if the device is present. Commands are queued to ensure proper reception and if needed can also be resend on failures or absence of the device. 
+  
+  <br><br>
+  <a name="IrBlasterdefine"></a>
+  <b>Define</b>
+  <ul>
+    <code>define &lt;name&gt; IrBlaster &lt;hostname or IP&gt; &lt;prefix&gt; [ &lt;passcode&gt; ]</code>
+    <br><br>
+    Defines a IrBlaster device under the given hostname (or IP address). IR codes will be stored with the given prefix (see add command) and if a passcode is configured in the IR gateway this needs to be specified as well. 
+    <br><br>
+    Example: <code>define irblaster IrBlaster 192.168.100.200 IR_ acbdef</code><br>
+    <br>
+    All examples below will assume this defintion being given
+    <br><br>
+      IMPORTANT: The prefix should be selected in a way that collisions with other attributes are avoided
+  </ul>
+  <br>
+  
+  <a name="IrBlasterset"></a>
+  <b>Set</b>
+  <ul>
+    <code>set &lt;name&gt; &lt;what&gt; [&lt;value&gt;]</code>
+    <br>
+    where &lt;what&gt; / &lt;value&gt; is one of
+
+  <br><br>
+    <li><code>add &lt;name&gt; &lt;codevalue&gt;</code><br>Add (or update) a new IR command, that will be stored as an attribute with the given name. If name does not start with the given prefix (from the define), that this is added (see example). The codevalue has to be given either as value of the plain parameter in the url or as complete path and parameter part of the url (with out host but starting with /)
+    <br><br>
+    Exmple:    <br>    
+    <code>set irblaster add tv_onoff [{'data':'416', 'type':'RC5', 'length':12}]</code>  <br> will add/change an attribute named IR_tv_onoff which will call http://192.168.100.200:80/json?plain=[{'data':'416', 'type':'RC5', 'length':12}] on the IR gateway
+  <br><br>
+    <code>set irblaster add tv_ok /json?plain=[{'data':'C0C', 'type':'RC5', 'length':12}]</code>  <br> will add/change an attribute named tv_ok which will call http://192.168.100.200:80/json?plain=[{'data':'C0C', 'type':'RC5', 'length':12}] on the IR gateway
+  <br><br>
+    <code>set irblaster add IR_tv_mute [{'data':[850,2400, 400,1750, 400,1050, 400,1050, 400,1750, 400,1750, 400,1750, 400,1050, 400,1050, 400,1050, 400,1050, 400,1750, 400,1050, 400,1750, 400,1750, 400,1750, 400,1750, 400,1050, 400,1750, 400,1050, 400], 'type':'raw', 'khz':38}]</code> <br>  will add/change an attribute named IR_tv_mute that will call the follwing url on send command <br>
+    http://192.168.100.200:80/json?plain=[{'data':[850,2400, 400,1750, 400,1050, 400,1050, 400,1750, 400,1750, 400,1750, 400,1050, 400,1050, 400,1050, 400,1050, 400,1750, 400,1050, 400,1750, 400,1750, 400,1750, 400,1750, 400,1050, 400,1750, 400,1050, 400], 'type':'raw', 'khz':38}] on the IR gateway
+    </li>
+    
+  <br><br>
+    
+    <li><code>_send &lt;codename1&gt; [ ... &lt;codenameN&gt; ] </code> <br> or <br> <code>send &lt;name1&gt; [ ... &lt;namen&gt; ] </code><br>Send the code that is stored as attribute under the codename in the device (you might ommit the prefix of the attribute).
+    <br><br>
+    Exmple:    <br>   
+    <code>set irblaster _send tv_onoff</code> <br> will send the code that is specified in attribute IR_tv_onoff which will call http://192.168.100.200:80/json?plain=[{'data':'416', 'type':'RC5', 'length':12}] on the IR gateway
+  <br><br>
+    <code>set irblaster send tv_ok IR_tv_mute</code> will send the codes specified in attribute IR_tv_ok and IR_tv_mute to the IR gateway
+    </li>
+  <br><br>
+    
+    <li><code>direct &lt;codevalue&gt;</code><br>Send the given code value directly to the IR gateway, without the need to create an attribute via add first. The codevalue has to be given either as value of the plain parameter in the url or as complete path and parameter part of the url (with out host but starting with /)
+    <br>
+    Exmple:    <br>    <br>
+    <code>set irblaster direct [{'data':'416', 'type':'RC5', 'length':12}]</code> <br> will call the following url http://192.168.100.200:80/json?plain=[{'data':'416', 'type':'RC5', 'length':12}] on the IR gateway
+  <br><br>
+
+    <li><code>presence</code><br> Check the presence of the IR gateway (via ping) 
+    </li>
+    
+    <li><code>reset</code><br>Reset the FHEM device (only used in case of something gets into an unknown or strange state)
+    </li>
+    
+  </ul>
+
+  <br>
+
+  <a name="IrBlasterattr"></a>
+  <b>Attributes</b>
+  <br><br>
+  All IR codes are stored as attributes, with the given prefix, so please ensure the prefix is chosen without conflicts to user or generic attributes. These attributes are also added to the userattributes list.
+  <br><br>
+  <ul>
+    <li><code>maxRetries &lt;0,1,2,3,4,5&gt;</code><br>Specify the number of retries for sending a code in case of a failure with increasing delays between retries. Specific failures that are non-recoverable will lead to no retry. Setting the value to 0 (default) will result in no retries.
+    </li>  
+    
+    <li><code>interval &lt;seconds&gt;</code><br>Specify the interval (in seconds) for checking presence of the IR gateway device (using ping).
+    </li> 
+
+
+  </ul>
+
+  <br>
+
+
+    <a name="IrBlasterreadings"></a>
+  <b>Readings</b>
+  
+  <ul>
+    <li><code>requestAction</code> / <code>requestResult</code><br>Gives information about the last code and the result received from the IR gateway </li> 
+    
+    <li><code>presence</code><br>specify presence state of the IR gateway as detected by the internal presence mechanism</li> 
+    
+    
+  </ul> 
+
+  <br><br>   
+</ul>
 =end html
 
 =begin html_DE

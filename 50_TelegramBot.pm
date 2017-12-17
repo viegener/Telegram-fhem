@@ -140,14 +140,14 @@
 #   Cleanup old code
 #   add favoritesMenu to send favorites 
 #   doc favoritesMenu
-
 #   correct favoritesMenu to allow parameter
-  
+#   FIX: allow_nonref / eval also for makekeyboard #msg732757
+
 #   
 ##############################################################################
 # TASKS 
 #   
-#   
+#   set silentmsg for disable_notification - syntax as in msg
 #   
 #   queryDialogStart / queryDialogEnd - keep msg id 
 #   
@@ -1978,14 +1978,21 @@ sub TelegramBot_MakeKeyboard($$$@)
   }
   
   my $refkb = \%par;
-  
-  my $json        = JSON->new->utf8;
-  $ret = $json->utf8(0)->encode( $refkb );
-  Log3 $name, 4, "TelegramBot_MakeKeyboard $name: json :$ret: is utf8? ".(utf8::is_utf8($ret)?"yes":"no");
 
-  if ( utf8::is_utf8($ret) ) {
-    utf8::downgrade($ret); 
-    Log3 $name, 4, "TelegramBot_MakeKeyboard $name: json downgraded :$ret: is utf8? ".(utf8::is_utf8($ret)?"yes":"no");
+  # encode keyboard with JSON
+  my $json        = JSON->new->utf8->allow_nonref;
+  eval {
+    $ret = $json->utf8(0)->encode( $refkb );
+  };
+  Log3 $name, 2, "JSON encode() did fail with: ".(( $@ )?$@:"<unknown error>") if ( ! $ret );
+
+  if ( $ret ) {
+    Log3 $name, 4, "TelegramBot_MakeKeyboard $name: json :$ret: is utf8? ".(utf8::is_utf8($ret)?"yes":"no");
+
+    if ( utf8::is_utf8($ret) ) {
+      utf8::downgrade($ret); 
+      Log3 $name, 4, "TelegramBot_MakeKeyboard $name: json downgraded :$ret: is utf8? ".(utf8::is_utf8($ret)?"yes":"no");
+    }
   }
   
   return $ret;

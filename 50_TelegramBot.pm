@@ -143,11 +143,12 @@
 #   correct favoritesMenu to allow parameter
 #   FIX: allow_nonref / eval also for makekeyboard #msg732757
 
+#   nex set cmd silentmsg for disable_notification - syntax as in msg
+#   INT: change forceReply to options for sendit
+
 #   
 ##############################################################################
 # TASKS 
-#   
-#   set silentmsg for disable_notification - syntax as in msg
 #   
 #   queryDialogStart / queryDialogEnd - keep msg id 
 #   
@@ -157,7 +158,7 @@
 #   
 #   replyKeyboardRemove - #msg592808
 #   
-#   add an option to send silent messages - msg556631
+#   add an option to send silent messages - msg556631  ??
 #   \n in inline keyboards - not possible currently
 #   
 ##############################################################################
@@ -210,6 +211,8 @@ my %sets = (
   "message" => "textField",
   "msg" => "textField",
   "send" => "textField",
+  
+  "silentmsg" => "textField",
 
   "msgDelete" => "textField",
 
@@ -469,12 +472,13 @@ sub TelegramBot_Set($@)
 
   my $ret = undef;
   
-  if( ($cmd eq 'message') || ($cmd eq 'queryInline') || ($cmd eq 'queryEditInline') || ($cmd eq 'queryAnswer') || ($cmd eq 'msg') || ($cmd eq '_msg') || ($cmd eq 'reply') || ($cmd eq 'msgEdit') || ($cmd eq 'msgForceReply') || ($cmd =~ /^send.*/ ) ) {
+  if( ($cmd eq 'message') || ($cmd eq 'queryInline') || ($cmd eq 'queryEditInline') || ($cmd eq 'queryAnswer') || ($cmd eq 'msg') || ($cmd eq '_msg') || ($cmd eq 'reply') || ($cmd eq 'msgEdit') || ($cmd eq 'msgForceReply') || ($cmd eq 'silentmsg') || ($cmd =~ /^send.*/ ) ) {
 
     my $msgid;
     my $msg;
     my $addPar;
     my $sendType = 0;
+    my $options = "";
     my $peers;
     my $inline = 0;
     
@@ -485,7 +489,9 @@ sub TelegramBot_Set($@)
       $numberOfArgs--;
       $inline = 1 if ($cmd eq 'queryEditInline');
     } elsif ($cmd eq 'msgForceReply')  {
-      $addPar = "{\"force_reply\":true}";
+      $options .= " -force_reply- ";
+    } elsif ($cmd eq 'silentmsg')  {
+      $options .= " -silent- ";
     } elsif ($cmd eq 'queryInline')  {
       $inline = 1;
     }
@@ -592,7 +598,7 @@ sub TelegramBot_Set($@)
     }
       
     Log3 $name, 5, "TelegramBot_Set $name: start send for cmd :$cmd: and sendType :$sendType:";
-    $ret = TelegramBot_SendIt( $hash, $peers, $msg, $addPar, $sendType, $msgid );
+    $ret = TelegramBot_SendIt( $hash, $peers, $msg, $addPar, $sendType, $msgid, $options );
 
 
   } elsif($cmd eq 'favoritesMenu') {
@@ -1670,7 +1676,7 @@ sub TelegramBot_SendIt($$$$$;$$$)
   }
   
   Log3 $name, 5, "TelegramBot_SendIt $name: try to send message to :$peer: -:".
-      TelegramBot_MsgForLog($msg, ($isMedia<0) ).": - :".(defined($addPar)?$addPar:"<undef>").":";
+      TelegramBot_MsgForLog($msg, ($isMedia<0) ).": - :".(defined($addPar)?$addPar:"<undef>").":".":    options :".$options.":";
 
     # trim and convert spaces in peer to underline 
   my $peer2 = TelegramBot_GetIdForPeer( $hash, $peer );
@@ -1827,7 +1833,14 @@ sub TelegramBot_SendIt($$$$$;$$$)
 
     if ( defined( $addPar ) ) {
       $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "reply_markup", undef, $addPar, 0 ) if ( ! defined( $ret ) );
+    } elsif ( $options =~ /-force_reply-/ ) {
+      $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "reply_markup", undef, "{\"force_reply\":true}", 0 ) if ( ! defined( $ret ) );
     }
+    
+    if ( $options =~ /-silent-/ ) {
+      $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "disable_notification", undef, "true", 0 ) if ( ! defined( $ret ) );
+    }
+
 
     # finalize multipart 
     $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, undef, undef, undef, 0 ) if ( ! defined( $ret ) );
@@ -3461,6 +3474,9 @@ sub TelegramBot_BinaryFileWrite($$$) {
         <dt><code>set aTelegramBotDevice message @1234567 Bye</code></dt>
           <dd> to send the message "Bye" to a contact or chat with the id "1234567". Chat ids might be negative and need to be specified with a leading hyphen (-). <br></dd>
       <dl>
+    </li>
+    
+    <li><code>silentmsg ...<br>Sends the given message silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the send/message command.
     </li>
     
     <li><code>msgForceReply [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;text&gt;</code><br>Sends the given message to the recipient(s) and requests (forces) a reply. Handling of peers is equal to the message command. Adding reply keyboards is currently not supported by telegram.

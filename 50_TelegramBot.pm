@@ -142,9 +142,9 @@
 #   doc favoritesMenu
 #   correct favoritesMenu to allow parameter
 #   FIX: allow_nonref / eval also for makekeyboard #msg732757
-
-#   nex set cmd silentmsg for disable_notification - syntax as in msg
+#   new set cmd silentmsg for disable_notification - syntax as in msg
 #   INT: change forceReply to options for sendit
+# 2.7 2017-12-20  
 
 #   
 ##############################################################################

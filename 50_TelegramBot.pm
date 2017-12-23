@@ -144,8 +144,9 @@
 #   FIX: allow_nonref / eval also for makekeyboard #msg732757
 #   new set cmd silentmsg for disable_notification - syntax as in msg
 #   INT: change forceReply to options for sendit
-# 2.7 2017-12-20  
+# 2.7 2017-12-20  set command silentmsg 
 
+#   new set cmd silentImage for disable_notification - syntax as in sendImage
 #   
 ##############################################################################
 # TASKS 
@@ -213,6 +214,7 @@ my %sets = (
   "send" => "textField",
   
   "silentmsg" => "textField",
+  "silentImage" => "textField",
 
   "msgDelete" => "textField",
 
@@ -472,7 +474,9 @@ sub TelegramBot_Set($@)
 
   my $ret = undef;
   
-  if( ($cmd eq 'message') || ($cmd eq 'queryInline') || ($cmd eq 'queryEditInline') || ($cmd eq 'queryAnswer') || ($cmd eq 'msg') || ($cmd eq '_msg') || ($cmd eq 'reply') || ($cmd eq 'msgEdit') || ($cmd eq 'msgForceReply') || ($cmd eq 'silentmsg') || ($cmd =~ /^send.*/ ) ) {
+  if( ($cmd eq 'message') || ($cmd eq 'queryInline') || ($cmd eq 'queryEditInline') || ($cmd eq 'queryAnswer') || 
+      ($cmd eq 'msg') || ($cmd eq '_msg') || ($cmd eq 'reply') || ($cmd eq 'msgEdit') || ($cmd eq 'msgForceReply') || 
+      ($cmd eq 'silentmsg') || ($cmd eq 'silentImage') || ($cmd =~ /^send.*/ ) ) {
 
     my $msgid;
     my $msg;
@@ -490,7 +494,7 @@ sub TelegramBot_Set($@)
       $inline = 1 if ($cmd eq 'queryEditInline');
     } elsif ($cmd eq 'msgForceReply')  {
       $options .= " -force_reply- ";
-    } elsif ($cmd eq 'silentmsg')  {
+    } elsif ( ($cmd eq 'silentmsg') || ($cmd eq 'silentImage') ) {
       $options .= " -silent- ";
     } elsif ($cmd eq 'queryInline')  {
       $inline = 1;
@@ -517,7 +521,7 @@ sub TelegramBot_Set($@)
       $peers = AttrVal($name,'defaultPeer',undef);
       return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peers) );
     }
-    if ( ($cmd eq 'sendPhoto') || ($cmd eq 'sendImage') || ($cmd eq 'image') ) {
+    if ( ($cmd eq 'sendPhoto') || ($cmd eq 'sendImage') || ($cmd eq 'image') || ($cmd eq 'silentImage')  ) {
       $sendType = 1;
     } elsif ($cmd eq 'sendVoice')  {
       $sendType = 2;
@@ -3520,6 +3524,10 @@ sub TelegramBot_BinaryFileWrite($$$) {
     </li>
     <li><code>sendVoice [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt;</code><br>Sends a voice message for playing directly in the browser to the given peer(s) or if ommitted to the default peer. Handling for files and peers is as specified above.
     </li>
+    
+    <li><code>silentImage ...<br>Sends the given image silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the sendImage command.
+    </li>
+    
 
   <br>
     <li><code>sendLocation [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;latitude&gt; &lt;longitude&gt;</code><br>Sends a location as pair of coordinates latitude and longitude as floating point numbers 

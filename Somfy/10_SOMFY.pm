@@ -61,6 +61,10 @@
 # - allow define with encryption key without starting with A
 # - added manual function for setting position manually without movement commands
 #
+# - remove any postfiy on position setting (like 50 pct)
+# - allow set command position
+# 2.0 Update for official version to allow further rework and Alexa handling
+
 #
 ###############################################################################
 #
@@ -126,6 +130,7 @@ my %somfy_sets = (
 my %somfy_sets_addition = (
 	"go-my" => "noArg",
 	"pos" => "100,90,80,70,60,50,40,30,20,10,0",
+	"position" => "100,90,80,70,60,50,40,30,20,10,0",
 	"manual" => "200,100,90,80,70,60,50,40,30,20,10,0,on,off",
   "wind_sun_9" => "noArg",
   "wind_only_a" => "noArg",
@@ -616,9 +621,8 @@ sub SOMFY_InternalSet($@) {
 
 	# just a number provided, assume "pos" command
 	if ($cmd =~ m/^\d{1,3}$/) {
-		pop @args;
-		push @args, "pos";
-		push @args, $cmd;
+    # overwrite args if pos (only pos and num pos)
+    @args = ( "pos", $cmd );
 
 		$cmd = "pos";
 		$numberOfArgs = int(@args);
@@ -668,16 +672,19 @@ sub SOMFY_InternalSet($@) {
     $arg1 = 200 if ( $arg1 eq "on" ); 
     $arg1 = 0 if ( $arg1 eq "off" ); 
     
-	} elsif($cmd eq 'pos') {
+	} elsif ( ($cmd eq 'pos') || ($cmd eq 'position') ) {
 		return "SOMFY_set: No pos specification"  if(!defined($arg1));
 		return  "SOMFY_set: $arg1 must be between 0 and 100 for pos" if($arg1 < 0 || $arg1 > 200);
 		return "SOMFY_set: Please set attr drive-down-time-to-100, drive-down-time-to-close, etc" 
-				if(!defined($t1downclose) || !defined($t1down100) || !defined($t1upopen) || !defined($t1up100));
-        
+      if(!defined($t1downclose) || !defined($t1down100) || !defined($t1upopen) || !defined($t1up100));
+      
+    $cmd = "pos";
+      
     # special cases for pos to avoid mypos being used since stop signal is sent after automatic stop
     $cmd = "on" if ( $arg1 == 200 ); 
     $cmd = "off" if ( $arg1 == 0 ); 
 	}
+  
 
   
   ### initialize locals

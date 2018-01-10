@@ -1268,7 +1268,8 @@ sub SOMFY_UpdateStartTime($) {
 ###################################
 sub SOMFY_TimedUpdate($) {
 	my ($hash) = @_;
-
+	my $name = $hash->{NAME};
+  
 	Log3($hash->{NAME},4,"SOMFY_TimedUpdate");
 	
   return if(IsDisabled($name)); 

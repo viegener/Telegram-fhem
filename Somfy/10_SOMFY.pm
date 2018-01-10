@@ -67,7 +67,8 @@
 
 # - change log entries and remove debug in _Parse
 # - added back parsestate temporarily - #msg743423
-#
+# - new attributes 	disable/disabledForIntervals
+# - disabled will be honored - no updates/no sending/no received commands
 #
 ###############################################################################
 #
@@ -77,6 +78,8 @@
 # Somfy Modul - OPEN
 ###############################################################################
 # 
+# - Add disable functionality
+# - 
 # - Doc rework on model, set commands, rawDevice, coupling remotes
 # - 
 # - test parseFn / Remotes
@@ -239,7 +242,9 @@ sub SOMFY_Initialize($) {
 	  . " fixed_enckey:1,0"
 	  . " do_not_notify:1,0"
 	  . " ignore:0,1"
-	  . " model:somfyblinds,somfyshutter,somfyremote,somfyswitch2,somfyswitch4"
+	  . " disable:0,1"
+    . " disabledForIntervals "
+    . " model:somfyblinds,somfyshutter,somfyremote,somfyswitch2,somfyswitch4"
 	  . " loglevel:0,1,2,3,4,5,6"
 	  . " rawDevice"
 	  . " $readingFnAttributes";
@@ -541,6 +546,7 @@ sub SOMFY_Parse($$) {
       $name = $lh->{NAME};        # It may be renamed
 
       return "" if(IsIgnored($name));
+      return "" if(IsDisabled($name));
 
       # update the state and log it
       # Debug "SOMFY Parse: $name msg: $msg  --> $cmd-$newstate";
@@ -615,7 +621,9 @@ sub SOMFY_InternalSet($@) {
 	
   return undef if ( IsIgnored($name) );
   
-  ### Check Args
+  return undef if ( IsDisabled($name) );
+  
+### Check Args
 	return "SOMFY_InternalSet: mode must be virtual or send: $mode " if ( $mode !~m/(virtual|send)/ );
 
 	my $numberOfArgs  = int(@args);
@@ -1263,7 +1271,9 @@ sub SOMFY_TimedUpdate($) {
 
 	Log3($hash->{NAME},4,"SOMFY_TimedUpdate");
 	
-	# get current infos 
+  return if(IsDisabled($name)); 
+      
+  # get current infos 
 	my $pos = ReadingsVal($hash->{NAME},'exact',undef);
 
   if ( AttrVal( $hash->{NAME}, "positionInverse", 0 ) ) {
@@ -1494,6 +1504,9 @@ sub SOMFY_SendCommand($@)
 	my $io = $hash->{IODev};
   my $ioType = $io->{TYPE};
 
+  return $ret if(IsIgnored($name)); 
+  return $ret if(IsDisabled($name));   
+  
 	Log3($name,4,"SOMFY_sendCommand: $name -> cmd :$cmd: ");
 
   # custom control needs 2 digit hex code

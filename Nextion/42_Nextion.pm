@@ -69,6 +69,15 @@
 #   changed log levels to 4 for verbose / 5 will print all messages
 #   fix replacesetmagic to ensure device hash is given
 # 2016-05-25    fault tolerance in reader / fixes 
+
+#   parse initPage attribute into two different internals pageinit<n> / pagenotify<n>
+#   ensure internals page...<n> begin deleted on delete attribute
+#   add notify fn for page regexp
+#   restructured sequence of functions in modulecode
+#   add notifyPage parsing
+#   change notifyPage to initCommands
+#   
+#   
 #   
 #   
 #   
@@ -76,13 +85,34 @@
 ##############################################
 ### TODO
 #   
+#   AttrVal($pn, "addStateEvent", 0)
+#   
+#   remove ->{changed} in notify - global
+#   
+#   docu for new initpages syntax
+#   docu for notifyPages
+#   
+#   
+#   react on events with commands allowing values from FHEM
+#     Format \[<device>:<event regexp>\]  ( commands (sep by ;) )
+#     Attribute initPage<n> / notifyPages
+#   
+#   
+#   watch on reading changes - with executing commands
+#     Format \[<rectext regexp>\]  ( commands (sep by ;) )
+#     Attribute recPage<n> / recPagesAll
+#   doc for recPage
+#   
+#   
+#   add keep alive check - similar to loewe etc
+#   
+#   
+#   allow also access to pages above 9?
 #   
 #   rectextold1-5 --> #msg611695
 #   timeout with checkalive check?
 #   
-#   react on events with commands allowing values from FHEM
 #   remove wait for answer by attribute
-#   number of pages as define (std max 0-9)
 #
 ##############################################
 ##############################################
@@ -119,6 +149,8 @@ sub Nextion_Read($@);
 sub Nextion_Write($$$);
 sub Nextion_ReadAnswer($$);
 sub Nextion_Ready($);
+sub Nextion_DoInit($);
+sub Nextion_SendCommand($$$);
 
 #########################
 # Globals
@@ -137,6 +169,7 @@ my %Nextion_errCodes = (
   "\x01" => "Success" 
 );
 
+my $Nextion_baseAttrList = " initCommands:textField-long hasSendMe:0,1 expectAnswer:1,0 disable:0,1 ".$readingFnAttributes;   
 
 
 
@@ -167,7 +200,10 @@ Nextion_Initialize($)
   $hash->{AttrFn}     = "Nextion_Attr";
   $hash->{AttrList}   = "initPage0:textField-long initPage1:textField-long initPage2:textField-long initPage3:textField-long initPage4:textField-long ".
                         "initPage5:textField-long initPage6:textField-long initPage7:textField-long initPage8:textField-long initPage9:textField-long ".
-                        "initCommands:textField-long hasSendMe:0,1 expectAnswer:1,0 disable:0,1 ".$readingFnAttributes;           
+                        "recPage0:textField-long recPage1:textField-long recPage2:textField-long recPage3:textField-long recPage4:textField-long ".
+                        "recPage5:textField-long recPage6:textField-long recPage7:textField-long recPage8:textField-long recPage9:textField-long ".
+                        "recPages:textField-long ".
+                        $Nextion_baseAttrList;
 
   # timeout for connections - msg554933
   $hash->{TIMEOUT} = 1;      # might be better?      0.5;       
@@ -185,12 +221,11 @@ Nextion_Define($$)
   my ($hash, $def) = @_;
   my @a = split("[ \t][ \t]*", $def);
 
-  if(@a != 3) {
-    return "wrong syntax: define <name> Nextion hostname:23";
-  }
+  return "wrong syntax: define <name> Nextion <hostname:port>" if( @a != 3);
 
   my $name = $a[0];
   my $dev = $a[2];
+  
   $hash->{Clients} = ":NEXTION:";
   my %matchList = ( "1:NEXTION" => ".*" );
   $hash->{MatchList} = \%matchList;
@@ -209,6 +244,24 @@ Nextion_Define($$)
   }    
   return $ret;
 }
+
+#####################################
+sub
+Nextion_Undef($@)
+{
+  my ($hash, $arg) = @_;
+  ### ??? send finish commands
+  Nextion_Disconnect($hash);
+  return undef;
+}
+
+##############################################################################
+##############################################################################
+##
+## Instance operation
+##
+##############################################################################
+##############################################################################
 
 #####################################
 sub
@@ -300,34 +353,63 @@ sub Nextion_Attr(@) {
   # $cmd can be "del" or "set"
   # $name is device name
   # aName and aVal are Attribute name and value
-  if ($cmd eq "set") {
-    if ($aName eq 'hasSendMe') {
-      $aVal = ($aVal eq "1")? "1": "0";
-      readingsSingleUpdate($hash, "currentPage", -1, 1);
-
-    } elsif ($aName eq 'unsupported') {
-      if ( $aVal !~ /^[[:digit:]]+$/ ) {
-        return "\"Nextion_Attr: \" unsupported"; 
-      }
-
-    } elsif ($aName eq 'disable') {
-      if($aVal eq "1") {
-        Nextion_Disconnect($hash);
-        DevIo_setStates($hash, "disabled"); 
-      } else {
-        if($hash->{READINGS}{state}{VAL} eq "disabled") {
-          DevIo_setStates($hash, "disconnected"); 
-          InternalTimer(gettimeofday()+1, "Nextion_Connect", $hash, 0);
-        }
-      }
+  
+  if ($aName =~ /^initPage(\d+)$/ ) {
+    # handle attr with a numer in $1
+    my $n = $1;
+    
+    if ($cmd eq "set") {
+      my $ret = Nextion_parseInitAttr( $hash, $n, $aVal );
+      return "\"Nextion_Attr: \" $name for $aName failed - $ret" if ( $ret );
+    } else {
+      Nextion_parseInitAttr( $hash, $n, undef );
     }
     
-    $_[3] = $aVal;
+  } elsif ($aName eq "initCommands" ) {
+    if ($cmd eq "set") {
+      my $ret = Nextion_parseInitAttr( $hash, undef, $aVal );
+      return "\"Nextion_Attr: \" $name for $aName failed - $ret" if ( $ret );
+    } else {
+      Nextion_parseInitAttr( $hash, undef, undef );
+    }
+    
+  } elsif ($aName eq 'hasSendMe') {
+    if ($cmd eq "set") {
+      $aVal = ($aVal eq "1")? "1": "0";
+    }
+    readingsSingleUpdate($hash, "currentPage", -1, 1);
+      
+  } elsif ($aName eq 'disable') {
+    if ( ( $aVal ) && ($aVal eq "1") ) {
+      Nextion_Disconnect($hash);
+      DevIo_setStates($hash, "disabled"); 
+    } else {
+      if($hash->{READINGS}{state}{VAL} eq "disabled") {
+        DevIo_setStates($hash, "disconnected"); 
+        InternalTimer(gettimeofday()+1, "Nextion_Connect", $hash, 0);
+      }
+    }
+      
+  } elsif ($aName eq 'unsupported') {
+    if ( $aVal !~ /^[[:digit:]]+$/ ) {
+      return "\"Nextion_Attr: \" unsupported"; 
+    }
+    
+  }  
   
-  }
+  $_[3] = $aVal if ($cmd eq "set");
 
   return undef;
 }
+
+
+##############################################################################
+##############################################################################
+##
+## Connection
+##
+##############################################################################
+##############################################################################
 
   
 ######################################
@@ -384,7 +466,29 @@ sub Nextion_Connect($;$) {
    
 #####################################
 sub
-Nextion_Notify($$)
+Nextion_Ready($)
+{
+  my ($hash) = @_;
+
+#  Debug "Name : ".$hash->{NAME};
+#  stacktrace();
+  
+  return Nextion_Connect( $hash, 1 ) if($hash->{STATE} eq "disconnected");
+  return 0;
+}
+
+   
+##############################################################################
+##############################################################################
+##
+## Notify operation
+##
+##############################################################################
+##############################################################################
+
+#####################################
+sub
+Nextion_NotifyGlobal($$)
 {
   my ($hash,$dev) = @_;
   my $name  = $hash->{NAME};
@@ -402,40 +506,82 @@ Nextion_Notify($$)
 
   return undef;
 }    
+
 #####################################
-sub
-Nextion_DoInit($)
+# Handle the different reg exp for a page (or any page)
+sub Nextion_NotifyPage($$$$)
 {
-  my $hash = shift;
+  my ($hash, $notifyhash, $dev, $events) = @_;
+
   my $name = $hash->{NAME};
-
-  my $ret = undef;
   
-  ### send init commands
-  my $initCmds = AttrVal( $name, "initCommands", undef ); 
+  my $max = int(@{$events});
+  my $ret = "";
+  my $n = $dev->{NAME};
+
+  # loop over the regexp keys and check agains events
+  foreach my $re (keys %$notifyhash) {
     
-  Log3 $name, 3, "Nextion_DoInit $name: Execute initCommands :".(defined($initCmds)?$initCmds:"<undef>").":";
-
-  
-  ## ??? quick hack send on init always page 0 twice to ensure proper start
-  # Send command handles replaceSetMagic and splitting
-  $ret = Nextion_SendCommand( $hash, "page 0;page 0", 0 );
-
-  # Send command handles replaceSetMagic and splitting
-  $ret = Nextion_SendCommand( $hash, $initCmds, 0 ) if ( defined( $initCmds ) );
-
+    # loop over events in notification
+    for (my $i = 0; $i < $max; $i++) {
+      my $s = $events->[$i]; 
+      $s = "" if(!defined($s)); 
+      if ($n =~ m/^$re$/ || "$n:$s" =~ m/^$re$/) {
+        Nextion_SendCommand( $hash, $notifyhash->{$re}, 0 ); 
+      }
+    }
+      
+      
+  }
   return $ret;
 }
+  
+
 
 #####################################
-sub
-Nextion_Undef($@)
+sub Nextion_Notify($$)
 {
-  my ($hash, $arg) = @_;
-  ### ??? send finish commands
-  Nextion_Disconnect($hash);
-  return undef;
+  my ($hash, $dev) = @_;
+
+  my $name = $hash->{NAME};
+  return "" if(IsDisabled($name));
+  
+  # divert to Connection handling
+  Nextion_NotifyGlobal( $hash, $dev );
+
+  return if ( ! defined($hash->{pages}) );
+  
+  my $n = $dev->{NAME};
+  my $events = deviceEvents($dev, AttrVal($name, "addStateEvent", 0));
+  return if(!$events); 
+
+  my ($r, $notifyhash );
+  my $ret = "";
+
+  # Check notify for any page
+  $notifyhash = (($hash->{pages})->{pages})->{"notify"};
+  $r = Nextion_NotifyPage( $hash, $notifyhash, $dev, $events ) if ( defined($notifyhash) );
+  $ret .= " Returned $n:$r" if ( $r );
+  
+  # check notify for currentPage
+  my $number = ReadingsVal($name,"currentPage",-1);   
+  $number = $number + 0; 
+  $notifyhash = ($hash->{pages})->{"notify".$number};
+  $r = Nextion_NotifyPage( $hash, $notifyhash, $dev, $events ) if ( defined($notifyhash) );
+  $ret .= " Returned $n:$r" if ( $r );
+  
+  return $ret;
 }
+  
+    
+
+##############################################################################
+##############################################################################
+##
+## Send to / read from Display
+##
+##############################################################################
+##############################################################################
 
 #####################################
 sub
@@ -446,6 +592,39 @@ Nextion_Write($$$)
   $msg = sprintf("%s03%04x%s%s", $fn, length($msg)/2+8,
            $hash->{HANDLE} ?  $hash->{HANDLE} : "00000000", $msg);
   DevIo_SimpleWrite($hash, $msg, 1);
+}
+
+#####################################
+sub
+Nextion_SendSingleCommand($$$)
+{
+  my ($hash,$msg,$answer) = @_;
+  my $name = $hash->{NAME};
+
+  $answer = 0 if ( ! AttrVal($name,"expectAnswer",0) ); 
+
+  # ??? handle answer
+  my $err;
+  
+  # trim the msg
+  $msg =~ s/^\s+|\s+$//g;
+
+  Log3 $name, 4, "Nextion_SendCommand $name: send command :".$msg.": ";
+  
+  my $isoMsg = Nextion_EncodeToIso($msg);
+
+  DevIo_SimpleWrite($hash, $isoMsg."\xff\xff\xff", 0);
+  $err =  Nextion_ReadAnswer($hash, $isoMsg) if ( $answer );
+  Log3 $name, 1, "Nextion_SendCommand Error :".$err.": " if ( defined($err) );
+  Log3 $name, 4, "Nextion_SendCommand Success " if ( ! defined($err) );
+  
+   # Also set sentMsg Id and result in Readings
+  readingsBeginUpdate($hash);
+  readingsBulkUpdate($hash, "cmdSent", $msg);        
+  readingsBulkUpdate($hash, "cmdResult", (( defined($err))?$err:"empty") );        
+  readingsEndUpdate($hash, 1);
+
+  return $err;
 }
 
 #####################################
@@ -490,39 +669,6 @@ Nextion_SendCommand($$$)
 
   return join("\n", @ret) if(@ret);
   return undef; 
-}
-
-#####################################
-sub
-Nextion_SendSingleCommand($$$)
-{
-  my ($hash,$msg,$answer) = @_;
-  my $name = $hash->{NAME};
-
-  $answer = 0 if ( ! AttrVal($name,"expectAnswer",0) ); 
-
-  # ??? handle answer
-  my $err;
-  
-  # trim the msg
-  $msg =~ s/^\s+|\s+$//g;
-
-  Log3 $name, 4, "Nextion_SendCommand $name: send command :".$msg.": ";
-  
-  my $isoMsg = Nextion_EncodeToIso($msg);
-
-  DevIo_SimpleWrite($hash, $isoMsg."\xff\xff\xff", 0);
-  $err =  Nextion_ReadAnswer($hash, $isoMsg) if ( $answer );
-  Log3 $name, 1, "Nextion_SendCommand Error :".$err.": " if ( defined($err) );
-  Log3 $name, 4, "Nextion_SendCommand Success " if ( ! defined($err) );
-  
-   # Also set sentMsg Id and result in Readings
-  readingsBeginUpdate($hash);
-  readingsBulkUpdate($hash, "cmdSent", $msg);        
-  readingsBulkUpdate($hash, "cmdResult", (( defined($err))?$err:"empty") );        
-  readingsEndUpdate($hash, 1);
-
-  return $err;
 }
 
 #####################################
@@ -631,8 +777,7 @@ Nextion_Read($@)
   # initialize last page id found:
   if ( defined( $newPageId ) ) {
     $newPageId = $newPageId + 0;
-    
-    my $initCmds = AttrVal( $name, "initPage".sprintf("%d",$newPageId), undef ); 
+    my $initCmds = Nextion_getPageInfo( $hash, 0, $newPageId );
     
     Log3 $name, 4, "Nextion_InitPage $name: page  :".$newPageId.": with commands :".(defined($initCmds)?$initCmds:"<undef>").":";
     return if ( ! defined( $initCmds ) );
@@ -705,18 +850,234 @@ Nextion_ReadAnswer($$)
   }
 }
 
-#####################################
-sub
-Nextion_Ready($)
-{
-  my ($hash) = @_;
+##############################################################################
+##############################################################################
+##
+## Parsing Attribtes etc
+##
+##############################################################################
+##############################################################################
 
-#  Debug "Name : ".$hash->{NAME};
-#  stacktrace();
-  
-  return Nextion_Connect( $hash, 1 ) if($hash->{STATE} eq "disconnected");
-  return 0;
+#####################################
+# parameter: hash, match is regexp in the form [\(\)], md is text, 
+# 
+# text starts with one of the regexp characters and should be parsed up to the matching other one (like [....])
+# returns 
+#   err - or undef
+#   block - block of text between regexp chars
+#   text - remaining text
+#
+# - inspired by GetBlockDoIf - 98_DOIF.pm - Damian
+sub 
+Nextion_parseNextBlock($$$) 
+{
+  my ($hash, $match, $cmd) = @_;
+  my $name = $hash->{NAME};
+
+  my $count=0;
+  my $last_pos=0;
+  my $err="";
+  while($cmd =~ /$match/g) {
+    my $p = pos($cmd);
+    if (substr($cmd,$p-1,1) eq substr($match,2,1)) {
+      $count++;
+    } elsif (substr($cmd,$p-1,1) eq substr($match,4,1)) {
+      $count--;
+    }
+    return ("right bracket/parentheses without left one", substr($cmd,$p-1),"") if ($count < 0);
+
+    if ($count == 0) {
+      $last_pos=$p;
+      last;
+    }
+  }
+  if ($count > 0) {
+    $err="no right bracket/parentheses ";
+    return ("no right bracket/parentheses ",$cmd,"");
+  }
+  return (undef,substr($cmd,0,$last_pos),substr($cmd,$last_pos));
 }
+
+#####################################
+# parameter: hash, number of page, textvalue
+# returns 
+#   err - or undef
+#   event - or undef for only init / remaining
+#   cmds - commands for init or event
+#   text - remaining text
+# 
+# textformat is 
+# [.....] (....) - no psace in event and at least a space as separator
+#
+#
+sub
+Nextion_parseNextCommands($$) 
+{
+  my ($hash, $text) = @_;
+  my $name = $hash->{NAME};
+
+  my ( $err, $event );
+  my $cmds = "";
+  
+  Log3 $name, 4, "Nextion_parseNextCommands $name: text :".$text.": ";
+
+  if ( $text =~ /^\[/ ) {
+    # has event 
+    if ( $text =~ /^\[([^ ]+)\]\s+(.*)$/s ) {
+      $event = $1;
+      $text = $2;
+    } else {
+      return ("event expression not parsed (includes space, or no closing bracket or no separator ?)", undef, undef, $text );
+    }
+  
+    if ( $text =~ /^\s*\((.*)$/s ) {
+      $text = $1;
+    } else {
+      return( "no commands found for event [".$event."]", undef, undef, $text );
+    }
+  
+    Log3 $name, 5, "Nextion_parseNextCommands $name: found   event:".$event.":    remaining   :$text:";
+
+    my $block;
+    
+    # handle remaining text - opening parentheses is gone
+    
+    # remaining text - filter away '.*'  // ".*" // blocks of () {} [] 
+    # possible extension: in block ignore specials like ^( \( 
+    while ( $text =~ /^([^\)^\[^\{^\(^"^']*)/sg ) {
+      # get the violating char for the regex (meaning the one char that is not in the list above
+      my $p = pos($text);
+      
+      my $poschar = substr($text, $p, 1);
+      $cmds .= substr($text, 0, $p);
+      $text = substr($text, $p );
+
+      Log3 $name, 5, "Nextion_parseNextCommands $name   pos $p    poschar $poschar    cmds :".$cmds.
+            "     remaining :".$text.":";
+
+      if ( $poschar eq ')' ) {
+        # found end of the commands list
+        $text = $1 if ( $text =~ /^\)\s*(\S?.*)$/s );
+        last;
+      } elsif ( $poschar eq '[' ) {
+        ($err, $block, $text) = Nextion_parseNextBlock( $hash, '[\[\]]', $text );
+        return( $err, $event, $cmds, $text ) if ( $err );
+        $cmds .= $block;
+      } elsif ( $poschar eq '{' ) {
+        ($err, $block, $text) = Nextion_parseNextBlock( $hash, '[\{\}]', $text );
+        return( $err, $event, $cmds, $text ) if ( $err );
+        $cmds .= $block;
+      } elsif ( $poschar eq '(' ) {
+        ($err, $block, $text) = Nextion_parseNextBlock( $hash, '[\(\)]', $text );
+        return( $err, $event, $cmds, $text ) if ( $err );
+        $cmds .= $block;
+       } elsif ($poschar eq '"') {
+        if ( $text =~ /(^"[^"]*")(.*)/s ) {
+          $cmds .= $1;
+          $text = $2;
+        } else {
+          return( "Missing \" in Command section", $event, $cmds, $text );
+        }
+      } elsif ($poschar eq "'") {
+        if ( $text =~ /(^'[^']*')(.*)/s ) {
+          $cmds .= $1;
+          $text = $2;
+        } else {
+          return( "Missing ' in Command section", $event, $cmds, $text );
+        }
+      }
+      
+      Log3 $name, 5, "Nextion_parseNextCommands $name:  end block   cmds   :$cmds:     remaining :".$text.":";
+      return( "Command section not closed with )", $event, $cmds, $text ) if ( length($text) == 0 );
+
+    }
+  } else {
+    Log3 $name, 4, "Nextion_parseNextCommands $name:  cmds is :$text:";
+    $cmds = $text;
+    $text = "";
+  }
+  
+  return ( undef, $event, $cmds, $text );
+}
+  
+  
+  
+#####################################
+# hash, number of page, textvalue
+# returns undef or errortext
+sub
+Nextion_parseInitAttr($$$) 
+{
+  my ($hash, $number, $value) = @_;
+  my $name = $hash->{NAME};
+
+  Log3 $name, 4, "Nextion_parseInitAttr $name: parse initcmds :".$number.": ";
+  
+  # init pages in hash if not yet defined
+  if ( ! defined($hash->{pages}) ) {
+    my %h = ();
+    $hash->{pages} = \%h;
+  }
+
+  my ($pageInit, $pageNotify, $err, $event, $cmds);
+  
+  my %h = ();
+  $pageNotify = \%h;
+  
+  if ( $value ) {
+    Log3 $name, 5, "Nextion_parseInitAttr $name: parse initcmds :".$number.":   value :$value:";
+    # set attr value parse - in case of error return errortext
+    while ( $value ne "" ) {
+      ($err, $event, $cmds, $value ) = Nextion_parseNextCommands( $hash, $value );
+      Log3 $name, 5, "Nextion_parseInitAttr $name: - cmdsparsing result   err :".($err?$err:"--").
+            "     event :".($event?$event:"<undef>").
+            "     cmds :".($cmds?$cmds:"<undef>").
+            "     value :".($value?$value:"<undef>");
+      return $err if ( $err );
+      if ( $event ) {
+        return "Duplicate event :$event: in definition" if ( defined( $pageNotify ->{$event} ) );
+        $pageNotify ->{$event} = $cmds;
+      } else {
+        $pageInit = $cmds;
+      }
+    }
+  }
+  
+  if ( defined( $pageInit ) ) {
+    Log3 $name, 4, "Nextion_parseInitAttr $name: set page-init$number  :$pageInit:";
+    ($hash->{pages})->{"init".$number} = $pageInit;
+  } else {
+    Log3 $name, 4, "Nextion_parseInitAttr $name: delete page-init$number  ";
+    delete ($hash->{pages})->{"init".$number};
+  }
+  
+  if ( defined( $pageNotify ) ) {
+    Log3 $name, 4, "Nextion_parseInitAttr $name: set page-notify$number  :".Dumper($pageNotify).":";
+    ($hash->{pages})->{"notify".$number} = $pageNotify;
+  } else {
+    Log3 $name, 4, "Nextion_parseInitAttr $name: delete page-notify$number  ";
+    delete ($hash->{pages})->{"notify".$number};
+  }
+  
+  return undef;
+}
+
+#####################################
+# hash, type (notify=not 0 / init=0, number or undef for all
+sub Nextion_getPageInfo($$$) 
+{
+  my ($hash, $notify, $number) = @_;
+  my $name = $hash->{NAME};
+
+  return undef if ( ! defined( ($hash->{pages}) ) );
+  
+  $number = "" if ( ! $number );
+
+  return ($hash->{pages})->{"notify".$number} if ( $notify );
+
+  return ($hash->{pages})->{"init".$number};
+}
+
 
 ##############################################################################
 ##############################################################################
@@ -725,6 +1086,31 @@ Nextion_Ready($)
 ##
 ##############################################################################
 ##############################################################################
+
+#####################################
+sub
+Nextion_DoInit($)
+{
+  my $hash = shift;
+  my $name = $hash->{NAME};
+
+  my $ret = undef;
+  
+  ### send init commands
+  my $initCmds = Nextion_getPageInfo( $hash, 0, undef );
+    
+  Log3 $name, 3, "Nextion_DoInit $name: Execute initCommands :".(defined($initCmds)?$initCmds:"<undef>").":";
+
+  
+  ## ??? quick hack send on init always page 0 twice to ensure proper start
+  # Send command handles replaceSetMagic and splitting
+  $ret = Nextion_SendCommand( $hash, "page 0;page 0", 0 );
+
+  # Send command handles replaceSetMagic and splitting
+  $ret = Nextion_SendCommand( $hash, $initCmds, 0 ) if ( defined( $initCmds ) );
+
+  return $ret;
+}
 
 
 #####################################

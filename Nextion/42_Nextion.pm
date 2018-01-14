@@ -92,6 +92,8 @@
 #   new attr addStateEvent for event handling
 #   add rectold1-5 --> #msg611695 (similar to old1-5) for old rectext
 #   copy old readings received and rectext only if not H01 (basic confirmation) 
+#   docu for new initpages syntax
+#   doc for recPage / initCommand / recCommand
 #   
 #   
 #   
@@ -99,11 +101,8 @@
 ##############################################
 ### TODO
 #   
-#   docu for new initpages syntax
-#   docu for notifyPages
-#   doc for recPage
 #   
-#   remove ->{changed} in notify - global
+#   remove ->{changed} in notify - global --> deprecated
 #   
 #   add keep alive check - similar to loewe etc
 #   
@@ -690,6 +689,50 @@ Nextion_SendCommand($$$)
   return undef; 
 }
 
+
+#####################################
+# 
+sub
+Nextion_ReadHandleRecText($$$$)
+{
+  my ($hash, $text, $newPageId, $rechash) = @_;
+  my $name = $hash->{NAME};
+  
+  return if ( (! defined($rechash)) || ( ! $text ) );
+  
+  my $textresult;
+  
+  Log3 $name, 4, "Nextion_Read $name: page :".$newPageId.": text :".($text?$text:"<undef>").": ";
+  Log3 $name, 5, "Nextion_Read $name: page :".$newPageId.": has rechash ";
+  # check if text matches any of the expressions
+    # loop over the regexp keys and check agains text
+  foreach my $re (keys %$rechash) {   
+    if ($text =~ m/^$re$/) {           
+      # matched
+      Log3 $name, 4, "Nextion_Read $name: text :$text: matched :$re: ";
+      
+      my %specials= (
+                "%NAME" => $name,
+                "%EVENT" => $text,
+                "%PAGE" => $newPageId
+                );
+      my $exec = EvalSpecials($rechash->{$re}, %specials);
+      Log3 $name, 4, "Nextion_Read $name: exec :$exec: ";
+      my $r = AnalyzeCommandChain(undef, $exec);
+      if ( $r ) {
+        $textresult = "" if ( ! defined($textresult) );
+        $textresult .= "text: $text   returned $r";
+        Log3 $name, 4, "Nextion_Read $name: returned :$r: ";
+      }
+    }
+  }
+
+  return $textresult;
+}  
+  
+
+
+
 #####################################
 # called from the global loop, when the select for hash->{FD} reports data
 sub
@@ -748,41 +791,28 @@ Nextion_Read($@)
           # Send command handles replaceSetMagic and splitting
           Nextion_SendCommand( $hash, $initCmds, 0 ) if ( defined( $initCmds ) );
         }
-        
-        my $rechash = Nextion_getPageInfo( $hash, -1, $newPageId ); 
+
+        # handle recAttributes on text
         my $textresult;
-        
-        if ( (defined($rechash)) && ( $text ) ) {
-          Log3 $name, 4, "Nextion_Read $name: page :".$newPageId.": text :".($text?$text:"<undef>").": ";
-          Log3 $name, 5, "Nextion_Read $name: page :".$newPageId.": has rechash ";
-          # check if text matches any of the expressions
-          # loop over the regexp keys and check agains text
-          foreach my $re (keys %$rechash) {   
-            if ($text =~ m/^$re$/) {           
-              # matched
-              Log3 $name, 4, "Nextion_Read $name: text :$text: matched :$re: ";
-              
-              my %specials= (
-                        "%NAME" => $name,
-                        "%EVENT" => $text,
-                        "%PAGE" => $newPageId
-                        );
-              my $exec = EvalSpecials($rechash->{$re}, %specials);
-              Log3 $name, 4, "Nextion_Read $name: exec :$exec: ";
-              my $r = AnalyzeCommandChain(undef, $exec);
-              if ( $r ) {
-                $textresult = "" if ( ! defined($ret) );
-                $textresult .= "text: $text   returned $r";
-                Log3 $name, 4, "Nextion_Read $name: returned :$r: ";
-              }
-            }
+        if ( $text ) {
+          my $rechash;
+          
+          $rechash = Nextion_getPageInfo( $hash, -1, undef ); 
+          $textresult = Nextion_ReadHandleRecText( $hash, $text, $newPageId, $rechash );
+          
+          $rechash = Nextion_getPageInfo( $hash, -1, $newPageId ); 
+          my $r = Nextion_ReadHandleRecText( $hash, $text, $newPageId, $rechash );
+          if ( $r ) {
+            $textresult = "" if ( ! $textresult );
+            $textresult .= $r;
           }
         }
         
+       
         # copy old readings (if not H01 - in received basic confirmation)
         my $ro = ReadingsVal($name,"received",undef);
         if ( ( defined( $ro ) ) && ( $ro ne "H01" ) ) {
-          Log3 $name, 4, "Nextion_Read $name: copy old stuff for msg :$msg: ";
+          Log3 $name, 4, "Nextion_Read $name: copy old stuff for msg :$msg: old is now :$ro: ";
           if ( defined( ReadingsVal($name,"old1",undef) ) ) {
             if ( defined( ReadingsVal($name,"old2",undef) ) ) {
               if ( defined( ReadingsVal($name,"old3",undef) ) ) {
@@ -830,7 +860,7 @@ Nextion_Read($@)
         readingsBeginUpdate($hash);
         readingsBulkUpdate($hash,"received",$msg);
         readingsBulkUpdate($hash,"rectext",( (defined($text)) ? $text : "" ));
-        readingsBulkUpdate($hash,"recresult",( (defined($textresult)) ? $textresult : "" )) if ( $textresult );
+        readingsBulkUpdate($hash,"recresult",( (defined($textresult)) ? $textresult : "" )); #  if ( $textresult );
         readingsBulkUpdate($hash,"currentPage",$id) if ( ( defined( $id ) ) && ( AttrVal($name,"hasSendMe",0) ) );
 
         readingsEndUpdate($hash, 1);
@@ -1392,18 +1422,71 @@ Nextion_DecodeFromIso($)
   <ul>
     <li><code>hasSendMe &lt;0 or 1&gt;</code><br>Specify if the display definition on the Nextion display is using the "send me" checkbox to send current page on page changes. This will then change the reading currentPage accordingly
     </li> 
+    <br>
+    
 
-    <li><code>initCommands &lt;series of commands&gt;</code><br>Display will be initialized with these commands when the connection to the device is established (or reconnected). Set logic for executing perl or getting readings can be used. Multiple commands will be separated by ;<br>
-    Example<br>
-    &nbsp;&nbsp;<code>t1.txt="Hallo";p1.val=1;</code>
+    <li><code>initCommands &lt;notify-expressions (with commands) and series of init commands&gt;</code><br>If the nextion is connected the corresponding notify-expressions will be checked against the FHEM events. If matching an event the corresponding Nextion statements will be send to the display. Additionally further Nextion commands can be specified (separated by ;) that will be sent to the display on connection established.
+    <br>
+    Each notify-expression is of the format <code>[repexp] (<series of Nextion commands separated by ;>)</code> No whitespace is allowed inside the regexp.
+    The further init commands are just a series of Nextion separated by ; and without parentheses. In both command sequences set logic for executing perl or getting readings can be used. Newlines can be used to make the whole attribute more readable
+    <br>
+    Examples<br>
+    <ul>
+      <li>
+        <code>t1.txt="Hallo";p1.val=1;</code><br> send just these commands on connection achieved
+      </li> 
+      <li>
+        <code>[dummy:on.*] (p2.val=1) [dummy:off.*] (p2.val=0) </code>
+        <br>on change of the corresponding dummy state to "on" or "off" the value will be set on p2 to 1 or 0 in the Display.
+      </li> 
+      <li>
+        <code>[dummy:(on|off)] (p2.val={(return ( ( ReadingsVal("dummy","state","off") eq "on" )?1:0)  )})</code>
+        <br>similar as above but just in one statement and using replacements in the command
+      </li> 
+      <li>
+        <code>[dummy:(on|off)] (p2.val={(return ( ( ReadingsVal("dummy","state","off") eq "on" )?1:0)  )})<br>
+        t1.txt="Hallo";p1.val=1;</code>
+        <br>also specifying init commands that will be send not just for matching events but on connection established.
+      </li> 
+    </ul>
+    
     </li> 
     
-    <li><code>initPage1 &lt;series of commands&gt;</code> to <code>initPage9 &lt;series of commands&gt;</code><br>When the corresponding page number will be displayed the given commands will be sent to the display. See also initCommands.<br>
-    Example<br>
-    &nbsp;&nbsp;<code>t1.txt="Hallo";p1.val=1;</code>
+    <li><code>initPage1 &lt;define notify-expressions (with commands) and series of init commands&gt;</code>
+    <br> to <code>initPage9 ...</code><br>Similar to initCommands, but only done if the currentPage is matching the digit in the attribute. When the corresponding page number will be displayed the given notify-expression will be checked against events. In case of a match the commands will be send to the display. The initcommands will be sent to the display, when the display sends the corresponding page information, meaning it is just shown on the display. Syntax is the same as for initCommands, but the notifications will be only active if the currentPage is on the corresponding page number.
+    <br>Examples see above
     </li> 
+    <br>
 
-    <li><code>expectAnswer &lt;1 or 0&gt;</code><br>Specify if an answer from display is expected. If set to zero no answer is expected at any time on a command.
+    <li><code>recCommands &lt;define regexps (with FHEM commands)&gt;</code><br>The regexps are matched agains messages from the display (stored in reading rectext). If the corresponding regexp matches the commands are executed in FHEM. This is the other direction to initCommands, allowing to connect the display to establish changes in FHEM based on input in the display.
+    <br>
+    Each notification is of the format <code>[repexp] (<series of FHEM commands separated by ;>)</code> No whitespace is allowed inside the regexp. Newlines can be used to make the whole attribute more readable. Normal rectext results will start with a dollar sign ($) and this needs to be in the regexp (escaped). The special rectext "page..." is received when a page is newly displayed. The specials $NAME (for the FHEM Nextion device), $EVENT (for the rectext) and $PAGE (for the current display page number) are available. Similar to other FHEM environments also perl can be used either as set logic in the command or by putting the whole command in {}.
+    <br>
+    Examples<br>
+    <ul>
+      <li>
+        <code>[\$p1.val=1] (set dummy on) </code>
+        <br>on change of the corresponding val in the display the dummy state is set to "on".
+      </li> 
+      <li>
+        <code>[\$p1.val=(1|0)] (set dummy {( return (('$EVENT' =~ /=1$/)?"on":"off") )}) </code>
+        <br>on change of the corresponding val in the display the dummy state is set to "on". Be aware, that $ is a special character in perl, so putting the $EVENT expression into single quotes helps avoiding perl error messages.
+      </li> 
+      <li>
+        <code>[\$p1.val=1] (set dummy on) <br>[\$p1.val=0] (set dummy off)</code>
+        <br>similar as above but easier to read.
+      </li> 
+    </ul>
+    
+    </li> 
+    
+    <li><code>recPage1 &lt;define regexps (with FHEM commands)&gt;</code>
+    <br> to <code>recPage9 ...</code><br>When the corresponding page number is displayed newly received infos from the display (reading rectext) will be checked against the regexps in this attribute. Examples see above.
+    </li> 
+    <br>
+
+
+    <li><code>expectAnswer &lt;1 or 0&gt;</code><br>Specify if an answer from display is expected. If set to zero no answer is expected at any time on a command. <br>IMPORTANT: This is deprecated and will be removed in future versions
     </li> 
 
   </ul>

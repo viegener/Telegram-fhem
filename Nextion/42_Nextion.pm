@@ -76,8 +76,22 @@
 #   restructured sequence of functions in modulecode
 #   add notifyPage parsing
 #   change notifyPage to initCommands
-#   
-#   
+#   inital test with notify expressions and multicommand
+
+#   readded initCommands
+#   react on FHEM events with commands allowing values from FHEM
+#     Format 
+#               \[<device>:<event regexp>\]  ( commands (sep by ;) )
+#               commands (sep by ;)
+#     Attribute initPage<n> / initCommands
+#   watch on received textx - with executing commands
+#     Format \[<rectext regexp>\]  ( commands (sep by ;) )
+#     Attribute recPage<n> / recCommands
+#   watch on received textx - with executing commands
+#   check slowness on page change
+#   new attr addStateEvent for event handling
+#   add rectold1-5 --> #msg611695 (similar to old1-5) for old rectext
+#   copy old readings received and rectext only if not H01 (basic confirmation) 
 #   
 #   
 #   
@@ -85,31 +99,16 @@
 ##############################################
 ### TODO
 #   
-#   AttrVal($pn, "addStateEvent", 0)
+#   docu for new initpages syntax
+#   docu for notifyPages
+#   doc for recPage
 #   
 #   remove ->{changed} in notify - global
 #   
-#   docu for new initpages syntax
-#   docu for notifyPages
-#   
-#   
-#   react on events with commands allowing values from FHEM
-#     Format \[<device>:<event regexp>\]  ( commands (sep by ;) )
-#     Attribute initPage<n> / notifyPages
-#   
-#   
-#   watch on reading changes - with executing commands
-#     Format \[<rectext regexp>\]  ( commands (sep by ;) )
-#     Attribute recPage<n> / recPagesAll
-#   doc for recPage
-#   
-#   
 #   add keep alive check - similar to loewe etc
-#   
 #   
 #   allow also access to pages above 9?
 #   
-#   rectextold1-5 --> #msg611695
 #   timeout with checkalive check?
 #   
 #   remove wait for answer by attribute
@@ -151,6 +150,7 @@ sub Nextion_ReadAnswer($$);
 sub Nextion_Ready($);
 sub Nextion_DoInit($);
 sub Nextion_SendCommand($$$);
+sub Nextion_ParsePageAttr($$$$);
 
 #########################
 # Globals
@@ -202,11 +202,11 @@ Nextion_Initialize($)
                         "initPage5:textField-long initPage6:textField-long initPage7:textField-long initPage8:textField-long initPage9:textField-long ".
                         "recPage0:textField-long recPage1:textField-long recPage2:textField-long recPage3:textField-long recPage4:textField-long ".
                         "recPage5:textField-long recPage6:textField-long recPage7:textField-long recPage8:textField-long recPage9:textField-long ".
-                        "recPages:textField-long ".
+                        "recCommands:textField-long initCommands:textField-long addStateEvent:1,0 ".
                         $Nextion_baseAttrList;
 
   # timeout for connections - msg554933
-  $hash->{TIMEOUT} = 1;      # might be better?      0.5;       
+  $hash->{TIMEOUT} = 1;      # might be better?      0.5;        / original 1
                         
 # Normal devices
   $hash->{DefFn}   = "Nextion_Define";
@@ -359,18 +359,37 @@ sub Nextion_Attr(@) {
     my $n = $1;
     
     if ($cmd eq "set") {
-      my $ret = Nextion_parseInitAttr( $hash, $n, $aVal );
+      my $ret = Nextion_ParsePageAttr( $hash, 0, $n, $aVal );
       return "\"Nextion_Attr: \" $name for $aName failed - $ret" if ( $ret );
     } else {
-      Nextion_parseInitAttr( $hash, $n, undef );
+      Nextion_ParsePageAttr( $hash, 0, $n, undef );
     }
     
   } elsif ($aName eq "initCommands" ) {
     if ($cmd eq "set") {
-      my $ret = Nextion_parseInitAttr( $hash, undef, $aVal );
+      my $ret = Nextion_ParsePageAttr( $hash, 0, undef, $aVal );
       return "\"Nextion_Attr: \" $name for $aName failed - $ret" if ( $ret );
     } else {
-      Nextion_parseInitAttr( $hash, undef, undef );
+      Nextion_ParsePageAttr( $hash, 0, undef, undef );
+    }
+    
+   } elsif ($aName =~ /^recPage(\d+)$/ ) {
+    # handle attr with a numer in $1
+    my $n = $1;
+    
+    if ($cmd eq "set") {
+      my $ret = Nextion_ParsePageAttr( $hash, 1, $n, $aVal );
+      return "\"Nextion_Attr: \" $name for $aName failed - $ret" if ( $ret );
+    } else {
+      Nextion_ParsePageAttr( $hash, 1, $n, undef );
+    }
+    
+  } elsif ($aName eq "recCommands" ) {
+    if ($cmd eq "set") {
+      my $ret = Nextion_ParsePageAttr( $hash, 1, undef, $aVal );
+      return "\"Nextion_Attr: \" $name for $aName failed - $ret" if ( $ret );
+    } else {
+      Nextion_ParsePageAttr( $hash, 1, undef, undef );
     }
     
   } elsif ($aName eq 'hasSendMe') {
@@ -696,7 +715,7 @@ Nextion_Read($@)
   $data .= $buf;
 
   my $ret;
-  my $newPageId;
+  my $newPageId = ReadingsVal($name,"currentPage",-1)+0;
   
   while(length($data) > 0) {
 
@@ -716,15 +735,54 @@ Nextion_Read($@)
       if ( length($rcvd) > 0 ) {
       
         my ( $msg, $text, $val, $id ) = Nextion_convertMsg($rcvd);
-        if ( defined( $id ) ) {
-          if ( $id =~ /^[0-9]+$/ ) {
-            $newPageId = $id;
-          }
-        }
 
         Log3 $name, 4, "Nextion: Received message :$msg:";
+        
+        # handle received msg text for recPage
+        if ( ( defined( $id ) ) && ( $id =~ /^[0-9]+$/ ) ) {
+          $newPageId = $id + 0;
+          my $initCmds = Nextion_getPageInfo( $hash, 0, $newPageId );
+          
+          Log3 $name, 4, "Nextion_Read $name: init page  :".$newPageId.": with commands :".(defined($initCmds)?$initCmds:"<undef>").":";
 
-        if ( defined( ReadingsVal($name,"received",undef) ) ) {
+          # Send command handles replaceSetMagic and splitting
+          Nextion_SendCommand( $hash, $initCmds, 0 ) if ( defined( $initCmds ) );
+        }
+        
+        my $rechash = Nextion_getPageInfo( $hash, -1, $newPageId ); 
+        my $textresult;
+        
+        if ( (defined($rechash)) && ( $text ) ) {
+          Log3 $name, 4, "Nextion_Read $name: page :".$newPageId.": text :".($text?$text:"<undef>").": ";
+          Log3 $name, 5, "Nextion_Read $name: page :".$newPageId.": has rechash ";
+          # check if text matches any of the expressions
+          # loop over the regexp keys and check agains text
+          foreach my $re (keys %$rechash) {   
+            if ($text =~ m/^$re$/) {           
+              # matched
+              Log3 $name, 4, "Nextion_Read $name: text :$text: matched :$re: ";
+              
+              my %specials= (
+                        "%NAME" => $name,
+                        "%EVENT" => $text,
+                        "%PAGE" => $newPageId
+                        );
+              my $exec = EvalSpecials($rechash->{$re}, %specials);
+              Log3 $name, 4, "Nextion_Read $name: exec :$exec: ";
+              my $r = AnalyzeCommandChain(undef, $exec);
+              if ( $r ) {
+                $textresult = "" if ( ! defined($ret) );
+                $textresult .= "text: $text   returned $r";
+                Log3 $name, 4, "Nextion_Read $name: returned :$r: ";
+              }
+            }
+          }
+        }
+        
+        # copy old readings (if not H01 - in received basic confirmation)
+        my $ro = ReadingsVal($name,"received",undef);
+        if ( ( defined( $ro ) ) && ( $ro ne "H01" ) ) {
+          Log3 $name, 4, "Nextion_Read $name: copy old stuff for msg :$msg: ";
           if ( defined( ReadingsVal($name,"old1",undef) ) ) {
             if ( defined( ReadingsVal($name,"old2",undef) ) ) {
               if ( defined( ReadingsVal($name,"old3",undef) ) ) {
@@ -743,11 +801,36 @@ Nextion_Read($@)
           }
           $hash->{READINGS}{old1}{VAL} = $hash->{READINGS}{received}{VAL};
           $hash->{READINGS}{old1}{TIME} = $hash->{READINGS}{received}{TIME};
+          
+          # do the same for rec text (only if received is also copied)
+          if ( defined( ReadingsVal($name,"rectext",undef) ) ) {
+            if ( defined( ReadingsVal($name,"rectold1",undef) ) ) {
+              if ( defined( ReadingsVal($name,"rectold2",undef) ) ) {
+                if ( defined( ReadingsVal($name,"rectold3",undef) ) ) {
+                  if ( defined( ReadingsVal($name,"rectold4",undef) ) ) {
+                    $hash->{READINGS}{rectold5}{VAL} = $hash->{READINGS}{rectold4}{VAL};
+                    $hash->{READINGS}{rectold5}{TIME} = $hash->{READINGS}{rectold4}{TIME};
+                  }
+                  $hash->{READINGS}{rectold4}{VAL} = $hash->{READINGS}{rectold3}{VAL};
+                  $hash->{READINGS}{rectold4}{TIME} = $hash->{READINGS}{rectold3}{TIME};
+                }
+                $hash->{READINGS}{rectold3}{VAL} = $hash->{READINGS}{rectold2}{VAL};
+                $hash->{READINGS}{rectold3}{TIME} = $hash->{READINGS}{rectold2}{TIME};
+              }
+              $hash->{READINGS}{rectold2}{VAL} = $hash->{READINGS}{rectold1}{VAL};
+              $hash->{READINGS}{rectold2}{TIME} = $hash->{READINGS}{rectold1}{TIME};
+            }
+            $hash->{READINGS}{rectold1}{VAL} = $hash->{READINGS}{rectext}{VAL};
+            $hash->{READINGS}{rectold1}{TIME} = $hash->{READINGS}{rectext}{TIME};
+          }
+
         }
 
+        # handle real readings
         readingsBeginUpdate($hash);
         readingsBulkUpdate($hash,"received",$msg);
         readingsBulkUpdate($hash,"rectext",( (defined($text)) ? $text : "" ));
+        readingsBulkUpdate($hash,"recresult",( (defined($textresult)) ? $textresult : "" )) if ( $textresult );
         readingsBulkUpdate($hash,"currentPage",$id) if ( ( defined( $id ) ) && ( AttrVal($name,"hasSendMe",0) ) );
 
         readingsEndUpdate($hash, 1);
@@ -774,17 +857,17 @@ Nextion_Read($@)
   $hash->{READ_TS} = gettimeofday() if($data);
 
 
-  # initialize last page id found:
-  if ( defined( $newPageId ) ) {
-    $newPageId = $newPageId + 0;
-    my $initCmds = Nextion_getPageInfo( $hash, 0, $newPageId );
+  # # initialize last page id found:
+  # if ( defined( $newPageId ) ) {
+    # $newPageId = $newPageId + 0;
+    # my $initCmds = Nextion_getPageInfo( $hash, 0, $newPageId );
     
-    Log3 $name, 4, "Nextion_InitPage $name: page  :".$newPageId.": with commands :".(defined($initCmds)?$initCmds:"<undef>").":";
-    return if ( ! defined( $initCmds ) );
+    # Log3 $name, 4, "Nextion_InitPage $name: page  :".$newPageId.": with commands :".(defined($initCmds)?$initCmds:"<undef>").":";
+    # return if ( ! defined( $initCmds ) );
 
-    # Send command handles replaceSetMagic and splitting
-    Nextion_SendCommand( $hash, $initCmds, 0 );
-  }
+    # # Send command handles replaceSetMagic and splitting
+    # Nextion_SendCommand( $hash, $initCmds, 0 );
+  # }
 
   return $ret if(defined($local));
   return undef;
@@ -1003,12 +1086,12 @@ Nextion_parseNextCommands($$)
   
   
 #####################################
-# hash, number of page, textvalue
+# hash, init = 0 / rec = 1 (!= 0), number of page, textvalue
 # returns undef or errortext
 sub
-Nextion_parseInitAttr($$$) 
+Nextion_ParsePageAttr($$$$) 
 {
-  my ($hash, $number, $value) = @_;
+  my ($hash, $recType, $number, $value) = @_;
   my $name = $hash->{NAME};
 
   Log3 $name, 4, "Nextion_parseInitAttr $name: parse initcmds :".$number.": ";
@@ -1025,11 +1108,11 @@ Nextion_parseInitAttr($$$)
   $pageNotify = \%h;
   
   if ( $value ) {
-    Log3 $name, 5, "Nextion_parseInitAttr $name: parse initcmds :".$number.":   value :$value:";
+    Log3 $name, 5, "Nextion_ParsePageAttr $name: parse initcmds :".$number.":   value :$value:";
     # set attr value parse - in case of error return errortext
     while ( $value ne "" ) {
       ($err, $event, $cmds, $value ) = Nextion_parseNextCommands( $hash, $value );
-      Log3 $name, 5, "Nextion_parseInitAttr $name: - cmdsparsing result   err :".($err?$err:"--").
+      Log3 $name, 5, "Nextion_ParsePageAttr $name: - cmdsparsing result   err :".($err?$err:"--").
             "     event :".($event?$event:"<undef>").
             "     cmds :".($cmds?$cmds:"<undef>").
             "     value :".($value?$value:"<undef>");
@@ -1042,28 +1125,33 @@ Nextion_parseInitAttr($$$)
       }
     }
   }
+
   
-  if ( defined( $pageInit ) ) {
-    Log3 $name, 4, "Nextion_parseInitAttr $name: set page-init$number  :$pageInit:";
+  my $pname = "notify";
+  if ( $recType ) {
+    $pname = "received";
+    return "Unassigned commands :$cmds: in definition" if ( defined( $pageInit ) );
+  } elsif ( defined( $pageInit ) ) {
+    Log3 $name, 4, "Nextion_ParsePageAttr $name: set page-init$number  :$pageInit:";
     ($hash->{pages})->{"init".$number} = $pageInit;
   } else {
-    Log3 $name, 4, "Nextion_parseInitAttr $name: delete page-init$number  ";
+    Log3 $name, 4, "Nextion_ParsePageAttr $name: delete page-init$number  ";
     delete ($hash->{pages})->{"init".$number};
   }
   
   if ( defined( $pageNotify ) ) {
-    Log3 $name, 4, "Nextion_parseInitAttr $name: set page-notify$number  :".Dumper($pageNotify).":";
-    ($hash->{pages})->{"notify".$number} = $pageNotify;
+    Log3 $name, 4, "Nextion_ParsePageAttr $name: set page-notify$number  :".Dumper($pageNotify).":";
+    ($hash->{pages})->{$pname.$number} = $pageNotify;
   } else {
-    Log3 $name, 4, "Nextion_parseInitAttr $name: delete page-notify$number  ";
-    delete ($hash->{pages})->{"notify".$number};
+    Log3 $name, 4, "Nextion_ParsePageAttr $name: delete page-notify$number  ";
+    delete ($hash->{pages})->{$pname.$number};
   }
   
   return undef;
 }
 
 #####################################
-# hash, type (notify=not 0 / init=0, number or undef for all
+# hash, type (rec = -1 notify=1/ init=0, number or undef for all
 sub Nextion_getPageInfo($$$) 
 {
   my ($hash, $notify, $number) = @_;
@@ -1073,7 +1161,8 @@ sub Nextion_getPageInfo($$$)
   
   $number = "" if ( ! $number );
 
-  return ($hash->{pages})->{"notify".$number} if ( $notify );
+  return ($hash->{pages})->{"notify".$number} if ( $notify > 0 );
+  return ($hash->{pages})->{"received".$number} if ( $notify < 0 );
 
   return ($hash->{pages})->{"init".$number};
 }

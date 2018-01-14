@@ -77,7 +77,6 @@
 #   add notifyPage parsing
 #   change notifyPage to initCommands
 #   inital test with notify expressions and multicommand
-
 #   readded initCommands
 #   react on FHEM events with commands allowing values from FHEM
 #     Format 
@@ -94,6 +93,10 @@
 #   copy old readings received and rectext only if not H01 (basic confirmation) 
 #   docu for new initpages syntax
 #   doc for recPage / initCommand / recCommand
+#   recpage/reccommands handling completed
+
+#   further testing and stabilization - log messages / warnings removed
+#   
 #   
 #   
 #   
@@ -1124,7 +1127,9 @@ Nextion_ParsePageAttr($$$$)
   my ($hash, $recType, $number, $value) = @_;
   my $name = $hash->{NAME};
 
-  Log3 $name, 4, "Nextion_parseInitAttr $name: parse initcmds :".$number.": ";
+  Log3 $name, 4, "Nextion_parseInitAttr $name: parse initcmds :".($number?$number:"<global>").":   recType :".($recType?$recType:"<undef>").":";
+  
+  $number = "" if ( ! $number );
   
   # init pages in hash if not yet defined
   if ( ! defined($hash->{pages}) ) {
@@ -1166,7 +1171,7 @@ Nextion_ParsePageAttr($$$$)
     ($hash->{pages})->{"init".$number} = $pageInit;
   } else {
     Log3 $name, 4, "Nextion_ParsePageAttr $name: delete page-init$number  ";
-    delete ($hash->{pages})->{"init".$number};
+    delete( ($hash->{pages})->{"init".$number} );
   }
   
   if ( defined( $pageNotify ) ) {
@@ -1174,7 +1179,7 @@ Nextion_ParsePageAttr($$$$)
     ($hash->{pages})->{$pname.$number} = $pageNotify;
   } else {
     Log3 $name, 4, "Nextion_ParsePageAttr $name: delete page-notify$number  ";
-    delete ($hash->{pages})->{$pname.$number};
+    delete( ($hash->{pages})->{$pname.$number} );
   }
   
   return undef;

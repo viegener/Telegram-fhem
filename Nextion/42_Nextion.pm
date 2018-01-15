@@ -94,9 +94,10 @@
 #   docu for new initpages syntax
 #   doc for recPage / initCommand / recCommand
 #   recpage/reccommands handling completed
-
 #   further testing and stabilization - log messages / warnings removed
-#   
+#   remove ->{changed} in notify - global --> deprecated
+
+#   clarify examples - based on feedback - #msg748968
 #   
 #   
 #   
@@ -105,7 +106,6 @@
 ### TODO
 #   
 #   
-#   remove ->{changed} in notify - global --> deprecated
 #   
 #   add keep alive check - similar to loewe etc
 #   
@@ -227,6 +227,8 @@ Nextion_Define($$)
 
   my $name = $a[0];
   my $dev = $a[2];
+  
+  Log3 $name, 3, "Nextion_Define $name: called ";
   
   $hash->{Clients} = ":NEXTION:";
   my %matchList = ( "1:NEXTION" => ".*" );
@@ -516,7 +518,9 @@ Nextion_NotifyGlobal($$)
   my $type  = $hash->{TYPE};
 
   return if($dev->{NAME} ne "global");
-  return if(!grep(m/^INITIALIZED|REREADCFG$/, @{$dev->{CHANGED}}));
+  
+  my $events = deviceEvents($dev, 1); 
+  return if(!grep(m/^INITIALIZED|REREADCFG$/, @{$events}));
 
   if( IsDisabled($name) > 0 ) {
     readingsSingleUpdate($hash, 'state', 'disabled', 1 ) if( ReadingsVal($name,'state','' ) ne 'disabled' );
@@ -1438,18 +1442,18 @@ Nextion_DecodeFromIso($)
     Examples<br>
     <ul>
       <li>
-        <code>t1.txt="Hallo";p1.val=1;</code><br> send just these commands on connection achieved
+        <code>t1.txt="Hallo";b1.val=1;</code><br> send just these commands on connection achieved
       </li> 
       <li>
-        <code>[dummy:on.*] (p2.val=1) [dummy:off.*] (p2.val=0) </code>
-        <br>on change of the corresponding dummy state to "on" or "off" the value will be set on p2 to 1 or 0 in the Display.
+        <code>[dummy:on.*] (b2.val=1) [dummy:off.*] (b2.val=0) </code>
+        <br>on change of the corresponding dummy state to "on" or "off" the value will be set on b2 to 1 or 0 in the Display.
       </li> 
       <li>
-        <code>[dummy:(on|off)] (p2.val={(return ( ( ReadingsVal("dummy","state","off") eq "on" )?1:0)  )})</code>
+        <code>[dummy:(on|off)] (b2.val={(return ( ( ReadingsVal("dummy","state","off") eq "on" )?1:0)  )})</code>
         <br>similar as above but just in one statement and using replacements in the command
       </li> 
       <li>
-        <code>[dummy:(on|off)] (p2.val={(return ( ( ReadingsVal("dummy","state","off") eq "on" )?1:0)  )})<br>
+        <code>[dummy:(on|off)] (b2.val={(return ( ( ReadingsVal("dummy","state","off") eq "on" )?1:0)  )})<br>
         t1.txt="Hallo";p1.val=1;</code>
         <br>also specifying init commands that will be send not just for matching events but on connection established.
       </li> 
@@ -1467,19 +1471,33 @@ Nextion_DecodeFromIso($)
     <br>
     Each notification is of the format <code>[repexp] (<series of FHEM commands separated by ;>)</code> No whitespace is allowed inside the regexp. Newlines can be used to make the whole attribute more readable. Normal rectext results will start with a dollar sign ($) and this needs to be in the regexp (escaped). The special rectext "page..." is received when a page is newly displayed. The specials $NAME (for the FHEM Nextion device), $EVENT (for the rectext) and $PAGE (for the current display page number) are available. Similar to other FHEM environments also perl can be used either as set logic in the command or by putting the whole command in {}.
     <br>
+    IMPORTANT: The notify-expression must be a regexp matching the content of the rectext reading. So it must match what the display user interface is sending including the dollar sign or it must match a page command 
+    <br>
     Examples<br>
     <ul>
       <li>
-        <code>[\$p1.val=1] (set dummy on) </code>
+        <code>[\$par=1] (set dummy on) </code>
         <br>on change of the corresponding val in the display the dummy state is set to "on".
       </li> 
       <li>
-        <code>[\$p1.val=(1|0)] (set dummy {( return (('$EVENT' =~ /=1$/)?"on":"off") )}) </code>
+        <code>[\$par=(1|0)] (set dummy {( return (('$EVENT' =~ /=1$/)?"on":"off") )}) </code>
         <br>on change of the corresponding val in the display the dummy state is set to "on". Be aware, that $ is a special character in perl, so putting the $EVENT expression into single quotes helps avoiding perl error messages.
       </li> 
       <li>
         <code>[\$p1.val=1] (set dummy on) <br>[\$p1.val=0] (set dummy off)</code>
         <br>similar as above but easier to read.
+      </li> 
+      <li>
+        <code>[page 1] (set myat active)</code>
+        <br>react on page change with a command
+      </li> 
+      <li>
+        <code>[\$abasdasd] (set nextion pageCmd 1,5,6 t1.text=[dummy])</code>
+        <br>on a specific string also also again commands can be sent to the nextion (in this case via pageCmd)
+      </li> 
+      <li>
+        <code>[\$p1.val=1] (set heizung manual; set heizung temp 13) <br>[\$p1.val=0] (set heizung auto)</code>
+        <br>Do multiple commands in the first case
       </li> 
     </ul>
     

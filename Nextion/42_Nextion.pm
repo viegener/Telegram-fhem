@@ -97,15 +97,15 @@
 #   further testing and stabilization - log messages / warnings removed
 #   remove ->{changed} in notify - global --> deprecated
 #   clarify examples - based on feedback - #msg748968
-
 #   some documentation enhancements
 #   First presence components added
 #   Log entries adapted to contain name
 #   added setstate disconnected to _disconnect
 #   automatic presence check based on new attr interval (>0 all x seconds check)
 #   rebuild the readAnswer piece
-#   
-#   
+
+#   added syn presence check
+#   new attr pingtype for shell or syn
 #   
 #   
 ##############################################
@@ -115,16 +115,12 @@
 #   Add attribute for ignoring/pausing commands if not present (withh timeout)
 #   ignore/queue commands
 #   
-#   
-#   
 #   add keep alive check - similar to loewe etc
 #     if connected - send 
 #           print "%ALIVE%"
 #           get dp
 #     if no answer up to next cycle - set disconnected
 #
-#   in cyclic - do ping TCP-SYN? with display
-#   
 #   
 #   Empty result reading if no answer requested
 #   
@@ -162,6 +158,8 @@ use warnings;
 use Time::HiRes qw(gettimeofday);
 use Encode qw( decode encode );
 use Data::Dumper; 
+use Net::Ping;
+
 
 #########################
 # Forward declaration
@@ -225,7 +223,8 @@ Nextion_Initialize($)
                         "recPage0:textField-long recPage1:textField-long recPage2:textField-long recPage3:textField-long recPage4:textField-long ".
                         "recPage5:textField-long recPage6:textField-long recPage7:textField-long recPage8:textField-long recPage9:textField-long ".
                         "recCommands:textField-long initCommands:textField-long addStateEvent:1,0 ".
-                        "interval expectAnswer:1,0 disable:1,0 hasSendMe:0,1  ";
+                        "interval expectAnswer:1,0 disable:1,0 hasSendMe:0,1  ".
+                        "pingtype:shell,syn ".
                         $Nextion_baseAttrList;
 
   # timeout for connections - msg554933
@@ -497,15 +496,10 @@ sub Nextion_IsPresent($) {
     return (ReadingsVal($hash->{NAME},'presence','absent') eq 'present');
 } 
 
-sub Nextion_Presence($) {
 
-    my $hash    = shift;    
-    my $name    = $hash->{NAME};
-    
-    $hash->{helper}{RUNNING_PID} = BlockingCall("Nextion_PresenceRun", $name.'|'.$hash->{HOST}, "Nextion_PresenceDone", 15, "Nextion_PresenceAborted", $hash) unless(exists($hash->{helper}{RUNNING_PID}) );
-}
 
-sub Nextion_PresenceRun($) {
+
+sub Nextion_PresenceRunShell($) {
 
     my $string          = shift;
     my ($name, $host)   = split("\\|", $string);
@@ -527,9 +521,40 @@ sub Nextion_PresenceRun($) {
         $response = "$name|Could not execute ping command";
     }
     
-    Log3 $name, 4, "Sub Nextion_PresenceRun ($name) - Sub finish, Call Nextion_PresenceDone";
+    Log3 $name, 4, "Sub Nextion_PresenceRunShell ($name) - Sub finish, Call Nextion_PresenceDone";
     return $response;
 }
+
+sub Nextion_PresenceRunSyn($) {
+
+    my $string          = shift;
+    my ($name, $host)   = split("\\|", $string);
+    
+    my $tmp;
+    my $response;
+
+    Log3 $name, 5, "Sub Nextion_PresenceRunSyn ($name) - start";
+		
+		my $ping = Net::Ping->new("syn", 1);
+		$ping->source_verify(0); # do not verify source for responses
+		if ( $ping->ping($host))  {
+      if ( $ping->ack($host))  {
+        Log3 $name, 4, "Sub Nextion_PresenceRunSyn ($name) - alive :$host:";
+        $response = "present";
+      } else {
+        Log3 $name, 4, "Sub Nextion_PresenceRunSyn ($name) - not ack :$host:   reason :".$ping->nack($host);
+        $response = "absent";
+      }
+		} else {
+      Log3 $name, 4, "Sub Nextion_PresenceRunSyn ($name) - ping failed :$host:";
+      $response = "absent";
+		}
+		$ping->close(); 
+    
+    Log3 $name, 5, "Sub Nextion_PresenceRunSyn ($name) - Sub finish, Call Nextion_PresenceDone";
+    return "$name|$response";
+}
+
 
 sub Nextion_PresenceDone($) {
 
@@ -538,7 +563,7 @@ sub Nextion_PresenceDone($) {
     my ($name,$response)    = split("\\|",$string);
     my $hash                = $defs{$name};
     
-    
+    $defs{$name};
     delete($hash->{helper}{RUNNING_PID});
     
     Log3 $name, 4, "Sub Nextion_PresenceDone ($name) - disabled - no presence run" if($hash->{helper}{DISABLED});
@@ -551,6 +576,8 @@ sub Nextion_PresenceDone($) {
     readingsBulkUpdate($hash, "presence", $response );   
 
     readingsEndUpdate($hash, 1);   
+    
+    Log3 $name, 4, "Sub Nextion_PresenceDone ($name) - Response :$response     (old: $oPresence)" ;
     
     if ( ( $response eq "present" ) && ( $oPresence eq "absent" ) ) {
       # connect but might be still in connected state so disconnect first
@@ -575,7 +602,6 @@ sub Nextion_PresenceAborted($) {
 
     my ($hash)  = @_;
     my $name    = $hash->{NAME};
-
     
     delete($hash->{helper}{RUNNING_PID});
     readingsBeginUpdate($hash);
@@ -585,6 +611,18 @@ sub Nextion_PresenceAborted($) {
     Nextion_Disconnect($hash); 
     
     Log3 $name, 4, "Sub Nextion_PresenceAborted ($name) - The BlockingCall Process terminated unexpectedly. Timedout!";
+}
+
+sub Nextion_Presence($) {
+
+    my $hash    = shift;    
+    my $name    = $hash->{NAME};
+    
+    my $method = ( AttrVal($name, "pingtype", "shell") eq "syn" )?"Nextion_PresenceRunSyn":"Nextion_PresenceRunShell";
+    Log3 $name, 4, "Sub Nextion_Presence ($name) - Type: $method";
+    
+    $hash->{helper}{RUNNING_PID} = BlockingCall("Nextion_PresenceRunSyn", $name.'|'.$hash->{HOST}, "Nextion_PresenceDone", 15, "Nextion_PresenceAborted", $hash) unless(exists($hash->{helper}{RUNNING_PID}) );
+    
 }
 
 ####### Presence Erkennung Ende ############ 

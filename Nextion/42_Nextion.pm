@@ -96,8 +96,15 @@
 #   recpage/reccommands handling completed
 #   further testing and stabilization - log messages / warnings removed
 #   remove ->{changed} in notify - global --> deprecated
-
 #   clarify examples - based on feedback - #msg748968
+
+#   some documentation enhancements
+#   First presence components added
+#   Log entries adapted to contain name
+#   added setstate disconnected to _disconnect
+#   automatic presence check based on new attr interval (>0 all x seconds check)
+#   rebuild the readAnswer piece
+#   
 #   
 #   
 #   
@@ -105,9 +112,22 @@
 ##############################################
 ### TODO
 #   
+#   Add attribute for ignoring/pausing commands if not present (withh timeout)
+#   ignore/queue commands
+#   
 #   
 #   
 #   add keep alive check - similar to loewe etc
+#     if connected - send 
+#           print "%ALIVE%"
+#           get dp
+#     if no answer up to next cycle - set disconnected
+#
+#   in cyclic - do ping TCP-SYN? with display
+#   
+#   
+#   Empty result reading if no answer requested
+#   
 #   
 #   allow also access to pages above 9?
 #   
@@ -205,6 +225,7 @@ Nextion_Initialize($)
                         "recPage0:textField-long recPage1:textField-long recPage2:textField-long recPage3:textField-long recPage4:textField-long ".
                         "recPage5:textField-long recPage6:textField-long recPage7:textField-long recPage8:textField-long recPage9:textField-long ".
                         "recCommands:textField-long initCommands:textField-long addStateEvent:1,0 ".
+                        "interval expectAnswer:1,0 disable:1,0 hasSendMe:0,1  ";
                         $Nextion_baseAttrList;
 
   # timeout for connections - msg554933
@@ -237,6 +258,15 @@ Nextion_Define($$)
   Nextion_Disconnect($hash);
   $hash->{DeviceName} = $dev;
 
+  return "no host / port found in :$dev: - syntax: define <name> Nextion <hostname:port>" if ( $dev !~ /^([a-zA-Z0-9\._]+):([0-9]+)$/ );
+  
+  $hash->{HOST} = $1;
+  $hash->{PORT} = $2;
+  $hash->{INTERVAL} = 0;
+  
+  $hash->{DeviceName} = $dev;   
+  
+  RemoveInternalTimer($hash); 
   return undef if($dev eq "none"); # DEBUGGING
   
   my $ret;
@@ -246,6 +276,13 @@ Nextion_Define($$)
   } elsif( $hash->{STATE} ne "???" ) {
     $hash->{STATE} = "Initialized";
   }    
+  
+  if( $init_done ) {
+    InternalTimer( gettimeofday()+5, "Nextion_TimerStatusRequest", $hash, 0 );
+  } else {
+    InternalTimer( gettimeofday()+30, "Nextion_TimerStatusRequest", $hash, 0 );
+  }   
+
   return $ret;
 }
 
@@ -403,16 +440,33 @@ sub Nextion_Attr(@) {
     readingsSingleUpdate($hash, "currentPage", -1, 1);
       
   } elsif ($aName eq 'disable') {
+    my $oldVal = AttrVal($name, "disabled", 0) ;
+    RemoveInternalTimer($hash);
     if ( ( $aVal ) && ($aVal eq "1") ) {
       Nextion_Disconnect($hash);
       DevIo_setStates($hash, "disabled"); 
     } else {
-      if($hash->{READINGS}{state}{VAL} eq "disabled") {
+      if( $oldVal ) {
         DevIo_setStates($hash, "disconnected"); 
-        InternalTimer(gettimeofday()+1, "Nextion_Connect", $hash, 0);
+        Nextion_TimerStatusRequest($hash);
       }
     }
       
+  } elsif( $aName eq "interval" ) {
+    if( $cmd eq "set" ) {
+        $hash->{INTERVAL}   = $aVal;
+        RemoveInternalTimer($hash);
+        Log3 $name, 4, "Nextion ($name) - set interval: $aVal";
+        Nextion_TimerStatusRequest($hash);
+    }
+
+    elsif( $cmd eq "del" ) {
+        $hash->{INTERVAL}   = 0;
+        RemoveInternalTimer($hash);
+        Log3 $name, 4, "Nextion ($name) - delete User interval and set default: 0";
+        Nextion_TimerStatusRequest($hash);
+    }
+        
   } elsif ($aName eq 'unsupported') {
     if ( $aVal !~ /^[[:digit:]]+$/ ) {
       return "\"Nextion_Attr: \" unsupported"; 
@@ -434,7 +488,144 @@ sub Nextion_Attr(@) {
 ##############################################################################
 ##############################################################################
 
-  
+
+#######################################################
+############ Presence Erkennung Begin #################
+#######################################################
+sub Nextion_IsPresent($) {
+    my $hash = shift;
+    return (ReadingsVal($hash->{NAME},'presence','absent') eq 'present');
+} 
+
+sub Nextion_Presence($) {
+
+    my $hash    = shift;    
+    my $name    = $hash->{NAME};
+    
+    $hash->{helper}{RUNNING_PID} = BlockingCall("Nextion_PresenceRun", $name.'|'.$hash->{HOST}, "Nextion_PresenceDone", 15, "Nextion_PresenceAborted", $hash) unless(exists($hash->{helper}{RUNNING_PID}) );
+}
+
+sub Nextion_PresenceRun($) {
+
+    my $string          = shift;
+    my ($name, $host)   = split("\\|", $string);
+    
+    my $tmp;
+    my $response;
+
+    
+    $tmp = qx(ping -c 3 -w 2 $host 2>&1);
+
+    if(defined($tmp) and $tmp ne "") {
+    
+        chomp $tmp;
+        Log3 $name, 5, "Nextion ($name) - ping command returned with output:\n$tmp";
+        $response = "$name|".(($tmp =~ /\d+ [Bb]ytes (from|von)/ and not $tmp =~ /[Uu]nreachable/) ? "present" : "absent");
+    
+    } else {
+    
+        $response = "$name|Could not execute ping command";
+    }
+    
+    Log3 $name, 4, "Sub Nextion_PresenceRun ($name) - Sub finish, Call Nextion_PresenceDone";
+    return $response;
+}
+
+sub Nextion_PresenceDone($) {
+
+    my ($string)            = @_;
+    
+    my ($name,$response)    = split("\\|",$string);
+    my $hash                = $defs{$name};
+    
+    
+    delete($hash->{helper}{RUNNING_PID});
+    
+    Log3 $name, 4, "Sub Nextion_PresenceDone ($name) - disabled - no presence run" if($hash->{helper}{DISABLED});
+    return if($hash->{helper}{DISABLED});
+    
+    # check old presence
+    my $oPresence = ReadingsVal($name,"presence","absent");
+
+    readingsBeginUpdate($hash);
+    readingsBulkUpdate($hash, "presence", $response );   
+
+    readingsEndUpdate($hash, 1);   
+    
+    if ( ( $response eq "present" ) && ( $oPresence eq "absent" ) ) {
+      # connect but might be still in connected state so disconnect first
+      Nextion_Disconnect($hash);
+      delete $hash->{DevIoJustClosed} if($hash->{DevIoJustClosed});   
+      delete($hash->{NEXT_OPEN}); # needed ? - can this ever occur
+      Nextion_Connect( $hash, 1 );       Nextion_Connect( $hash, 1 );
+      Log3 $name, 4, "Sub Nextion_PresenceDone ($name) - Reconnect";
+    } elsif ( ( $response eq "absent" ) && ( $oPresence eq "present" ) ) {
+      # just disconnect
+      Nextion_Disconnect($hash);
+      Log3 $name, 4, "Sub Nextion_PresenceDone ($name) - Disconnect";
+    } elsif ( ( $response eq "present" ) && ( ReadingsVal($name,"state","unknown") ne "opened" ) ) {
+      Nextion_Connect( $hash, 1 );       Nextion_Connect( $hash, 1 );
+      Log3 $name, 4, "Sub Nextion_PresenceDone ($name) - Connect";
+    }
+    
+    Log3 $name, 4, "Sub Nextion_PresenceDone ($name) - Done!";
+}
+
+sub Nextion_PresenceAborted($) {
+
+    my ($hash)  = @_;
+    my $name    = $hash->{NAME};
+
+    
+    delete($hash->{helper}{RUNNING_PID});
+    readingsBeginUpdate($hash);
+    readingsBulkUpdate($hash, "presence", 'timedout' );   
+    readingsEndUpdate($hash, 1);   
+    
+    Nextion_Disconnect($hash); 
+    
+    Log3 $name, 4, "Sub Nextion_PresenceAborted ($name) - The BlockingCall Process terminated unexpectedly. Timedout!";
+}
+
+####### Presence Erkennung Ende ############ 
+
+
+#######################################################
+############ timer handlng            #################
+#######################################################
+sub Nextion_TimerStatusRequest($) {
+
+    my $hash        = shift;
+    my $name        = $hash->{NAME};
+    
+    Log3 $name, 4, "Sub Nextion_TimerStatusRequest ($name) - started";
+    
+    # Do nothing when disabled (also for intervals)
+    if ( ( $init_done ) && (! IsDisabled( $name )) ) {
+    
+        if(Nextion_IsPresent( $hash )) {
+        
+          Log3 $name, 4, "Sub Nextion_TimerStatusRequest ($name) - is present";
+          
+          ### TODO - Do something after if presence again reached (to be checed) 
+          
+        }
+
+        # start blocking presence call
+        Nextion_Presence($hash);
+
+    }
+      
+    Log3 $name, 5, "Sub Nextion_TimerStatusRequest ($name) - Done - new sequence - ".$hash->{INTERVAL}." s";
+    if ( $hash->{INTERVAL} > 0 ) {
+      # only new timer if not disabled
+      InternalTimer( gettimeofday()+$hash->{INTERVAL}, "Nextion_TimerStatusRequest", $hash, 0 ) if (! IsDisabled( $name ));
+    } elsif (! IsDisabled( $name )) {
+      readingsSingleUpdate ( $hash, "presence", "disabled", 1 );
+    }
+
+} 
+
 ######################################
 sub Nextion_IsConnected($)
 {
@@ -460,6 +651,7 @@ sub Nextion_Disconnect($)
 
   Log3 $name, 4, "Nextion_Disconnect: $name";
   DevIo_CloseDev($hash);
+  DevIo_setStates($hash, "disconnected"); 
 } 
 
 ######################################
@@ -640,8 +832,8 @@ Nextion_SendSingleCommand($$$)
 
   DevIo_SimpleWrite($hash, $isoMsg."\xff\xff\xff", 0);
   $err =  Nextion_ReadAnswer($hash, $isoMsg) if ( $answer );
-  Log3 $name, 1, "Nextion_SendCommand Error :".$err.": " if ( defined($err) );
-  Log3 $name, 4, "Nextion_SendCommand Success " if ( ! defined($err) );
+  Log3 $name, 1, "Nextion_SendCommand $name: Error :".$err.": on command :$msg:" if ( defined($err) );
+  Log3 $name, 4, "Nextion_SendCommand $name: Success " if ( ! defined($err) );
   
    # Also set sentMsg Id and result in Readings
   readingsBeginUpdate($hash);
@@ -796,7 +988,7 @@ Nextion_Read($@)
           Log3 $name, 4, "Nextion_Read $name: init page  :".$newPageId.": with commands :".(defined($initCmds)?$initCmds:"<undef>").":";
 
           # Send command handles replaceSetMagic and splitting
-          Nextion_SendCommand( $hash, $initCmds, 0 ) if ( defined( $initCmds ) );
+          Nextion_SendCommand( $hash, $initCmds, 1 ) if ( defined( $initCmds ) );
         }
 
         # handle recAttributes on text
@@ -923,31 +1115,16 @@ Nextion_ReadAnswer($$)
 
   return "No FD (dummy device?)" if(!$hash || ($^O !~ /Win/ && !defined($hash->{FD})));
 
-  my $data = "";
-  
-  for(;;) {
-    return "Device lost when reading answer for get $arg" if(!$hash->{FD});
-    my $rin = '';
-    vec($rin, $hash->{FD}, 1) = 1;
-    my $nfound = select($rin, undef, undef, 1);
-    if($nfound < 0) {
-      next if ($! == EAGAIN() || $! == EINTR() || $! == 0);
-      my $err = $!;
-      DevIo_Disconnected($hash);
-      return"Nextion_ReadAnswer $arg: $err";
-    }
-    return "Timeout reading answer for get $arg" if($nfound == 0); 
-
-    my $buf = DevIo_SimpleRead($hash);
-    return "No data" if(!defined($buf));
-
     my $ret;
-    
-    my $data .= $buf;
-    
+  # test
+  my $data = DevIo_SimpleReadWithTimeout( $hash, 0.2 );
+  return "No data" if(!defined($data));
+  
+  Log3 $name, 4, "Nextion_ReadAnswer $name: Message read :$data:  length: ".length($data);
+ 
     # not yet long enough select again
 #    next if ( length($data) < 4 );
-    
+
     # TODO: might have to check for remaining data in buffer?
     if ( $data =~ /^\xff*([^\xff])\xff\xff\xff(.*)$/ ) {
       my $rcvd = $1;
@@ -958,8 +1135,10 @@ Nextion_ReadAnswer($$)
     } elsif ( length($data) == 0 )  {
       $ret = "No answer";
     } else {
-      $ret = "Message received";
+#      Log3 $name, 4, "Nextion_ReadAnswer $name: Message received :$data:  length: ".length($data)."  code char: ".ord($data);
+      $ret = "Message received :$data:  length: ".length($data)."  code char: ".ord($data);
     }
+    Log3 $name, 4, "Nextion_ReadAnswer $name: Message received :$data:  length: ".length($data)."  code char: ".ord($data);
     
     # read rest of buffer direct in read function
     if ( length($data) > 0 ) {
@@ -967,7 +1146,7 @@ Nextion_ReadAnswer($$)
     }
 
     return (($ret eq $Nextion_errCodes{"\x01"}) ? undef : $ret);
-  }
+#  }
 }
 
 ##############################################################################
@@ -1072,7 +1251,7 @@ Nextion_parseNextCommands($$)
       $cmds .= substr($text, 0, $p);
       $text = substr($text, $p );
 
-      Log3 $name, 5, "Nextion_parseNextCommands $name   pos $p    poschar $poschar    cmds :".$cmds.
+      Log3 $name, 5, "Nextion_parseNextCommands $name:   pos $p    poschar $poschar    cmds :".$cmds.
             "     remaining :".$text.":";
 
       if ( $poschar eq ')' ) {
@@ -1227,7 +1406,7 @@ Nextion_DoInit($)
   ### send init commands
   my $initCmds = Nextion_getPageInfo( $hash, 0, undef );
     
-  Log3 $name, 3, "Nextion_DoInit $name: Execute initCommands :".(defined($initCmds)?$initCmds:"<undef>").":";
+  Log3 $name, 4, "Nextion_DoInit $name: Execute initCommands :".(defined($initCmds)?$initCmds:"<undef>").":";
 
   
   ## ??? quick hack send on init always page 0 twice to ensure proper start
@@ -1235,7 +1414,7 @@ Nextion_DoInit($)
   $ret = Nextion_SendCommand( $hash, "page 0;page 0", 0 );
 
   # Send command handles replaceSetMagic and splitting
-  $ret = Nextion_SendCommand( $hash, $initCmds, 0 ) if ( defined( $initCmds ) );
+  $ret = Nextion_SendCommand( $hash, $initCmds, 1 ) if ( defined( $initCmds ) );
 
   return $ret;
 }
@@ -1429,7 +1608,7 @@ Nextion_DecodeFromIso($)
   <b>Attributes</b>
   <br><br>
   <ul>
-    <li><code>hasSendMe &lt;0 or 1&gt;</code><br>Specify if the display definition on the Nextion display is using the "send me" checkbox to send current page on page changes. This will then change the reading currentPage accordingly
+    <li><code>hasSendMe &lt;0 or 1&gt;</code><br>Specify if the display definition on the Nextion display is using the "send me" checkbox to send current page on page changes. This will then change the reading currentPage accordingly. initPage... commands can only be used if the display has a sendme option
     </li> 
     <br>
     

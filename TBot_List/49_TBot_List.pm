@@ -78,6 +78,10 @@
 #   confirm add unsolicited configurable as attribute confirmUnsolicited 
 # 0.6 2017-07-16   confirmDelete & confirmUnsolicited
 #   
+#   added list getter for simple text list with \n and empty string if no entries
+#   
+#   
+#   
 ##############################################################################
 # TASKS 
 #   
@@ -342,7 +346,12 @@ sub TBot_List_Get($@)
 
   } elsif($cmd eq "textList") {
     $ret = TBot_List_getTextList($hash);
-  
+    
+  } elsif($cmd eq "list") {
+    my @list = TBot_List_getList( $hash );
+    $ret = "";
+    $ret = join("\n", @list ) if ( scalar( @list ) != 0 );
+    
   } elsif($cmd eq 'queryAnswer') {
     # parameters cmd - queryAnswer <tbot> <peer> <querydata> 
     if ( $numberOfArgs != 4 ) {
@@ -1257,6 +1266,7 @@ sub TBot_List_Setup($) {
   my %gets = (
     "queryAnswer" => undef,
     "textList" => undef,
+    "list" => undef,
 
   );
 
@@ -1342,6 +1352,9 @@ sub TBot_List_Setup($) {
     </li>
     
     <li><code>textList</code><br>Returns a multiline string containing the list elements or <Leer>  
+    </li>
+    
+    <li><code>list</code><br>Returns a multiline string containing the list elements or an empty String  
     </li>
     
   </ul>

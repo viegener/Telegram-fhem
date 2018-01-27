@@ -269,7 +269,7 @@ sub TBot_List_Set($@)
         $tchat = ReadingsVal( $tbot, "msgChatId", undef );
         $tpeer = ReadingsVal( $tbot, "msgPeerId", "" );
       } else {
-        $tpeer = fhem( "get $tbot peerId ".$args[1] );
+        $tpeer = AnalyzeCommandChain( $hash, "get $tbot peerId ".$args[1] );
       }
       $ret = "No peer found or specified :$tbot: ".(( $numberOfArgs == 2 )?"":$args[1]) if ( ! $tpeer );
     }  
@@ -303,7 +303,7 @@ sub TBot_List_Set($@)
     }  
     
     if ( ! $ret ) {
-      $tpeer = fhem( "get $tbot peerId ".$args[1], 1 );
+      $tpeer = AnalyzeCommandChain( $hash, "get $tbot peerId ".$args[1], 1 );
       $ret = "No peer found or specified :$tbot: ".$args[1] if ( ! $tpeer );
     }  
   
@@ -375,7 +375,7 @@ sub TBot_List_Get($@)
           $ret = "No telegramBot specified :$tbot:" if ( ! TBot_List_isTBot( $hash, $tbot ) );
         }
         if ( ! $ret ) {
-          $tpeer = fhem( "get $tbot peerId ".$args[2] );
+          $tpeer = AnalyzeCommandChain( $hash, "get $tbot peerId ".$args[2] );
           $ret = "No peer specified :$tbot: ".$args[2] if ( ! $tpeer );
         }
         
@@ -783,7 +783,7 @@ sub TBot_List_handler($$$$;$)
 
     if ( defined($msgId ) ) {
       # show final list 
-      fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
+      AnalyzeCommandChain( $hash, "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
       TBot_List_setMsgId( $hash, $tbot, $chatId );
       TBot_List_setMsgId( $hash, $tbot, $peer, undef, "chat" );
     } else {
@@ -844,7 +844,7 @@ sub TBot_List_handler($$$$;$)
       TBot_List_setMsgId( $hash, $tbot, $peer, $chatId, "chat" );
       
       # send msg and keys
-      fhem( "set ".$tbot." queryInline ".'@'.$chatId." $inline $textmsg" );
+      AnalyzeCommandChain( $hash, "set ".$tbot." queryInline ".'@'.$chatId." $inline $textmsg" );
       
     } else {
       if ( defined($msgId ) ) {

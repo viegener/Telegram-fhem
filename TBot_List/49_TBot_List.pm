@@ -80,7 +80,7 @@
 #   
 #   added list getter for simple text list with \n and empty string if no entries
 #   switched from fhem( calls to AnalyzeCommandChain
-#   
+#   added count getter for count of list entries
 #   
 ##############################################################################
 # TASKS 
@@ -351,6 +351,10 @@ sub TBot_List_Get($@)
     my @list = TBot_List_getList( $hash );
     $ret = "";
     $ret = join("\n", @list ) if ( scalar( @list ) != 0 );
+    
+  } elsif($cmd eq "count") {
+    my @list = TBot_List_getList( $hash );
+    $ret = scalar( @list );
     
   } elsif($cmd eq 'queryAnswer') {
     # parameters cmd - queryAnswer <tbot> <peer> <querydata> 
@@ -1267,6 +1271,7 @@ sub TBot_List_Setup($) {
     "queryAnswer" => undef,
     "textList" => undef,
     "list" => undef,
+    "count" => undef,
 
   );
 

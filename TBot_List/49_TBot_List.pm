@@ -79,7 +79,7 @@
 # 0.6 2017-07-16   confirmDelete & confirmUnsolicited
 #   
 #   added list getter for simple text list with \n and empty string if no entries
-#   
+#   switched from fhem( calls to AnalyzeCommandChain
 #   
 #   
 ##############################################################################
@@ -849,7 +849,7 @@ sub TBot_List_handler($$$$;$)
     } else {
       if ( defined($msgId ) ) {
         # show new list 
-        fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
+        AnalyzeCommandChain( $hash, "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
       } else {
         $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
       }
@@ -871,7 +871,7 @@ sub TBot_List_handler($$$$;$)
         my $inline = "(".TBot_List_inlinekey( $hash, "Entfernen", $indata )."|".
                    TBot_List_inlinekey( $hash, "Aendern", "list_askchg-$no" )."|".
                    TBot_List_inlinekey( $hash, "Nach Oben", "list_totop-$no" )."|".TBot_List_inlinekey( $hash, "Zurueck", "list_edit" ).")";
-        fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
+        AnalyzeCommandChain( $hash, "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
       } else {
         $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
       }
@@ -895,8 +895,8 @@ sub TBot_List_handler($$$$;$)
 
       my $text = join(",", @list );
       
-      fhem( "set ".TBot_List_getConfigPostMe($hash)." clear $lname " );
-      fhem( "set ".TBot_List_getConfigPostMe($hash)." add $lname $text" );
+      AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." clear $lname " );
+      AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." add $lname $text" );
     
       # show updated list -> call recursively
       TBot_List_handler( $hash,  "list_edit", $tbot, $peer, " Nach oben gesetzt" );
@@ -915,7 +915,7 @@ sub TBot_List_handler($$$$;$)
         my $textmsg = "Liste ".$lname."\nSoll der Eintrag ".($no+1)." (".$list[$no].") entfernt werden?";
         # show ask msg 
         my $inline = "(".TBot_List_inlinekey( $hash, "Ja", "list_remyes-$no" )."|".TBot_List_inlinekey( $hash, "Nein", "list_edit" ).")";
-        fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
+        AnalyzeCommandChain( $hash, "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
       } else {
         $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
       }
@@ -933,8 +933,8 @@ sub TBot_List_handler($$$$;$)
 
       my $text = join(",", @list );
       
-      fhem( "set ".TBot_List_getConfigPostMe($hash)." clear $lname " );
-      fhem( "set ".TBot_List_getConfigPostMe($hash)." add $lname $text" );
+      AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." clear $lname " );
+      AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." add $lname $text" );
       
       # show updated list -> call recursively
       TBot_List_handler( $hash,  "list_edit", $tbot, $peer, " Eintrag geloescht" );
@@ -950,7 +950,7 @@ sub TBot_List_handler($$$$;$)
       # show menu msg 
       my $inline = "(".TBot_List_inlinekey( $hash, "Sortieren", "list_asksrt" )."|".TBot_List_inlinekey( $hash, "Leeren", "list_askclr" )."|".
                 TBot_List_inlinekey( $hash, "Zurück", "list_edit" ).")";
-      fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
+      AnalyzeCommandChain( $hash, "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
     } else {
       $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
     }
@@ -964,7 +964,7 @@ sub TBot_List_handler($$$$;$)
       # show ask msg 
       my $inline = "(".TBot_List_inlinekey( $hash, "Ja - von A-Z", "list_srtyes1" )."|".TBot_List_inlinekey( $hash, "Ja - von Z-A", "list_srtyes2" )."|".
                 TBot_List_inlinekey( $hash, "Nein", "list_edit" ).")";
-      fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
+      AnalyzeCommandChain( $hash, "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
     } else {
       $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
     }
@@ -982,8 +982,8 @@ sub TBot_List_handler($$$$;$)
         @list = sort {$b cmp $a} @list;
       }
       my $text = join( ",", @list );
-      fhem( "set ".TBot_List_getConfigPostMe($hash)." clear $lname " );
-      fhem( "set ".TBot_List_getConfigPostMe($hash)." add $lname $text" );     
+      AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." clear $lname " );
+      AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." add $lname $text" );     
     }
     
     # show updated list -> call recursively
@@ -998,7 +998,7 @@ sub TBot_List_handler($$$$;$)
       my $textmsg = "Liste ".$lname."\nSoll die gesamte Liste ".scalar(@list)." Einträge gelöscht werden?";
       # show ask msg 
       my $inline = "(".TBot_List_inlinekey( $hash, "Ja - Liste löschen", "list_clryes" )."|".TBot_List_inlinekey( $hash, "Nein", "list_edit" ).")";
-      fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
+      AnalyzeCommandChain( $hash, "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
     } else {
       $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
     }
@@ -1006,7 +1006,7 @@ sub TBot_List_handler($$$$;$)
   #####################  
   } elsif ( $cmd eq "list_clryes" ) {
     # means remove all entries - now it is confirmed
-    fhem( "set ".TBot_List_getConfigPostMe($hash)." clear $lname " );
+    AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." clear $lname " );
 
     # show updated list -> call recursively
     TBot_List_handler( $hash,  "list_edit", $tbot, $peer, " Liste geloescht" );
@@ -1022,7 +1022,7 @@ sub TBot_List_handler($$$$;$)
     TBot_List_setMsgId( $hash, $tbot, $chatId, $textmsg, "textmsg" );
     
     # means ask for an entry to be added to the list
-    fhem( "set ".$tbot." msgForceReply ".'@'.$chatId." $textmsg" );
+    AnalyzeCommandChain( $hash, "set ".$tbot." msgForceReply ".'@'.$chatId." $textmsg" );
 
   #####################  
   } elsif ( $cmd eq "list_add" ) {
@@ -1037,11 +1037,11 @@ sub TBot_List_handler($$$$;$)
         $text .= ",".$entry ;
       }
        
-      fhem( "set ".TBot_List_getConfigPostMe($hash)." clear $lname " );
-      fhem( "set ".TBot_List_getConfigPostMe($hash)." add $lname $text" );
+      AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." clear $lname " );
+      AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." add $lname $text" );
     
     } else {
-      fhem( "set ".TBot_List_getConfigPostMe($hash)." add $lname ".$arg );
+      AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." add $lname ".$arg );
     }
     
     if ( defined($msgId ) ) {
@@ -1071,7 +1071,7 @@ sub TBot_List_handler($$$$;$)
       TBot_List_setMsgId( $hash, $tbot, $chatId, $textmsg, "textmsg" );
 
       # means ask for an entry to be added to the list
-      fhem( "set ".$tbot." msgForceReply ".'@'.$chatId." $textmsg" );
+      AnalyzeCommandChain( $hash, "set ".$tbot." msgForceReply ".'@'.$chatId." $textmsg" );
       
     }
 
@@ -1093,8 +1093,8 @@ sub TBot_List_handler($$$$;$)
         }
         $nre++;
       }
-      fhem( "set ".TBot_List_getConfigPostMe($hash)." clear $lname " );
-      fhem( "set ".TBot_List_getConfigPostMe($hash)." add $lname $text" );
+      AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." clear $lname " );
+      AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." add $lname $text" );
     }
     
     if ( defined($msgId ) ) {
@@ -1121,7 +1121,7 @@ sub TBot_List_handler($$$$;$)
       
       if ( AttrVal($name,'confirmUnsolicited',1) ) {
         my $inline = "(".TBot_List_inlinekey( $hash, "Ja", "list_expaddyes" )."|".TBot_List_inlinekey( $hash, "Nein", "list_edit" ).")";
-        fhem( "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
+        AnalyzeCommandChain( $hash, "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
       } else {
         # directly add entry  --> call recursively
         TBot_List_handler( $hash,  "list_expaddyes", $tbot, $peer );  
@@ -1137,7 +1137,7 @@ sub TBot_List_handler($$$$;$)
     my $addentry =  TBot_List_getMsgId( $hash, $tbot, $chatId, "expadd" );
 
     if ( defined($addentry ) ) {
-      fhem( "set ".TBot_List_getConfigPostMe($hash)." add $lname ".$addentry );
+      AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." add $lname ".$addentry );
       # show list again -> call recursively
       if ( defined($msgId ) ) {
         TBot_List_handler( $hash,  "list_edit", $tbot, $peer, " Eintrag hinzugefuegt" );

@@ -103,9 +103,29 @@
 #   added setstate disconnected to _disconnect
 #   automatic presence check based on new attr interval (>0 all x seconds check)
 #   rebuild the readAnswer piece
-
 #   added syn presence check
 #   new attr pingtype for shell or syn
+
+#   new attr sendQueue for sending commands in one
+#   new default sendQueue 1 
+#   doc sendQuueue
+#   new (less blocking architecture) - with expect Answer
+#    queue is a command and a page
+#      Put all commands into a queue
+#      Start queue
+#        take first command and send
+#        set timer for 0.5 sec
+#        return
+#    on read
+#      stop timer
+#      if page command - empty queue
+#      handle value
+#      check if commands in queue
+#        do start queue
+#    on timer
+#      check if commands in queue
+#        do start queue
+#   
 #   
 #   
 ##############################################
@@ -169,7 +189,7 @@ sub Nextion_Write($$$);
 sub Nextion_ReadAnswer($$);
 sub Nextion_Ready($);
 sub Nextion_DoInit($);
-sub Nextion_SendCommand($$$);
+sub Nextion_SendCommand($$$;$);
 sub Nextion_ParsePageAttr($$$$);
 
 #########################
@@ -224,7 +244,7 @@ Nextion_Initialize($)
                         "recPage5:textField-long recPage6:textField-long recPage7:textField-long recPage8:textField-long recPage9:textField-long ".
                         "recCommands:textField-long initCommands:textField-long addStateEvent:1,0 ".
                         "interval expectAnswer:1,0 disable:1,0 hasSendMe:0,1  ".
-                        "pingtype:shell,syn ".
+                        "pingtype:shell,syn sendQueue:1,0 ".
                         $Nextion_baseAttrList;
 
   # timeout for connections - msg554933
@@ -264,6 +284,9 @@ Nextion_Define($$)
   $hash->{INTERVAL} = 0;
   
   $hash->{DeviceName} = $dev;   
+  
+  my %queuehandler = ( devicehash => $hash );
+  $hash->{queuehandler} = \%queuehandler;
   
   RemoveInternalTimer($hash); 
   return undef if($dev eq "none"); # DEBUGGING
@@ -563,7 +586,6 @@ sub Nextion_PresenceDone($) {
     my ($name,$response)    = split("\\|",$string);
     my $hash                = $defs{$name};
     
-    $defs{$name};
     delete($hash->{helper}{RUNNING_PID});
     
     Log3 $name, 4, "Sub Nextion_PresenceDone ($name) - disabled - no presence run" if($hash->{helper}{DISABLED});
@@ -840,6 +862,25 @@ sub Nextion_Notify($$)
 
 #####################################
 sub
+Nextion_SendTimeout($)
+{
+  
+  # does not get normal hash - but queuehandler
+  my $qhhash        = shift;
+  
+  my $hash = $qhhash->{devicehash};
+  my $name        = $hash->{NAME};   
+  
+  Log3 $name, 4, "Sub Nextion_SendTimeout ($name) - timeout reached - continue sending"; 
+  
+  Nextion_SendCommand( $hash, undef, 1, undef  );
+  
+}
+
+
+
+#####################################
+sub
 Nextion_Write($$$)
 {
   my ($hash,$fn,$msg) = @_;
@@ -851,12 +892,21 @@ Nextion_Write($$$)
 
 #####################################
 sub
+Nextion_PrepareCommand($)
+{
+  my ($msg) = @_;
+
+  my $isoMsg = Nextion_EncodeToIso($msg);
+
+  return $isoMsg."\xff\xff\xff";
+}
+
+#####################################
+sub
 Nextion_SendSingleCommand($$$)
 {
   my ($hash,$msg,$answer) = @_;
   my $name = $hash->{NAME};
-
-  $answer = 0 if ( ! AttrVal($name,"expectAnswer",0) ); 
 
   # ??? handle answer
   my $err;
@@ -866,10 +916,10 @@ Nextion_SendSingleCommand($$$)
 
   Log3 $name, 4, "Nextion_SendCommand $name: send command :".$msg.": ";
   
-  my $isoMsg = Nextion_EncodeToIso($msg);
+  my $prepMsg = Nextion_PrepareCommand($msg);
 
-  DevIo_SimpleWrite($hash, $isoMsg."\xff\xff\xff", 0);
-  $err =  Nextion_ReadAnswer($hash, $isoMsg) if ( $answer );
+  DevIo_SimpleWrite($hash, $prepMsg, 0);
+  $err =  Nextion_ReadAnswer($hash, $msg) if ( $answer );
   Log3 $name, 1, "Nextion_SendCommand $name: Error :".$err.": on command :$msg:" if ( defined($err) );
   Log3 $name, 4, "Nextion_SendCommand $name: Success " if ( ! defined($err) );
   
@@ -884,38 +934,147 @@ Nextion_SendSingleCommand($$$)
 
 #####################################
 sub
-Nextion_SendCommand($$$)
+Nextion_QueuedSendCommand($$$;$$)
+{
+  my ( $hash, @args) = @_;
+
+  my ( $msg, $page, $optPar, $retryCount) = @args;   
+  my $name = $hash->{NAME};
+  
+  my $ret; 
+
+  Log3 $name, 4, "Nextion_QueuedSendCommand $name: send commands :".($msg?"has message":"exec queue").": ";
+
+  $retryCount = 0 if ( ! defined( $retryCount ) ); 
+    
+  # ensure actionQueue exists
+  $hash->{actionQueue} = [] if ( ! defined( $hash->{actionQueue} ) ); 
+    
+  # add commands to end of queue if msg set
+  
+  if ( $msg ) {
+    Log3 $name, 4, "Nextion_QueuedSendCommand $name: queue message :".$msg.": ";
+    ## Split commands into separate elements at single semicolons (escape double ;; before)
+    $msg =~ s/;;/SeMiCoLoN/g; 
+    
+    $msg =~ s/[\n\r]//sg; 
+    
+    Log3 $name, 4, "Nextion_QueuedSendCommand $name: modified message :".$msg.": ";
+    
+    my @msgList = split(";", $msg);
+    
+    my $singleMsg;
+    while(defined($singleMsg = shift @msgList)) {
+      $singleMsg =~ s/SeMiCoLoN/;/g;
+      my @sargs = ( $singleMsg, $page, $optPar, $retryCount );
+      push( @{ $hash->{actionQueue} }, \@sargs );   
+    }
+  }
+  
+  # if connected TODO???
+  
+  # take first command from queue for execution
+  my $ref;
+  my $cpage = ReadingsVal($name,"currentPage",-1); 
+  
+  while ( scalar( @{ $hash->{actionQueue} } ) > 0 ) {  
+    $ref  = shift @{ $hash->{actionQueue} };   
+    
+    if ( (@$ref[1]) = $cpage ) {
+      last;     
+    } else {
+      $ref = undef; 
+    }
+  }
+
+  # found a command 
+  if ( defined($ref) ) {   
+    my $singleMsg = @$ref[0];
+    $page = @$ref[1];
+    $optPar = @$ref[2];
+    $retryCount = @$ref[3];
+  
+    my ($err, @a) = ReplaceSetMagic($hash, 0, ( $singleMsg ) );
+    if ( $err ) {
+      Log3 $name, 1, "$name: Nextion_QueuedSendCommand failed on ReplaceSetmagic with :$err: on commands :$singleMsg:";
+    } else {
+      $singleMsg = join(" ", @a);
+      Log3 $name, 4, "$name: Nextion_QueuedSendCommand ReplaceSetmagic commands after :".$singleMsg.":";
+    }   
+    
+    my $prepMsg = Nextion_PrepareCommand($singleMsg);
+
+    DevIo_SimpleWrite($hash, $prepMsg, 0); 
+     
+  } else {
+    Log3 $name, 4, "$name: Nextion_QueuedSendCommand - no command to send";
+  }
+  
+  Log3 $name, 5, "$name: Nextion_QueuedSendCommand - start timer";
+    
+  # start timer for timeout on next command - if a queue entry is left or if a command has been sent
+  InternalTimer( gettimeofday()+0.5, "Nextion_SendTimeout", $hash->{queuehandler}, 0 ) if ( ( defined($ref) ) || ( scalar( @{ $hash->{actionQueue} } ) > 0 ) );
+    
+  return $ret; 
+}
+
+
+#####################################
+sub
+Nextion_SendCommand($$$;$)
+{
+  my ($hash,$msg,$answer,$page) = @_;
+  my $name = $hash->{NAME};
+  my $ret; 
+  
+  Log3 $name, 5, "Nextion_SendCommand $name: send commands :".($msg?$msg:"<undef>").": ";
+  
+  if ( AttrVal($name,"sendQueue",1) ) {
+    # handle queued sending
+    $ret = Nextion_QueuedSendCommand($hash,$msg,$page);
+  } else {
+    $answer = 0 if ( ! AttrVal($name,"expectAnswer",0) ); 
+  
+    $ret = Nextion_BasicSendCommand($hash,$msg,$answer);
+  }
+    
+  return $ret; 
+}
+
+
+#####################################
+sub
+Nextion_BasicSendCommand($$$)
 {
   my ($hash,$msg,$answer) = @_;
   my $name = $hash->{NAME};
   my @ret; 
   
-  Log3 $name, 4, "Nextion_SendCommand $name: send commands :".$msg.": ";
+  $answer = 0 if ( ! AttrVal($name,"expectAnswer",0) ); 
   
-  # First replace any magics
-#  my %dummy; 
-#  my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $msg ) );
+  Log3 $name, 4, "Nextion_BasicSendCommand $name: send commands :".$msg.": ";
   
-#  if ( $err ) {
-#    Log3 $name, 1, "$name: Nextion_SendCommand failed on ReplaceSetmagic with :$err: on commands :$msg:";
-#  } else {
-#    $msg = join(" ", @a);
-#    Log3 $name, 4, "$name: Nextion_SendCommand ReplaceSetmagic commnds after :".$msg.":";
-#  }   
-
+  # TODO - temporarily ignore commands if not connected AND interval
+  return undef if ( ( ! Nextion_IsConnected( $hash ) ) && ( $hash->{INTERVAL} > 0 ) );
+  
+  # return on empty message
+  return undef if ( ! $msg );
+  
   # Split commands into separate elements at single semicolons (escape double ;; before)
   $msg =~ s/;;/SeMiCoLoN/g; 
   my @msgList = split(";", $msg);
+  
   my $singleMsg;
+  
   while(defined($singleMsg = shift @msgList)) {
     $singleMsg =~ s/SeMiCoLoN/;/g;
 
     my ($err, @a) = ReplaceSetMagic($hash, 0, ( $singleMsg ) );
     if ( $err ) {
-      Log3 $name, 1, "$name: Nextion_SendCommand failed on ReplaceSetmagic with :$err: on commands :$singleMsg:";
+      Log3 $name, 1, "$name: Nextion_BasicSendCommand failed on ReplaceSetmagic with :$err: on commands :$singleMsg:";
     } else {
       $singleMsg = join(" ", @a);
-      Log3 $name, 4, "$name: Nextion_SendCommand ReplaceSetmagic commnds after :".$singleMsg.":";
+      Log3 $name, 4, "$name: Nextion_BasicSendCommand ReplaceSetmagic commnds after :".$singleMsg.":";
     }   
     
     my $lret = Nextion_SendSingleCommand($hash, $singleMsg, $answer);
@@ -1006,6 +1165,9 @@ Nextion_Read($@)
       $data = $3;
       $data = "" if ( ! defined($data) );
       
+      # message received stop the timeout timer
+      RemoveInternalTimer($hash->{queuehandler});       
+      
       if ( length($ffpart) != 3 ) {
         Log3 $name, 4, "Nextion/RAW: shortened ffh end sequence (".length($ffpart).") ".Data::Dumper::qquote($rcvd) ;
       } else {
@@ -1023,10 +1185,15 @@ Nextion_Read($@)
           $newPageId = $id + 0;
           my $initCmds = Nextion_getPageInfo( $hash, 0, $newPageId );
           
+          # remove entreiss from queue on new page - to be confirmed
+          $hash->{actionQueue} = [];
+          
           Log3 $name, 4, "Nextion_Read $name: init page  :".$newPageId.": with commands :".(defined($initCmds)?$initCmds:"<undef>").":";
 
           # Send command handles replaceSetMagic and splitting
-          Nextion_SendCommand( $hash, $initCmds, 1 ) if ( defined( $initCmds ) );
+          Nextion_SendCommand( $hash, $initCmds, 1, $newPageId );
+        } else {
+          Nextion_SendCommand( $hash, undef, 1, undef  );
         }
 
         # handle recAttributes on text
@@ -1122,19 +1289,6 @@ Nextion_Read($@)
 
   $hash->{PARTIAL} = $data;
   $hash->{READ_TS} = gettimeofday() if($data);
-
-
-  # # initialize last page id found:
-  # if ( defined( $newPageId ) ) {
-    # $newPageId = $newPageId + 0;
-    # my $initCmds = Nextion_getPageInfo( $hash, 0, $newPageId );
-    
-    # Log3 $name, 4, "Nextion_InitPage $name: page  :".$newPageId.": with commands :".(defined($initCmds)?$initCmds:"<undef>").":";
-    # return if ( ! defined( $initCmds ) );
-
-    # # Send command handles replaceSetMagic and splitting
-    # Nextion_SendCommand( $hash, $initCmds, 0 );
-  # }
 
   return $ret if(defined($local));
   return undef;
@@ -1727,6 +1881,9 @@ Nextion_DecodeFromIso($)
 
 
     <li><code>expectAnswer &lt;1 or 0&gt;</code><br>Specify if an answer from display is expected. If set to zero no answer is expected at any time on a command. <br>IMPORTANT: This is deprecated and will be removed in future versions
+    </li> 
+
+    <li><code>sendQueue &lt;1 or 0&gt;</code><br>If set to 1 (default) the queued sending is used, which is causing lower dealys and load in fhem but commands are send one after another waiting on return values from the display.
     </li> 
 
   </ul>

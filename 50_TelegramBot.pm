@@ -147,6 +147,13 @@
 # 2.7 2017-12-20  set command silentmsg 
 
 #   new set cmd silentImage for disable_notification - syntax as in sendImage
+#   FIX: allow queryAsnwer also with defaultpeer not set #msg757339
+#   General. set commands not requiring a peer - internally set peers to 0 for sendit
+#   FIX: Doc missing end code tag
+#   Change log to not write _Set/_Get on ? parameter
+#   
+#   
+#   
 #   
 ##############################################################################
 # TASKS 
@@ -159,7 +166,6 @@
 #   
 #   replyKeyboardRemove - #msg592808
 #   
-#   add an option to send silent messages - msg556631  ??
 #   \n in inline keyboards - not possible currently
 #   
 ##############################################################################
@@ -446,15 +452,13 @@ sub TelegramBot_Set($@)
 {
   my ( $hash, $name, @args ) = @_;
   
-  Log3 $name, 4, "TelegramBot_Set $name: called ";
+  Log3 $name, 5, "TelegramBot_Set $name: called "; 
 
   ### Check Args
   my $numberOfArgs  = int(@args);
   return "TelegramBot_Set: No cmd specified for set" if ( $numberOfArgs < 1 );
 
   my $cmd = shift @args;
-
-  Log3 $name, 4, "TelegramBot_Set $name: Processing TelegramBot_Set( $cmd )";
 
   if (!exists($sets{$cmd}))  {
     my @cList;
@@ -472,6 +476,8 @@ sub TelegramBot_Set($@)
     return "TelegramBot_Set: Unknown argument $cmd, choose one of " . join(" ", @cList);
   } # error unknown cmd handling
 
+  Log3 $name, 4, "TelegramBot_Set $name: Processing TelegramBot_Set( $cmd )";
+
   my $ret = undef;
   
   if( ($cmd eq 'message') || ($cmd eq 'queryInline') || ($cmd eq 'queryEditInline') || ($cmd eq 'queryAnswer') || 
@@ -485,6 +491,7 @@ sub TelegramBot_Set($@)
     my $options = "";
     my $peers;
     my $inline = 0;
+    my $needspeer = 1;
     
     if ( ($cmd eq 'reply') || ($cmd eq 'msgEdit' ) || ($cmd eq 'queryEditInline' ) ) {
       return "TelegramBot_Set: Command $cmd, no peer, msgid and no text/file specified" if ( $numberOfArgs < 3 );
@@ -492,6 +499,9 @@ sub TelegramBot_Set($@)
       return "TelegramBot_Set: Command $cmd, msgId must be given as first parameter before peer" if ( $msgid =~ /^@/ );
       $numberOfArgs--;
       $inline = 1 if ($cmd eq 'queryEditInline');
+      $needspeer = 0;
+    } elsif ($cmd eq 'queryAnswer')  {
+      $needspeer = 0;
     } elsif ($cmd eq 'msgForceReply')  {
       $options .= " -force_reply- ";
     } elsif ( ($cmd eq 'silentmsg') || ($cmd eq 'silentImage') ) {
@@ -503,23 +513,27 @@ sub TelegramBot_Set($@)
     return "TelegramBot_Set: Command $cmd, no peers and no text/file specified" if ( $numberOfArgs < 2 );
     # numberOfArgs might not be correct beyond this point
 
-    while ( $args[0] =~ /^@(..+)$/ ) {
-      my $ppart = $1;
-      return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( ($cmd eq 'reply') && ( defined( $peers ) ) );
-      $peers .= " " if ( defined( $peers ) );
-      $peers = "" if ( ! defined( $peers ) );
-      $peers .= $ppart;
+    if ( $needspeer ) {
+      while ( $args[0] =~ /^@(..+)$/ ) {
+        my $ppart = $1;
+        return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( ($cmd eq 'reply') && ( defined( $peers ) ) );
+        $peers .= " " if ( defined( $peers ) );
+        $peers = "" if ( ! defined( $peers ) );
+        $peers .= $ppart;
+        
+        shift @args;
+        last if ( int(@args) == 0 );
+      }
       
-      shift @args;
-      last if ( int(@args) == 0 );
-    }
-    
-    return "TelegramBot_Set: Command $cmd, no msg content specified" if ( int(@args) < 1 );
+      return "TelegramBot_Set: Command $cmd, no msg content specified" if ( int(@args) < 1 );
 
-    
-    if ( ! defined( $peers ) ) {
-      $peers = AttrVal($name,'defaultPeer',undef);
-      return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peers) );
+      
+      if ( ! defined( $peers ) ) {
+        $peers = AttrVal($name,'defaultPeer',undef);
+        return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peers) );
+      }
+    } else {
+      $peers = 0;
     }
     if ( ($cmd eq 'sendPhoto') || ($cmd eq 'sendImage') || ($cmd eq 'image') || ($cmd eq 'silentImage')  ) {
       $sendType = 1;
@@ -741,7 +755,7 @@ sub TelegramBot_Set($@)
     Log3 $name, 5, "TelegramBot_Set $name: contacts newly set ";
 
   }
-
+  
   if ( ! defined( $ret ) ) {
     Log3 $name, 5, "TelegramBot_Set $name: $cmd done succesful: ";
   } else {
@@ -765,8 +779,6 @@ sub TelegramBot_Get($@)
   my $cmd = $args[0];
   my $arg = ($args[1] ? $args[1] : "");
 
-  Log3 $name, 5, "TelegramBot_Get $name: Processing TelegramBot_Get( $cmd )";
-
   if(!exists($gets{$cmd})) {
     my @cList;
     foreach my $k (sort keys %gets) {
@@ -783,6 +795,7 @@ sub TelegramBot_Get($@)
     return "TelegramBot_Get: Unknown argument $cmd, choose one of " . join(" ", @cList);
   } # error unknown cmd handling
 
+  Log3 $name, 4, "TelegramBot_Get $name: Processing TelegramBot_Get( $cmd )";
   
   my $ret = undef;
   
@@ -1683,7 +1696,7 @@ sub TelegramBot_SendIt($$$$$;$$$)
       TelegramBot_MsgForLog($msg, ($isMedia<0) ).": - :".(defined($addPar)?$addPar:"<undef>").":".":    options :".$options.":";
 
     # trim and convert spaces in peer to underline 
-  my $peer2 = TelegramBot_GetIdForPeer( $hash, $peer );
+  my $peer2 = ($peer == 0 )?$peer:TelegramBot_GetIdForPeer( $hash, $peer );
 
   if ( ! defined( $peer2 ) ) {
     $ret = "FAILED peer not found :$peer:";
@@ -1713,7 +1726,7 @@ sub TelegramBot_SendIt($$$$$;$$$)
   if ( ! defined( $ret ) ) {
 
     # add chat / user id (no file) --> this will also do init
-    $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "chat_id", undef, $peer2, 0 );
+    $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "chat_id", undef, $peer2, 0 ) if ( $peer2 != 0 );
 
     if ( ( $isMedia == 0 ) || ( $isMedia == 10 ) || ( $isMedia == 20 ) ) {
       if ( $isMedia == 0 ) {
@@ -1789,6 +1802,7 @@ sub TelegramBot_SendIt($$$$$;$$$)
       $hash->{HU_DO_PARAMS}->{url} = TelegramBot_getBaseURL($hash)."answerCallbackQuery";
       
       $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "callback_query_id", undef, $addPar, 0 ) if ( ! defined( $ret ) );
+      $addPar = undef;
 
       $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "text", undef, $msg, 0 ) if ( ( ! defined( $ret ) ) && ( $msg ) );
       
@@ -3480,7 +3494,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
       <dl>
     </li>
     
-    <li><code>silentmsg ...<br>Sends the given message silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the send/message command.
+    <li><code>silentmsg ...</code><br>Sends the given message silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the send/message command.
     </li>
     
     <li><code>msgForceReply [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;text&gt;</code><br>Sends the given message to the recipient(s) and requests (forces) a reply. Handling of peers is equal to the message command. Adding reply keyboards is currently not supported by telegram.

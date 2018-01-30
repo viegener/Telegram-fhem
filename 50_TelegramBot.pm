@@ -151,13 +151,17 @@
 #   General. set commands not requiring a peer - internally set peers to 0 for sendit
 #   FIX: Doc missing end code tag
 #   Change log to not write _Set/_Get on ? parameter
-#   
-#   
+
+#   attr to handle set / del types for polling/allowedCmds/favorites
+#   silentInline added
 #   
 #   
 ##############################################################################
 # TASKS 
 #   
+#   test: attr to handle set / del types for polling/allowedCmds/favorites
+#   test: silentInline added
+#
 #   queryDialogStart / queryDialogEnd - keep msg id 
 #   
 #   remove keyboard after favorite confirm
@@ -221,6 +225,7 @@ my %sets = (
   
   "silentmsg" => "textField",
   "silentImage" => "textField",
+  "silentInline" => "textField",
 
   "msgDelete" => "textField",
 
@@ -482,7 +487,7 @@ sub TelegramBot_Set($@)
   
   if( ($cmd eq 'message') || ($cmd eq 'queryInline') || ($cmd eq 'queryEditInline') || ($cmd eq 'queryAnswer') || 
       ($cmd eq 'msg') || ($cmd eq '_msg') || ($cmd eq 'reply') || ($cmd eq 'msgEdit') || ($cmd eq 'msgForceReply') || 
-      ($cmd eq 'silentmsg') || ($cmd eq 'silentImage') || ($cmd =~ /^send.*/ ) ) {
+      ($cmd eq 'silentmsg') || ($cmd eq 'silentImage')  || ($cmd eq 'silentInline') || ($cmd =~ /^send.*/ ) ) {
 
     my $msgid;
     my $msg;
@@ -494,45 +499,42 @@ sub TelegramBot_Set($@)
     my $needspeer = 1;
     
     if ( ($cmd eq 'reply') || ($cmd eq 'msgEdit' ) || ($cmd eq 'queryEditInline' ) ) {
-      return "TelegramBot_Set: Command $cmd, no peer, msgid and no text/file specified" if ( $numberOfArgs < 3 );
+      return "TelegramBot_Set: Command $cmd, no msgid and no text/file specified" if ( $numberOfArgs < 3 );
       $msgid = shift @args; 
       return "TelegramBot_Set: Command $cmd, msgId must be given as first parameter before peer" if ( $msgid =~ /^@/ );
       $numberOfArgs--;
-      $inline = 1 if ($cmd eq 'queryEditInline');
       $needspeer = 0;
     } elsif ($cmd eq 'queryAnswer')  {
       $needspeer = 0;
-    } elsif ($cmd eq 'msgForceReply')  {
-      $options .= " -force_reply- ";
-    } elsif ( ($cmd eq 'silentmsg') || ($cmd eq 'silentImage') ) {
-      $options .= " -silent- ";
-    } elsif ($cmd eq 'queryInline')  {
-      $inline = 1;
     }
+    
+    # special options
+    $inline = 1 if ( ($cmd eq 'queryInline') || ($cmd eq 'queryEditInline') || ($cmd eq 'silentInline') );
+    $options .= " -force_reply- " if ($cmd eq 'msgForceReply');
+    $options .= " -silent- " if ( ($cmd eq 'silentmsg') || ($cmd eq 'silentImage') || ($cmd eq 'silentInline') ) ;
+    
     
     return "TelegramBot_Set: Command $cmd, no peers and no text/file specified" if ( $numberOfArgs < 2 );
     # numberOfArgs might not be correct beyond this point
 
-    if ( $needspeer ) {
-      while ( $args[0] =~ /^@(..+)$/ ) {
-        my $ppart = $1;
-        return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( ($cmd eq 'reply') && ( defined( $peers ) ) );
-        $peers .= " " if ( defined( $peers ) );
-        $peers = "" if ( ! defined( $peers ) );
-        $peers .= $ppart;
-        
-        shift @args;
-        last if ( int(@args) == 0 );
-      }
+    while ( $args[0] =~ /^@(..+)$/ ) {
+      my $ppart = $1;
+      return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( ($cmd eq 'reply') && ( defined( $peers ) ) );
+      $peers .= " " if ( defined( $peers ) );
+      $peers = "" if ( ! defined( $peers ) );
+      $peers .= $ppart;
       
-      return "TelegramBot_Set: Command $cmd, no msg content specified" if ( int(@args) < 1 );
+      shift @args;
+      last if ( int(@args) == 0 );
+    }
+      
+    return "TelegramBot_Set: Command $cmd, no msg content specified" if ( int(@args) < 1 );
 
-      
-      if ( ! defined( $peers ) ) {
-        $peers = AttrVal($name,'defaultPeer',undef);
-        return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peers) );
-      }
-    } else {
+
+    if ( ($needspeer ) && ( ! defined( $peers ) ) ) {
+      $peers = AttrVal($name,'defaultPeer',undef);
+      return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peers) );
+    } elsif ( ! defined( $peers ) ) {
       $peers = 0;
     }
     if ( ($cmd eq 'sendPhoto') || ($cmd eq 'sendImage') || ($cmd eq 'image') || ($cmd eq 'silentImage')  ) {
@@ -860,21 +862,22 @@ sub TelegramBot_Attr(@) {
   } else {
     Log3 $name, 5, "TelegramBot_Attr $name: $cmd  on $aName to <undef>";
   }
+  
   # $cmd can be "del" or "set"
   # $name is device name
   # aName and aVal are Attribute name and value
-  if ($cmd eq "set") {
-    if ($aName eq 'favorites') {
-      # Empty current alias list in hash
-      if ( defined( $hash->{AliasCmds} ) ) {
-        foreach my $key (keys %{$hash->{AliasCmds}} )
-            {
-                delete $hash->{AliasCmds}{$key};
-            }
-      } else {
-        $hash->{AliasCmds} = {};
-      }
+  if ($aName eq 'favorites') {
+    # Empty current alias list in hash
+    if ( defined( $hash->{AliasCmds} ) ) {
+      foreach my $key (keys %{$hash->{AliasCmds}} )
+          {
+              delete $hash->{AliasCmds}{$key};
+          }
+    } else {
+      $hash->{AliasCmds} = {};
+    }
 
+    if ($cmd eq "set") {
       # keep double ; for inside commands
       $aVal =~ s/;;/SeMiCoLoN/g; 
       my @clist = split( /;/, $aVal);
@@ -904,8 +907,42 @@ sub TelegramBot_Attr(@) {
       # set attribute value to newly combined commands
       $attr{$name}{'favorites'} = $newVal;
       $aVal = $newVal;
+    }
+  
+  } elsif ($aName eq 'allowedCommands') {
+    my $allowedName = "allowed_$name";
+    my $exists = ($defs{$allowedName} ? 1 : 0); 
+    my $alcmd = (($cmd eq "set")?$aVal:"<none>");
+    AnalyzeCommand(undef, "defmod $allowedName allowed");
+    AnalyzeCommand(undef, "attr $allowedName validFor $name");
+    AnalyzeCommand(undef, "attr $allowedName $aName ".$alcmd);
+    Log3 $name, 3, "TelegramBot_Attr $name: ".($exists ? "modified":"created")." $allowedName with commands :$alcmd:";
+    # allowedCommands only set on the corresponding allowed_device
+    return "\"TelegramBot_Attr: \" $aName ".($exists ? "modified":"created")." $allowedName with commands :$alcmd:"
+      
+  } elsif ($aName eq 'pollingTimeout') {
+    return "\"TelegramBot_Attr: \" $aName needs to be given in digits only" if ( ($cmd eq "set") && ( $aVal !~ /^[[:digit:]]+$/ ) );
+    # let all existing methods run into block
+    RemoveInternalTimer($hash);
+    $hash->{POLLING} = -1;
+    
+    # wait some time before next polling is starting
+    TelegramBot_ResetPolling( $hash );
 
-    } elsif ($aName eq 'cmdRestrictedPeer') {
+  } elsif ($aName eq 'disable') {
+    return "\"TelegramBot_Attr: \" $aName needs to be 1 or 0" if ( ($cmd eq "set") && ( $aVal !~ /^(1|0)$/ ) );
+    # let all existing methods run into block
+    RemoveInternalTimer($hash);
+    $hash->{POLLING} = -1;
+    
+    # wait some time before next polling is starting
+    TelegramBot_ResetPolling( $hash );
+
+    
+  # attributes where only the set is relevant for syntax check  
+  } elsif ($cmd eq "set") {
+
+    if ($aName eq 'cmdRestrictedPeer') {
       $aVal =~ s/^\s+|\s+$//g;
       
     } elsif ( ($aName eq 'defaultPeerCopy') ||
@@ -920,53 +957,13 @@ sub TelegramBot_Attr(@) {
               ($aName eq 'maxRetries') ) {
       return "\"TelegramBot_Attr: \" $aName needs to be given in digits only" if ( $aVal !~ /^[[:digit:]]+$/ );
 
-    } elsif ($aName eq 'pollingTimeout') {
-      return "\"TelegramBot_Attr: \" $aName needs to be given in digits only" if ( $aVal !~ /^[[:digit:]]+$/ );
-      # let all existing methods run into block
-      RemoveInternalTimer($hash);
-      $hash->{POLLING} = -1;
-      
-      # wait some time before next polling is starting
-      TelegramBot_ResetPolling( $hash );
-
-    } elsif ($aName eq 'disable') {
-      if ( $aVal =~ /^(1|0)$/ ) {
-        # let all existing methods run into block
-        RemoveInternalTimer($hash);
-        $hash->{POLLING} = -1;
-        
-        # wait some time before next polling is starting
-        TelegramBot_ResetPolling( $hash );
-      } else {
-        return "\"TelegramBot_Attr: \" $aName needs to be 1 or 0";
-      }
 
     } elsif ($aName eq 'pollingVerbose') {
       return "\"TelegramBot_Attr: \" Incorrect value given for pollingVerbose" if ( $aVal !~ /^((1_Digest)|(2_Log)|(0_None))$/ );
-
-    } elsif ($aName eq 'allowedCommands') {
-      my $allowedName = "allowed_$name";
-      my $exists = ($defs{$allowedName} ? 1 : 0); 
-      AnalyzeCommand(undef, "defmod $allowedName allowed");
-      AnalyzeCommand(undef, "attr $allowedName validFor $name");
-      AnalyzeCommand(undef, "attr $allowedName $aName ".$aVal);
-      Log3 $name, 3, "TelegramBot_Attr $name: ".($exists ? "modified":"created")." $allowedName with commands :$aVal:";
-      # allowedCommands only set on the corresponding allowed_device
-      return "\"TelegramBot_Attr: \" $aName ".($exists ? "modified":"created")." $allowedName with commands :$aVal:"
-
     }
 
     $_[3] = $aVal;
   
-  } elsif ($cmd eq "set") {
-    if ( ($aName eq 'pollingTimeout') || ($aName eq 'disable') ) {
-      # let all existing methods run into block
-      RemoveInternalTimer($hash);
-      $hash->{POLLING} = -1;
-      
-      # wait some time before next polling is starting
-      TelegramBot_ResetPolling( $hash );
-    }
   }
 
   return undef;
@@ -1352,7 +1349,7 @@ sub TelegramBot_ReadHandleCommand($$$$$) {
 
   my $ret;
   
-  Log3 $name, 3, "TelegramBot_ReadHandleCommand $name: cmd found :".$cmd.": ";
+  Log3 $name, 4, "TelegramBot_ReadHandleCommand $name: cmd found :".$cmd.": ";
   
   Log3 $name, 5, "TelegramBot_ReadHandleCommand cmd correct peer ";
   # Either no peer defined or cmdpeer matches peer for message -> good to execute
@@ -1411,6 +1408,7 @@ sub TelegramBot_ExecuteCommand($$$$;$$) {
     # Check for image/doc/audio stream in return (-1 image
     ( $isMediaStream ) = TelegramBot_IdentifyStream( $hash, $ret ) if ( defined( $ret ) );
     
+    Log3 $name, 3, "TelegramBot_ExecuteCommand $name: cmd executed :".$cmd.": -->    :".TelegramBot_MsgForLog($ret, $isMediaStream ).":" if ( $ret );
   }
 
   Log3 $name, 4, "TelegramBot_ExecuteCommand result for analyze :".TelegramBot_MsgForLog($ret, $isMediaStream ).": ";
@@ -1693,10 +1691,14 @@ sub TelegramBot_SendIt($$$$$;$$$)
   }
   
   Log3 $name, 5, "TelegramBot_SendIt $name: try to send message to :$peer: -:".
-      TelegramBot_MsgForLog($msg, ($isMedia<0) ).": - :".(defined($addPar)?$addPar:"<undef>").":".":    options :".$options.":";
+      TelegramBot_MsgForLog($msg, ($isMedia<0) ).": - add :".(defined($addPar)?$addPar:"<undef>").
+      ": - replyid :".(defined($replyid)?$replyid:"<undef>").
+      ":".":    options :".$options.":";
 
     # trim and convert spaces in peer to underline 
   my $peer2 = ($peer == 0 )?$peer:TelegramBot_GetIdForPeer( $hash, $peer );
+  
+#  Debug "peer :$peer:    peer2 :$peer2:";
 
   if ( ! defined( $peer2 ) ) {
     $ret = "FAILED peer not found :$peer:";
@@ -1726,7 +1728,7 @@ sub TelegramBot_SendIt($$$$$;$$$)
   if ( ! defined( $ret ) ) {
 
     # add chat / user id (no file) --> this will also do init
-    $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "chat_id", undef, $peer2, 0 ) if ( $peer2 != 0 );
+    $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "chat_id", undef, $peer2, 0 ) if ($peer != 0 );
 
     if ( ( $isMedia == 0 ) || ( $isMedia == 10 ) || ( $isMedia == 20 ) ) {
       if ( $isMedia == 0 ) {

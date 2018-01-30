@@ -81,6 +81,9 @@
 #   added list getter for simple text list with \n and empty string if no entries
 #   switched from fhem( calls to AnalyzeCommandChain
 #   added count getter for count of list entries
+
+#   FIX: Some log entries / issues with inline commands
+#   
 #   
 ##############################################################################
 # TASKS 
@@ -238,17 +241,13 @@ sub TBot_List_Set($@)
 
   my $addArg = ($args[0] ? join(" ", @args ) : undef);
 
-  Log3 $name, 4, "TBot_List_Set $name: Processing TBot_List_Set( $cmd ) - args :".(defined($addArg)?$addArg:"<undef>").":";
-
   # check cmd / handle ?
   my $ret = TBot_List_CheckSetGet( $hash, $cmd, $hash->{setoptions} );
+  return $ret if ( $ret );
+  
+  Log3 $name, 4, "TBot_List_Set $name: Processing TBot_List_Set( $cmd ) - args :".(defined($addArg)?$addArg:"<undef>").":";
 
-  if ( $ret ) {
-
-    # This is wrong arg / ? --> just return without log
-    return $ret;
-
-  } elsif ($cmd eq 'start')  {
+  if ($cmd eq 'start')  {
     Log3 $name, 4, "TBot_List_Set $name: start of dialog requested ";
     $ret = "start requires a telegrambot and optionally a peer" if ( ( $numberOfArgs < 2 ) && ( $numberOfArgs > 3 ) );
     
@@ -335,16 +334,13 @@ sub TBot_List_Get($@)
   my $cmd = $args[0];
   my $arg = $args[1];
 
-  Log3 $name, 5, "TBot_List_Get $name: Processing TBot_List_Get( $cmd )";
-
   # check cmd / handle ?
   my $ret = TBot_List_CheckSetGet( $hash, $cmd, $hash->{getoptions} );
+  return $ret if ( $ret );
 
-  if ( $ret ) {
-    # This is wrong arg / ? --> just return without log
-    return $ret;
+  Log3 $name, 5, "TBot_List_Get $name: Processing TBot_List_Get( $cmd )";
 
-  } elsif($cmd eq "textList") {
+  if($cmd eq "textList") {
     $ret = TBot_List_getTextList($hash);
     
   } elsif($cmd eq "list") {
@@ -736,7 +732,7 @@ sub TBot_List_handler($$$$;$)
 
   my $ret;
 
-  Log3 $name, 4, "JVLISTMGR_handler: $name - $tbot  peer :$peer:   cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
+  Log3 $name, 4, "TBot_List_handler: $name - $tbot  peer :$peer:   cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
 
   my $lname = TBot_List_getConfigListname($hash);
   my $msgId;
@@ -759,7 +755,7 @@ sub TBot_List_handler($$$$;$)
 
     @list = TBot_List_getList( $hash );
   }
-  Log3 $name, 4, "JVLISTMGR_handler: $name - after prefetch peer :$peer:  chatId :$chatId:   msgId :".($msgId?$msgId:"<undef>").": ";
+  Log3 $name, 4, "TBot_List_handler: $name - after prefetch peer :$peer:  chatId :$chatId:   msgId :".($msgId?$msgId:"<undef>").": ";
   
   #####################  
   if ( $ret ) {

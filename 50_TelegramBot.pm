@@ -151,17 +151,14 @@
 #   General. set commands not requiring a peer - internally set peers to 0 for sendit
 #   FIX: Doc missing end code tag
 #   Change log to not write _Set/_Get on ? parameter
-
 #   attr to handle set / del types for polling/allowedCmds/favorites
 #   silentInline added
+
 #   
 #   
 ##############################################################################
 # TASKS 
 #   
-#   test: attr to handle set / del types for polling/allowedCmds/favorites
-#   test: silentInline added
-#
 #   queryDialogStart / queryDialogEnd - keep msg id 
 #   
 #   remove keyboard after favorite confirm

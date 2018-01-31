@@ -81,9 +81,11 @@
 #   added list getter for simple text list with \n and empty string if no entries
 #   switched from fhem( calls to AnalyzeCommandChain
 #   added count getter for count of list entries
-
 #   FIX: Some log entries / issues with inline commands
-#   
+#   new attribute deleteOnly to have deleteonly lists / no changes or adds
+
+#   document deleteOnly
+  
 #   
 ##############################################################################
 # TASKS 
@@ -154,6 +156,7 @@ sub TBot_List_Initialize($) {
           "handleUnsolicited:0,1 ".
           "confirmDelete:0,1 ".
           "confirmUnsolicited:0,1 ".
+          "deleteOnly:0,1 ".
           "allowedPeers:textField ".
           $readingFnAttributes;           
 }
@@ -418,7 +421,7 @@ sub TBot_List_Attr(@) {
     if ( ($aName eq 'optionDouble') ) {
       $aVal = ($aVal eq "1")? "1": "0";
 
-    } elsif ( ($aName eq "confirmDelete" ) ||  ($aName eq "confirmUnsolicited" ) ) {
+    } elsif ( ($aName eq "confirmDelete" ) ||  ($aName eq "confirmUnsolicited" )  ||  ($aName eq "deleteOnly" )  ) {
       $aVal = ($aVal eq "1")? "1": "0";
 
     } elsif ($aName eq 'allowedPeers') {
@@ -739,6 +742,8 @@ sub TBot_List_handler($$$$;$)
   my $chatId;
   my @list;
   
+  my $donly = AttrVal($name,'deleteOnly',0);
+  
   # in start case from group chat both ids will be given and need to be allowed
   ($peer, $chatId) = split( / /, $peer );
   
@@ -817,9 +822,15 @@ sub TBot_List_handler($$$$;$)
     }
     
     $inline .= ") " if ( $double == 2 );
-
-    $inline .= "(".TBot_List_inlinekey( $hash, "ok", "list_ok" )."|".TBot_List_inlinekey( $hash, "ändern", "list_menu" )."|".
+    
+    $inline .= "(".TBot_List_inlinekey( $hash, "ok", "list_ok" );
+    
+    if ( $donly ) {
+      $inline .=  "|".TBot_List_inlinekey( $hash, "Leeren", "list_askclr" ).")";
+    } else {
+      $inline .=  "|".TBot_List_inlinekey( $hash, "ändern", "list_menu" )."|".
                   TBot_List_inlinekey( $hash, "hinzu", "list_askadd" ).")";
+    }
     
     my $textmsg = "Liste ".$lname;
     $textmsg .= " ist leer " if ( scalar(@list) == 0 );
@@ -868,9 +879,14 @@ sub TBot_List_handler($$$$;$)
         my $textmsg = "Liste ".$lname."\nEintrag ".($no+1)." (".$list[$no].") ?";
         # show ask msgs (depending on attr)
         my $indata = ( AttrVal($name,'confirmDelete',1) ? "list_rem-$no" : "list_remyes-$no" );
-        my $inline = "(".TBot_List_inlinekey( $hash, "Entfernen", $indata )."|".
-                   TBot_List_inlinekey( $hash, "Aendern", "list_askchg-$no" )."|".
-                   TBot_List_inlinekey( $hash, "Nach Oben", "list_totop-$no" )."|".TBot_List_inlinekey( $hash, "Zurueck", "list_edit" ).")";
+        my $inline = "(".TBot_List_inlinekey( $hash, "Entfernen", $indata );
+        
+        if ( ! $donly ) {
+          $inline .= "|".TBot_List_inlinekey( $hash, "Aendern", "list_askchg-$no" )."|".
+                        TBot_List_inlinekey( $hash, "Nach Oben", "list_totop-$no" );
+        }
+        $inline .= "|".TBot_List_inlinekey( $hash, "Zurueck", "list_edit" ).")";
+        
         AnalyzeCommandChain( $hash, "set ".$tbot." queryEditInline $msgId ".'@'.$chatId." $inline $textmsg" );
       } else {
         $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
@@ -1379,6 +1395,9 @@ sub TBot_List_Setup($) {
     </li> 
     
     <li><code>confirmDelete &lt;1 or 0&gt;</code><br>If set to 1 the bot will ask for a confirmation if an entry should be deleted. This is the default. With a value of 0 the additional confirmation will not be requested.
+    </li> 
+    
+    <li><code>deleteOnly &lt;1 or 0&gt;</code><br>If set to 1 the bot will only allow deletion of entries or the complete list (no new entries or entry text can be changed - neither sorting or similar will be possible). Default is 0 (all changes allowed).
     </li> 
     
   </ul>

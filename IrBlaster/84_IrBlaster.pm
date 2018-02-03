@@ -50,6 +50,15 @@
 ## - added initial documentation
 ## 0.0.5 documentation
   
+## - remove access still set somewhere
+## - status
+## - removed de doc to show english as fallback
+
+## - presence also with SYN check
+## - pingtype attribute added
+## - configure timeout for queued commands
+##
+##
 ##
 ###############################################################################
 ###############################################################################
@@ -58,12 +67,10 @@
 ## 
 ## - add sleep times for codes
 ## - 
-## - status
 ## - 
-## - configure timeout for queued commands
+## - attribute handling complete (remove unneeded attributes)
 ## - 
-## - attribute handling complete
-## - prefix change
+## - prefix change option
 ## 
 ## - IDEA: Grab received codes
 ## - IDEA: allow step by step configuration of commands
@@ -121,6 +128,8 @@ sub IrBlaster_Initialize($) {
     $hash->{AttrList}   =  
                         "disable:1,0 disabledForIntervals ".
                         "interval ".
+                        "timeout ".
+                        "pingtype:shell,syn ".
                         "maxRetries:4,3,2,1,0 ".
                         $readingFnAttributes;
                          
@@ -146,6 +155,7 @@ sub IrBlaster_Define($$) {
     $hash->{PREFIX}     = $a[3];
     $hash->{PASS}      = $a[4] if(defined($a[4]));
     $hash->{INTERVAL}   = 0;
+    $hash->{TIMEOUT}   = 300;
 
     addToDevAttrList( $name, $a[3].".*" );
     
@@ -230,7 +240,7 @@ sub IrBlaster_Attr(@) {
     elsif( $attrName eq "disabledForIntervals" ) {
         if( $cmd eq "set" ) {
             Log3 $name, 4, "IrBlaster ($name) - enable disabledForIntervals";
-            readingsSingleUpdate ( $hash, "state", "Unknown", 1 );
+            readingsSingleUpdate ( $hash, "state", "disabled temporarily", 1 );
         }
 
         elsif( $cmd eq "del" ) {
@@ -251,8 +261,19 @@ sub IrBlaster_Attr(@) {
         elsif( $cmd eq "del" ) {
             $hash->{INTERVAL}   = 0;
             RemoveInternalTimer($hash);
-            Log3 $name, 4, "IrBlaster ($name) - delete User interval and set default: 300";
+            Log3 $name, 4, "IrBlaster ($name) - delete User interval";
             IrBlaster_TimerStatusRequest($hash);
+        }
+        
+    }
+
+    elsif( $attrName eq "timeout" ) {
+        if( $cmd eq "set" ) {
+            $hash->{TIMEOUT}   = $attrVal;
+        }
+
+        elsif( $cmd eq "del" ) {
+            $hash->{TIMEOUT}   = 300;
         }
         
     }
@@ -375,6 +396,8 @@ sub IrBlaster_TimerStatusRequest($) {
     Log3 $name, 5, "Sub IrBlaster_TimerStatusRequest ($name) - Done - new sequence - ".$hash->{INTERVAL}." s";
     if ( $hash->{INTERVAL} > 0 ) {
       InternalTimer( gettimeofday()+$hash->{INTERVAL}, "IrBlaster_TimerStatusRequest", $hash, 0 );
+    } elsif (! IsDisabled( $name )) {
+      readingsSingleUpdate ( $hash, "state", "static", 1 );
     }
 
 }
@@ -600,13 +623,76 @@ sub IrBlaster_HU_Callback($$$)
 #######################################################
 ############ Presence Erkennung Begin #################
 #######################################################
+
+sub IrBlaster_PresenceRunShell($) {
+
+my $string          = shift;
+    my ($name, $host)   = split("\\|", $string);
+    
+    my $tmp;
+    my $response;
+
+    
+    $tmp = qx(ping -c 3 -w 2 $host 2>&1);
+
+    if(defined($tmp) and $tmp ne "") {
+    
+        chomp $tmp;
+        Log3 $name, 5, "IrBlaster ($name) - ping command returned with output:\n$tmp";
+        $response = "$name|".(($tmp =~ /\d+ [Bb]ytes (from|von)/ and not $tmp =~ /[Uu]nreachable/) ? "present" : "absent");
+    
+    } else {
+    
+        $response = "$name|Could not execute ping command";
+    }
+    
+    Log3 $name, 4, "Sub IrBlaster_PresenceRunShell ($name) - Sub finish, Call IrBlaster_PresenceDone";
+    return $response;
+}
+
+sub IrBlaster_PresenceRunSyn($) {
+
+    my $string          = shift;
+    my ($name, $host)   = split("\\|", $string);
+    
+    my $tmp;
+    my $response;
+
+    Log3 $name, 5, "Sub IrBlaster_PresenceRunSyn ($name) - start";
+		
+		my $ping = Net::Ping->new("syn", 1);
+		$ping->source_verify(0); # do not verify source for responses
+		if ( $ping->ping($host))  {
+      if ( $ping->ack($host))  {
+        Log3 $name, 4, "Sub IrBlaster_PresenceRunSyn ($name) - alive :$host:";
+        $response = "present";
+      } else {
+        Log3 $name, 4, "Sub IrBlaster_PresenceRunSyn ($name) - not ack :$host:   reason :".$ping->nack($host);
+        $response = "absent";
+      }
+		} else {
+      Log3 $name, 4, "Sub IrBlaster_PresenceRunSyn ($name) - ping failed :$host:";
+      $response = "absent";
+		}
+		$ping->close(); 
+    
+    Log3 $name, 5, "Sub IrBlaster_PresenceRunSyn ($name) - Sub finish, Call IrBlaster_PresenceDone";
+    return "$name|$response";
+}
+
+
 sub IrBlaster_Presence($) {
 
     my $hash    = shift;    
     my $name    = $hash->{NAME};
     
-    $hash->{helper}{RUNNING_PID} = BlockingCall("IrBlaster_PresenceRun", $name.'|'.$hash->{HOST}, "IrBlaster_PresenceDone", 5, "IrBlaster_PresenceAborted", $hash) unless(exists($hash->{helper}{RUNNING_PID}) );
-}
+    my $method = ( AttrVal($name, "pingtype", "shell") eq "syn" )?"IrBlaster_PresenceRunSyn":"IrBlaster_PresenceRunShell";
+    Log3 $name, 4, "Sub IrBlaster_Presence ($name) - Type: $method";
+    
+    $hash->{helper}{RUNNING_PID} = BlockingCall($method, $name.'|'.$hash->{HOST}, "IrBlaster_PresenceDone", 15, "IrBlaster_PresenceAborted", $hash) unless(exists($hash->{helper}{RUNNING_PID}) );
+    
+} 
+
 
 sub IrBlaster_PresenceRun($) {
 
@@ -648,6 +734,7 @@ sub IrBlaster_PresenceDone($) {
     return if($hash->{helper}{DISABLED});
     
     readingsBeginUpdate($hash);
+    readingsBulkUpdate ( $hash, "state", $response );
     readingsBulkUpdate($hash, "presence", $response );   
 
     readingsEndUpdate($hash, 1);   
@@ -663,8 +750,8 @@ sub IrBlaster_PresenceAborted($) {
     
     delete($hash->{helper}{RUNNING_PID});
     readingsBeginUpdate($hash);
+    readingsBulkUpdate ( $hash, "state", "timedout" );
     readingsBulkUpdate($hash, "presence", 'timedout' );   
-    readingsBulkUpdate($hash, "access", "-reset-" );   
     readingsEndUpdate($hash, 1);   
     
     Log3 $name, 4, "Sub IrBlaster_PresenceAborted ($name) - The BlockingCall Process terminated unexpectedly. Timedout!";
@@ -691,7 +778,10 @@ sub IrBlaster_HU_RunQueue($)
     while ( scalar( @{ $hash->{actionQueue} } ) > 0 ) { 
       $ref  = shift @{ $hash->{actionQueue} };
       # check for excess age
-      if ( ((@$ref[1]) + 300) > gettimeofday() ) {
+
+      if ( $hash->{TIMEOUT} == -1 ) {
+        $ref = undef;
+      } elsif ( ((@$ref[1]) + $hash->{TIMEOUT} ) > gettimeofday() ) {
         last;
       } else {
         Log3 $name, 4, "IrBlaster_HU_RunQueue $name: remove queued command with time :".(@$ref[1]).
@@ -814,6 +904,12 @@ sub IrBlaster_IsPresent($) {
     <li><code>interval &lt;seconds&gt;</code><br>Specify the interval (in seconds) for checking presence of the IR gateway device (using ping).
     </li> 
 
+    <li><code>timeout &lt;seconds&gt;</code><br>Specify the timeout (in seconds) for queued commands to be send after an issue (non-presence or error), after the given time in seconds queued commands are not resend - with a value of -1 no queueing is done. Default is a value of 300.
+    </li> 
+
+    <li><code>pingtype &lt;syn|shell&gt;</code><br>Specify the type for checking presence of the IR gateway device (using either the default shell ping command - shell or using TCPSYN = syn).
+    </li> 
+
 
   </ul>
 
@@ -835,11 +931,5 @@ sub IrBlaster_IsPresent($) {
 </ul>
 =end html
 
-=begin html_DE
-
-<a name="IrBlaster"></a>
-<h3>IrBlaster</h3>
-
-=end html_DE
 
 =cut

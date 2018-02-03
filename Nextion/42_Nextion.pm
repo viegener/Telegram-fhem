@@ -125,7 +125,8 @@
 #    on timer
 #      check if commands in queue
 #        do start queue
-#   
+#   FIX: presenceType
+
 #   
 #   
 ##############################################
@@ -643,7 +644,7 @@ sub Nextion_Presence($) {
     my $method = ( AttrVal($name, "pingtype", "shell") eq "syn" )?"Nextion_PresenceRunSyn":"Nextion_PresenceRunShell";
     Log3 $name, 4, "Sub Nextion_Presence ($name) - Type: $method";
     
-    $hash->{helper}{RUNNING_PID} = BlockingCall("Nextion_PresenceRunSyn", $name.'|'.$hash->{HOST}, "Nextion_PresenceDone", 15, "Nextion_PresenceAborted", $hash) unless(exists($hash->{helper}{RUNNING_PID}) );
+    $hash->{helper}{RUNNING_PID} = BlockingCall($method, $name.'|'.$hash->{HOST}, "Nextion_PresenceDone", 15, "Nextion_PresenceAborted", $hash) unless(exists($hash->{helper}{RUNNING_PID}) );
     
 }
 

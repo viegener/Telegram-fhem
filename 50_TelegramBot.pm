@@ -155,8 +155,10 @@
 #   silentInline added
 
 #   cmdSendSilent added and documented
-#   multiple tests and fixes on handling of peers/chats for tbot_list
-  
+#   tests and fixes on handling of peers/chats for tbot_list and replies
+
+#   FIX: peer names in send commands
+#   
 #   
 ##############################################################################
 # TASKS 
@@ -1701,7 +1703,8 @@ sub TelegramBot_SendIt($$$$$;$$$)
       ":".":    options :".$options.":";
 
     # trim and convert spaces in peer to underline 
-  my $peer2 = ($peer == 0 )?$peer:TelegramBot_GetIdForPeer( $hash, $peer );
+  $peer = 0 if ( ! $peer ); # ensure peer is defined
+  my $peer2 = (! $peer )?$peer:TelegramBot_GetIdForPeer( $hash, $peer );
   
 #  Debug "peer :$peer:    peer2 :$peer2:";
 
@@ -1733,7 +1736,7 @@ sub TelegramBot_SendIt($$$$$;$$$)
   if ( ! defined( $ret ) ) {
 
     # add chat / user id (no file) --> this will also do init
-    $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "chat_id", undef, $peer2, 0 ) if ($peer != 0 );
+    $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "chat_id", undef, $peer2, 0 ) if ( $peer );
 
     if ( ( $isMedia == 0 ) || ( $isMedia == 10 ) || ( $isMedia == 20 ) ) {
       if ( $isMedia == 0 ) {

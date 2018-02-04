@@ -154,10 +154,14 @@
 #   attr to handle set / del types for polling/allowedCmds/favorites
 #   silentInline added
 
-#   
+#   cmdSendSilent added and documented
+#   multiple tests and fixes on handling of peers/chats for tbot_list
+  
 #   
 ##############################################################################
 # TASKS 
+#   
+#   additional silent commands
 #   
 #   queryDialogStart / queryDialogEnd - keep msg id 
 #   
@@ -245,6 +249,7 @@ my %sets = (
   "favoritesMenu" => "textField",
   
   "cmdSend" => "textField",
+  "cmdSendSilent" => "textField",
 
   "replaceContacts" => "textField",
   "reset" => undef,
@@ -500,7 +505,7 @@ sub TelegramBot_Set($@)
       $msgid = shift @args; 
       return "TelegramBot_Set: Command $cmd, msgId must be given as first parameter before peer" if ( $msgid =~ /^@/ );
       $numberOfArgs--;
-      $needspeer = 0;
+      # all three messages need also a peer/chat_id
     } elsif ($cmd eq 'queryAnswer')  {
       $needspeer = 0;
     }
@@ -641,10 +646,13 @@ sub TelegramBot_Set($@)
 
     TelegramBot_SendFavorites($hash, $peers, undef, "", undef, undef, 0);
   
-  } elsif($cmd eq 'cmdSend') {
+  } elsif($cmd =~ 'cmdSend(Silent)?') {
 
     return "TelegramBot_Set: Command $cmd, no peers and no text/file specified" if ( $numberOfArgs < 2 );
     # numberOfArgs might not be correct beyond this point
+    
+    my $options = "";
+    $options .= " -silent- " if ( ($cmd eq 'cmdSendSilent') ) ;
 
     my $peers;
     while ( $args[0] =~ /^@(..+)$/ ) {
@@ -687,7 +695,7 @@ sub TelegramBot_Set($@)
     ( $isMediaStream ) = TelegramBot_IdentifyStream( $hash, $msg ) if ( defined( $msg ) );
       
     Log3 $name, 5, "TelegramBot_Set $name: start send for cmd :$cmd: and isMediaStream :$isMediaStream:";
-    $ret = TelegramBot_SendIt( $hash, $peers, $msg, undef, $isMediaStream, undef );
+    $ret = TelegramBot_SendIt( $hash, $peers, $msg, undef, $isMediaStream, undef, $options );
     
   } elsif($cmd eq 'msgDelete') {
 
@@ -3493,7 +3501,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
       <dl>
     </li>
     
-    <li><code>silentmsg ...</code><br>Sends the given message silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the send/message command.
+    <li><code>silentmsg, silentImage, silentInline ...</code><br>Sends the given message silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the corresponding send/message command.
     </li>
     
     <li><code>msgForceReply [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;text&gt;</code><br>Sends the given message to the recipient(s) and requests (forces) a reply. Handling of peers is equal to the message command. Adding reply keyboards is currently not supported by telegram.
@@ -3510,7 +3518,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>favoritesMenu [ @&lt;peer&gt; ] </code><br>send the favorites menu to the corresponding peer if defined</code>
     </li>
 
-    <li><code>cmdSend [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;fhem command&gt;</code><br>Executes the given fhem command and then sends the result to the given peers or the default peer.<br>
+    <li><code>cmdSend|cmdSendSilent [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;fhem command&gt;</code><br>Executes the given fhem command and then sends the result to the given peers or the default peer (cmdSendSilent does the same as silent message).<br>
     Example: The following command would sent the resulting SVG picture to the default peer: <br>
       <code>set tbot cmdSend { plotAsPng('SVG_FileLog_Aussen') }</code>
     </li>

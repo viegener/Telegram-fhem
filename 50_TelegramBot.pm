@@ -156,9 +156,9 @@
 
 #   cmdSendSilent added and documented
 #   tests and fixes on handling of peers/chats for tbot_list and replies
+#   FIX: peer names not numeric in send commands
 
-#   FIX: peer names in send commands
-#   
+#   FIX: disable also sending messages
 #   
 ##############################################################################
 # TASKS 
@@ -308,7 +308,7 @@ sub TelegramBot_Initialize($) {
   $hash->{SetFn}      = "TelegramBot_Set";
   $hash->{AttrFn}     = "TelegramBot_Attr";
   $hash->{AttrList}   = "defaultPeer defaultPeerCopy:0,1 cmdKeyword cmdSentCommands favorites:textField-long favoritesInline:0,1 cmdFavorites cmdRestrictedPeer ". "cmdTriggerOnly:0,1 saveStateOnContactChange:1,0 maxFileSize maxReturnSize cmdReturnEmptyResult:1,0 pollingVerbose:1_Digest,2_Log,0_None ".
-  "cmdTimeout pollingTimeout disable queryAnswerText:textField cmdRespondChat:0,1 ".
+  "cmdTimeout pollingTimeout disable:1,0 queryAnswerText:textField cmdRespondChat:0,1 ".
   "allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCommands:textField allowedCommands filenameUrlEscape:1,0 ". 
   "textResponseFavorites:textField textResponseResult:textField textResponseUnauthorized:textField ".
   "parseModeSend:0_None,1_Markdown,2_HTML,3_InMsg webPagePreview:1,0 utf8Special:1,0 favorites2Col:0,1 ".
@@ -1666,6 +1666,9 @@ sub TelegramBot_SendIt($$$$$;$$$)
   $args[$TelegramBot_arg_retrycnt] = $retryCount+1;
   
   Log3 $name, 5, "TelegramBot_SendIt $name: called ";
+  
+  # ignore all sends if disabled
+  return if ( AttrVal($name,'disable',0) );
 
   # ensure sentQueue exists
   $hash->{sentQueue} = [] if ( ! defined( $hash->{sentQueue} ) );

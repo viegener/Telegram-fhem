@@ -53,10 +53,10 @@
 ## - remove access still set somewhere
 ## - status
 ## - removed de doc to show english as fallback
-
 ## - presence also with SYN check
 ## - pingtype attribute added
 ## - configure timeout for queued commands
+
 ##
 ##
 ##
@@ -150,6 +150,8 @@ sub IrBlaster_Define($$) {
     
     my $name            = $hash->{NAME};
     my $host            = $a[2];
+    
+    delete( $hash->{PASS} );
     
     $hash->{HOST}       = $host;
     $hash->{PREFIX}     = $a[3];

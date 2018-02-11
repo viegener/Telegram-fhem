@@ -57,7 +57,7 @@
 ## - pingtype attribute added
 ## - configure timeout for queued commands
 
-##
+## - FIX: redefine without passcode : #msg762210
 ##
 ##
 ###############################################################################

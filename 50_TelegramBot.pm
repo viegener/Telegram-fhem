@@ -153,12 +153,13 @@
 #   Change log to not write _Set/_Get on ? parameter
 #   attr to handle set / del types for polling/allowedCmds/favorites
 #   silentInline added
-
 #   cmdSendSilent added and documented
 #   tests and fixes on handling of peers/chats for tbot_list and replies
 #   FIX: peer names not numeric in send commands
-
 #   FIX: disable also sending messages
+#   FIX: have disable attribute with dropdown
+
+#   Allow caption in sendImage also with \n\t
 #   
 ##############################################################################
 # TASKS 
@@ -1828,6 +1829,9 @@ sub TelegramBot_SendIt($$$$$;$$$)
 
       # add caption
       if ( defined( $addPar ) ) {
+        $addPar =~ s/(?<![\\])\\n/\x0A/g;
+        $addPar =~ s/(?<![\\])\\t/\x09/g;
+
         $ret = TelegramBot_AddMultipart($hash, $hash->{HU_DO_PARAMS}, "caption", undef, $addPar, 0 ) if ( ! defined( $ret ) );
         $addPar = undef;
       }

@@ -27,7 +27,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,38328.0.html
 #
-# $Id: 50_TelegramBot.pm 15046 2017-09-10 15:49:32Z viegener $
+# $Id: 50_TelegramBot.pm 16382 2018-03-11 13:20:55Z viegener $
 #
 ##############################################################################
 # 0.0 2015-09-16 Started
@@ -158,8 +158,9 @@
 #   FIX: peer names not numeric in send commands
 #   FIX: disable also sending messages
 #   FIX: have disable attribute with dropdown
-
 #   Allow caption in sendImage also with \n\t
+# 2.8 2018-03-11  more silent cmds, caption formatting, several fixes 
+
 #   
 ##############################################################################
 # TASKS 
@@ -3421,7 +3422,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
 1;
 
 =pod
-=item summary    send and receive of messages through telegram instant messaging
+=item summary   send and receive of messages through telegram instant messaging
 =item summary_DE senden und empfangen von Nachrichten durch telegram IM
 =begin html
 
@@ -3556,7 +3557,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>sendVoice [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt;</code><br>Sends a voice message for playing directly in the browser to the given peer(s) or if ommitted to the default peer. Handling for files and peers is as specified above.
     </li>
     
-    <li><code>silentImage ...<br>Sends the given image silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the sendImage command.
+    <li><code>silentImage ...</code><br>Sends the given image silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the sendImage command.
     </li>
     
 

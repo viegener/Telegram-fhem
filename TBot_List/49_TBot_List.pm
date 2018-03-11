@@ -26,7 +26,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,67976.0.html
 #
-# $Id: 49_TBot_List.pm 14370 2017-05-25 16:09:28Z viegener $
+# $Id: 49_TBot_List.pm 16382 2018-03-11 13:20:55Z viegener $
 #
 ##############################################################################
 # 0.0 2017-01-15 Started
@@ -83,8 +83,8 @@
 #   added count getter for count of list entries
 #   FIX: Some log entries / issues with inline commands
 #   new attribute deleteOnly to have deleteonly lists / no changes or adds
-
 #   document deleteOnly
+# 0.7 2018-03-11   deleteonly lists / internal changes
   
 #   
 ##############################################################################

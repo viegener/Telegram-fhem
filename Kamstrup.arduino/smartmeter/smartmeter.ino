@@ -16,6 +16,8 @@
  * **********************************************************************************************************************************
  * DONE:
  *  
+ *  new command x 42 for rebooting
+ *  
  * support register range
  * repeat last command when timeing out
  * set repeat factor
@@ -34,7 +36,7 @@
 
 #include <SoftwareSerial.h>
 
-#include <Cmd.h> 
+#include "Cmd.h"
 
 /***********************************************************************************************************************************/
 /***********************************************************************************************************************************/
@@ -48,6 +50,8 @@
 #define PIN_KAMSER_RX  9  // Kamstrup IR interface RX
 #define PIN_KAMSER_TX  10  // Kamstrup IR interface TX
 #define PIN_LED        13  // Standard Arduino LED
+
+#define PIN_RELAIS     5 // Switch High to restart arduino
 
 // Kamstrup optical IR serial
 // #define KAMTIMEOUT 300  // Kamstrup timeout after transmit
@@ -380,6 +384,9 @@ float kamDecode(unsigned short const kreg, byte const *msg) {
 /***********************************************************************************************************************************/
 void setup() {
 
+  pinMode(PIN_RELAIS, OUTPUT);
+  digitalWrite(PIN_RELAIS, 0);
+  
   delay(500);
   Serial.begin(57600);
   
@@ -609,10 +616,12 @@ void handleRX() {
       }
 
     } else {
-      // unsolicited message
-      Serial.print(F("\r\n >>Err: Received data outside message - " ));
-      sprintf( globalbuf, stdhexformat, r );
-      Serial.println( globalbuf );
+      if ( debugLevel > DEBUGLEVEL_START ) { 
+        // unsolicited message
+        Serial.print(F("\r\n >>Err: Received data outside message - " ));
+        sprintf( globalbuf, stdhexformat, r );
+        Serial.println( globalbuf );
+      }
     }
 
   }
@@ -733,7 +742,7 @@ const char xl100_banner[] PROGMEM = "*************** smartmeter ****************
 const char xl100_help1[] PROGMEM = "  r <id> [<id2>] --> get register value";
 const char xl100_help2[] PROGMEM = "  w <data>       --> raw command\r\n  d <level>      --> debug level";
 const char xl100_help3[] PROGMEM = "  f <count>      --> repeat factor\r\n  t <ms>         --> timeout for receive";
-const char xl100_help4[] PROGMEM = "  q / m / h      --> show status / free mem / help";
+const char xl100_help4[] PROGMEM = "  q / m / h      --> show status / free mem / help\r\n  x 42           --> reboot";
 // const char xl100_help5[] PROGMEM = "  multi          --> read multiple register values and wait";
 
 const char xl100_eror[] PROGMEM = "***parameter mismatch"; 
@@ -903,6 +912,31 @@ void cDebugLevel(int arg_cnt, char **args) {
 }
 
 
+void cReboot(int arg_cnt, char **args) {
+  if ( expectResult ) {
+    return;
+  }
+  if ( arg_cnt > 2 ) {
+    commandShowHelpConst( xl100_eror);
+    return;
+  }
+
+  if ( arg_cnt == 2 ) {
+    int val = cmdStr2Num(args[1], 10 );
+    
+    Serial.print(F(">> Reboot ? : "));
+    Serial.print(val);
+    Serial.println();
+  
+    if ( val == 42 ) {
+      digitalWrite(PIN_RELAIS, 1);
+      delay(1000);
+      digitalWrite(PIN_RELAIS, 0);
+    }
+  }
+}
+
+
 void cReceiveTimeout(int arg_cnt, char **args) {
   if ( expectResult ) {
     return;
@@ -1031,6 +1065,8 @@ void commandSetup() {
   cmdAdd( "m", cShowMem );
   cmdAdd( "q", cShowQueue );
   cmdAdd( "c", cCancel );
+  
+  cmdAdd( "x", cReboot );
   
   cmdAdd( "f", cRepeatFactor );
   cmdAdd( "t", cReceiveTimeout );

@@ -142,7 +142,7 @@
 #   doc favoritesMenu
 #   correct favoritesMenu to allow parameter
 #   FIX: allow_nonref / eval also for makekeyboard #msg732757
-#   new set cmd silentmsg for disable_notification - syntax as in msg
+#   new set cmd msg for disable_notification - syntax as in msg
 #   INT: change forceReply to options for sendit
 # 2.7 2017-12-20  set command silentmsg 
 
@@ -231,6 +231,9 @@ my %sets = (
   "silentmsg" => "textField",
   "silentImage" => "textField",
   "silentInline" => "textField",
+  "silentDocument" => "textField",
+  "silentLocation" => "textField",
+  "silentVoice" => "textField",
 
   "msgDelete" => "textField",
 
@@ -493,7 +496,7 @@ sub TelegramBot_Set($@)
   
   if( ($cmd eq 'message') || ($cmd eq 'queryInline') || ($cmd eq 'queryEditInline') || ($cmd eq 'queryAnswer') || 
       ($cmd eq 'msg') || ($cmd eq '_msg') || ($cmd eq 'reply') || ($cmd eq 'msgEdit') || ($cmd eq 'msgForceReply') || 
-      ($cmd eq 'silentmsg') || ($cmd eq 'silentImage')  || ($cmd eq 'silentInline') || ($cmd =~ /^send.*/ ) ) {
+      ($cmd =~ /^silent.*/ ) || ($cmd =~ /^send.*/ ) ) {
 
     my $msgid;
     my $msg;
@@ -517,7 +520,7 @@ sub TelegramBot_Set($@)
     # special options
     $inline = 1 if ( ($cmd eq 'queryInline') || ($cmd eq 'queryEditInline') || ($cmd eq 'silentInline') );
     $options .= " -force_reply- " if ($cmd eq 'msgForceReply');
-    $options .= " -silent- " if ( ($cmd eq 'silentmsg') || ($cmd eq 'silentImage') || ($cmd eq 'silentInline') ) ;
+    $options .= " -silent- " if ( ($cmd =~ /^silent.*/ ) ) ;
     
     
     return "TelegramBot_Set: Command $cmd, no peers and no text/file specified" if ( $numberOfArgs < 2 );
@@ -545,13 +548,13 @@ sub TelegramBot_Set($@)
     }
     if ( ($cmd eq 'sendPhoto') || ($cmd eq 'sendImage') || ($cmd eq 'image') || ($cmd eq 'silentImage')  ) {
       $sendType = 1;
-    } elsif ($cmd eq 'sendVoice')  {
+    } elsif ( ($cmd eq 'sendVoice')  || ($cmd eq 'silentVoice') ) {
       $sendType = 2;
-    } elsif ( ($cmd eq 'sendDocument') || ($cmd eq 'sendMedia') ) {
+    } elsif ( ($cmd eq 'sendDocument') || ($cmd eq 'sendMedia')  || ($cmd eq 'silentDocument') ) {
       $sendType = 3;
     } elsif ( ($cmd eq 'msgEdit') || ($cmd eq 'queryEditInline') )  {
       $sendType = 10;
-    } elsif ($cmd eq 'sendLocation')  {
+    } elsif ( ($cmd eq 'sendLocation') || ($cmd eq 'silentLocation') )  {
       $sendType = 11;
     } elsif ($cmd eq 'queryAnswer')  {
       $sendType = 12;
@@ -3512,7 +3515,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
       <dl>
     </li>
     
-    <li><code>silentmsg, silentImage, silentInline ...</code><br>Sends the given message silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the corresponding send/message command.
+    <li><code>silentmsg, silentImage, silentDocument, silentLocation, silentVoice , silentInline ...</code><br>Sends the given message silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the corresponding send/message command.
     </li>
     
     <li><code>msgForceReply [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;text&gt;</code><br>Sends the given message to the recipient(s) and requests (forces) a reply. Handling of peers is equal to the message command. Adding reply keyboards is currently not supported by telegram.

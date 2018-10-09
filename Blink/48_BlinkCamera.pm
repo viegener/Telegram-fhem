@@ -1829,6 +1829,7 @@ sub BlinkCamera_BinaryFileWrite($$$) {
 
 #####################################
 #  INTERNAL: Get a single json video entry -> returns $id, $deleted, $updated, $entryString
+# never gets called?
 sub BlinkCamera_GetAlertEntry( $$ ) {
   my ( $hash, $jentry ) = @_;
   
@@ -1912,7 +1913,9 @@ sub BlinkCamera_IsLastAlertPage( $$ ) {
 
 
 #####################################
-#  INTERNAL: analyze an alert page
+# INTERNAL: analyze an alert page
+# gets called from sub BlinkCamera_AnalyzeAlertResults( $$$ )
+# and does update of readings
 sub BlinkCamera_HandleAlertEntry( $$$$ ) {
 
   my ( $hash, $id, $deleted, $entry ) = @_;
@@ -1945,8 +1948,12 @@ sub BlinkCamera_HandleAlertEntry( $$$$ ) {
 
       my $lastUpdate = $hash->{eventTimestamp};
 
-      Log3 $name, 5, "BlinkCamera_HandleAlertEntry $name: id  :$id: alert time  :$alertTime: ";
+      Log3 $name, 5, "BlinkCamera_HandleAlertEntry $name: id  :$id: alert time  :$alertTime: alertCamera  :$alertCamera: ";
       
+      // reading networkCameras contains cameras in our selected network (attr network)
+      // so we need to check whether the camera that created the alert is one of the 
+      // cameras in our network
+      // list of cameras in our network is <id>:<name>\n<id2>:<name2>....
       if ( ( $alertTime gt $lastUpdate ) && ( length($alertViewed) == 0 ) ) {
         readingsBeginUpdate($hash);
         readingsBulkUpdate($hash, "alertVideo", $alertVideo );        

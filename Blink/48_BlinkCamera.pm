@@ -1954,7 +1954,14 @@ sub BlinkCamera_HandleAlertEntry( $$$$ ) {
       # so we need to check whether the camera that created the alert is one of the 
       # cameras in our network
       # list of cameras in our network is <id>:<name>\n<id2>:<name2>....
-      if ( ( $alertTime gt $lastUpdate ) && ( length($alertViewed) == 0 ) ) {
+	  #first get list of cameras
+      my $cameras = ReadingsVal($hash->{NAME},'networkCameras',"");
+	  #print $cameras =~ /$alertCamera/."\n";
+	  #inserted check whether camera causing alert is one in our network
+	  #this is rather crude as it only checks for the id of the camera causing the alert is contained
+	  #in the list of cameras. it will turn bad if someone decides to extend the length of the
+	  #camera ids
+	  if ( ( $alertTime gt $lastUpdate ) && ( length($alertViewed) == 0 ) && $cameras =~ /$alertCamera/) {
         readingsBeginUpdate($hash);
         readingsBulkUpdate($hash, "alertVideo", $alertVideo );        
         readingsBulkUpdate($hash, "alertCamera", $alertCamera );        

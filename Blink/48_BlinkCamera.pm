@@ -26,7 +26,7 @@
 # Some information is based on the work here: https://github.com/MattTW/BlinkMonitorProtocol
 # (although this was slightly outdated)
 #
-# Discussed in FHEM Forum: <not yet>
+# Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,59719.0.html
 #
 # $Id: 48_BlinkCamera.pm $
 #
@@ -1947,13 +1947,13 @@ sub BlinkCamera_HandleAlertEntry( $$$$ ) {
       my $alertVideo = $5;
 
       my $lastUpdate = $hash->{eventTimestamp};
-
+	  # $alertCamera is the id of the camera that has caused the alert (numeric value, not camera name)
       Log3 $name, 5, "BlinkCamera_HandleAlertEntry $name: id  :$id: alert time  :$alertTime: alertCamera  :$alertCamera: ";
       
-      // reading networkCameras contains cameras in our selected network (attr network)
-      // so we need to check whether the camera that created the alert is one of the 
-      // cameras in our network
-      // list of cameras in our network is <id>:<name>\n<id2>:<name2>....
+      # reading networkCameras contains cameras in our selected network (attr network)
+      # so we need to check whether the camera that created the alert is one of the 
+      # cameras in our network
+      # list of cameras in our network is <id>:<name>\n<id2>:<name2>....
       if ( ( $alertTime gt $lastUpdate ) && ( length($alertViewed) == 0 ) ) {
         readingsBeginUpdate($hash);
         readingsBulkUpdate($hash, "alertVideo", $alertVideo );        

@@ -161,11 +161,10 @@
 #   Allow caption in sendImage also with \n\t
 # 2.8 2018-03-11  more silent cmds, caption formatting, several fixes 
 
+#   Pull request: silentDocument, silentLocation, silentVoice
 #   
 ##############################################################################
 # TASKS 
-#   
-#   additional silent commands
 #   
 #   queryDialogStart / queryDialogEnd - keep msg id 
 #   

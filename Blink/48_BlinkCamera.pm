@@ -125,8 +125,8 @@
 #   Fix - wait undefined when error before in DoCmd
 
 #   Fix: handle unicode in json - e.g. names
-#   
-#   
+#   added cameraList as new get
+#   added ...Name und ...Active to Camera readings
 #   
 ##############################################################################
 # TASKS 
@@ -433,6 +433,18 @@ sub BlinkCamera_Get($@)
     
   } elsif($cmd eq 'liveview') {
     $ret = BlinkCamera_CameraDoCmd( $hash, "liveview", $arg );
+    
+  } elsif($cmd eq 'cameraList') {
+    my $cList = BlinkCamera_GetCameraId( $hash );
+    if ( ! defined( $cList ) ) {
+      $ret = "ERROR: No cameras found - need to run getInfo?";
+    } else {
+      foreach my $cam ( @$cList ) {
+        $ret = (defined($ret)?$ret."\n":"").$cam;
+      }
+    }
+    $ret = "ERROR: cameralist is empty" if ( ! $ret );
+    return $ret
   }
   
   Log3 $name, 5, "BlinkCamera_Get $name: $cmd ".((defined( $ret ))?"failed with :$ret: ":"done succesful ") if ( $cmd ne "?" );
@@ -1005,6 +1017,8 @@ sub BlinkCamera_ParseHomescreen($$$)
     foreach my $device ( @$devList ) {
       if ( $device->{device_type} eq "camera" ) {
         $readUpdates->{"networkCamera".$device->{device_id}} = $device->{name}.":".$device->{active};
+        $readUpdates->{"networkCamera".$device->{device_id}."Name"} = $device->{name};
+        $readUpdates->{"networkCamera".$device->{device_id}."Active"} = $device->{active};
         $cameraGets .= $device->{name}.",".$device->{device_id}.",";
         $cameras .= $device->{device_id}.":".$device->{name}."\n";
         if ( defined( $device->{thumbnail} ) ) {
@@ -1528,7 +1542,12 @@ sub BlinkCamera_ResetPollInfo($) {
   $hash->{POLLING} = 0;
   
   # wait some time before next polling is starting
-  InternalTimer(gettimeofday()+5, "BlinkCamera_PollInfo", $hash,0); 
+  
+    if( $init_done ) {
+      InternalTimer(gettimeofday()+5, "BlinkCamera_PollInfo", $hash, 0); 
+    } else {
+      InternalTimer(gettimeofday()+60, "BlinkCamera_PollInfo", $hash, 0); 
+    }
 
   Log3 $name, 4, "BlinkCamera_ResetPollInfo $name: finished ";
 
@@ -1582,6 +1601,8 @@ sub BlinkCamera_Setup($) {
     "getThumbnail" => undef,
     
     "getVideoAlert" => undef,
+
+    "cameraList" => undef,
 
     "liveview" => undef,
 

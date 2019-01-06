@@ -162,6 +162,8 @@
 # 2.8 2018-03-11  more silent cmds, caption formatting, several fixes 
 
 #   Pull request: silentDocument, silentLocation, silentVoice
+#   Corrections for single peer not needed for sent command
+#   single peer limited for reply and other change messages
 #   
 ##############################################################################
 # TASKS 
@@ -505,6 +507,7 @@ sub TelegramBot_Set($@)
     my $peers;
     my $inline = 0;
     my $needspeer = 1;
+    my $singlepeer = 0;
     
     if ( ($cmd eq 'reply') || ($cmd eq 'msgEdit' ) || ($cmd eq 'queryEditInline' ) ) {
       return "TelegramBot_Set: Command $cmd, no msgid and no text/file specified" if ( $numberOfArgs < 3 );
@@ -512,6 +515,8 @@ sub TelegramBot_Set($@)
       return "TelegramBot_Set: Command $cmd, msgId must be given as first parameter before peer" if ( $msgid =~ /^@/ );
       $numberOfArgs--;
       # all three messages need also a peer/chat_id
+      # but only a single peer is needed
+      $singlepeer = 1;
     } elsif ($cmd eq 'queryAnswer')  {
       $needspeer = 0;
     }
@@ -527,7 +532,7 @@ sub TelegramBot_Set($@)
 
     while ( $args[0] =~ /^@(..+)$/ ) {
       my $ppart = $1;
-      return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( ($cmd eq 'reply') && ( defined( $peers ) ) );
+      return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( ($singlepeer) && ( defined( $peers ) ) );
       $peers .= " " if ( defined( $peers ) );
       $peers = "" if ( ! defined( $peers ) );
       $peers .= $ppart;
@@ -663,7 +668,6 @@ sub TelegramBot_Set($@)
     my $peers;
     while ( $args[0] =~ /^@(..+)$/ ) {
       my $ppart = $1;
-      return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( ( defined( $peers ) ) );
       $peers .= " " if ( defined( $peers ) );
       $peers = "" if ( ! defined( $peers ) );
       $peers .= $ppart;

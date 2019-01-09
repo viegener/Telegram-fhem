@@ -123,11 +123,15 @@
 #   host calculated dynamically starting with prod - then region from login
 #   CommandDeleteReading(undef,$readName);  instead of manually deleting
 #   Fix - wait undefined when error before in DoCmd
-
 #   Fix: handle unicode in json - e.g. names
 #   added cameraList as new get
 #   added ...Name und ...Active to Camera readings
+
 #   
+#   further checks for missing args in get command
+#   check curl before loging -> see msg884538 (in DoCmd thumbnail)
+
+# 
 ##############################################################################
 # TASKS 
 #   
@@ -408,7 +412,7 @@ sub BlinkCamera_Get($@)
   ### Check Args
   my $numberOfArgs  = int(@args);
   return "BlinkCamera_Get: No value specified for get" if ( $numberOfArgs < 1 );
-
+ 
   my $cmd = $args[0];
   my $arg = $args[1];
 
@@ -423,15 +427,19 @@ sub BlinkCamera_Get($@)
     $ret = BlinkCamera_DoCmd( $hash, "homescreen" );
   
   } elsif ($cmd eq 'getInfoCamera') {
+    return "BlinkCamera_Get: No value specified for get $cmd" if ( $numberOfArgs < 2 ) ;
     $ret = BlinkCamera_CameraDoCmd( $hash, "cameraConfig", $arg );
 
   } elsif ($cmd eq 'getThumbnail') {
+    return "BlinkCamera_Get: No value specified for get $cmd" if ( $numberOfArgs < 2 ) ;
     $ret = BlinkCamera_CameraDoCmd( $hash, "cameraThumbnail", $arg );
 
   } elsif($cmd eq 'getVideoAlert') {
+    return "BlinkCamera_Get: No value specified for get $cmd" if ( $numberOfArgs < 2 ) ;
     $ret = BlinkCamera_DoCmd( $hash, "video", $arg );
     
   } elsif($cmd eq 'liveview') {
+    return "BlinkCamera_Get: No value specified for get $cmd" if ( $numberOfArgs < 2 ) ;
     $ret = BlinkCamera_CameraDoCmd( $hash, "liveview", $arg );
     
   } elsif($cmd eq 'cameraList') {
@@ -748,7 +756,7 @@ sub BlinkCamera_DoCmd($$;$$$)
       
       my $curl =  $hash->{"thumbnail".$par1."Req"};
       Log3 $name, 5, "BlinkCamera_DoCmd $name:   par1 :".$par1.":";
-      Log3 $name, 5, "BlinkCamera_DoCmd $name:   curl :".$curl.":";
+      Log3 $name, 5, "BlinkCamera_DoCmd $name:   curl :".(defined($curl)?$curl:"<undef>").":";
       
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
       $hash->{HU_DO_PARAMS}->{method} = "GET";

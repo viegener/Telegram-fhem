@@ -131,6 +131,8 @@
 #   further checks for missing args in get command
 #   check curl before loging -> see msg884538 (in DoCmd thumbnail)
 
+#   FIX: getVideoAlert also without parameter
+
 # 
 ##############################################################################
 # TASKS 
@@ -435,7 +437,6 @@ sub BlinkCamera_Get($@)
     $ret = BlinkCamera_CameraDoCmd( $hash, "cameraThumbnail", $arg );
 
   } elsif($cmd eq 'getVideoAlert') {
-    return "BlinkCamera_Get: No value specified for get $cmd" if ( $numberOfArgs < 2 ) ;
     $ret = BlinkCamera_DoCmd( $hash, "video", $arg );
     
   } elsif($cmd eq 'liveview') {

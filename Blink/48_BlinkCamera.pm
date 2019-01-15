@@ -126,13 +126,16 @@
 #   Fix: handle unicode in json - e.g. names
 #   added cameraList as new get
 #   added ...Name und ...Active to Camera readings
-
 #   
 #   further checks for missing args in get command
 #   check curl before loging -> see msg884538 (in DoCmd thumbnail)
-
 #   FIX: getVideoAlert also without parameter
 
+#   set cmdId also on command waiting to finish in callback
+#   FIX: Overlapping homescreen will not lead to double thumbnail picture requests - #msg887087
+
+#
+#
 # 
 ##############################################################################
 # TASKS 
@@ -1025,6 +1028,7 @@ sub BlinkCamera_ParseHomescreen($$$)
     my $cameras = "";
     foreach my $device ( @$devList ) {
       if ( $device->{device_type} eq "camera" ) {
+#        Debug "Device loop: ".$device->{device_id};
         $readUpdates->{"networkCamera".$device->{device_id}} = $device->{name}.":".$device->{active};
         $readUpdates->{"networkCamera".$device->{device_id}."Name"} = $device->{name};
         $readUpdates->{"networkCamera".$device->{device_id}."Active"} = $device->{active};
@@ -1034,8 +1038,14 @@ sub BlinkCamera_ParseHomescreen($$$)
           # Load Thumbnail only if not already there
           if ( ( ! defined( $hash->{"thumbnail".$device->{device_id}."Url"} ) ||
                ( $hash->{"thumbnail".$device->{device_id}."Url"} ne $device->{thumbnail} ) ) ) {
-            $hash->{"thumbnail".$device->{device_id}."Req"} = $device->{thumbnail};
-            BlinkCamera_DoCmd( $hash, "thumbnail", $device->{device_id}, "HIDDEN" );
+            if ( ! defined( $hash->{"thumbnail".$device->{device_id}."Req"} ) ) {
+#              Debug "retreive thumbnail from homescreen for ".$device->{device_id};
+              # Do thumbnail request only of not already there (e.g. by polling)
+              $hash->{"thumbnail".$device->{device_id}."Req"} = $device->{thumbnail};
+              BlinkCamera_DoCmd( $hash, "thumbnail", $device->{device_id}, "HIDDEN" );
+            } else {
+              Log3 $name, 4, "BlinkCamera_ParseHomescreen $name:  thumbnail Req already defined for ".$device->{device_id};
+            }
           } else {
             # already there just update readings
             $readUpdates->{"networkCamera".$device->{device_id}."Url"} = "/fhem/".
@@ -1285,6 +1295,7 @@ sub BlinkCamera_Callback($$$)
         if ( $result->{complete} ) {
           BlinkCamera_DoCmd( $hash, "homescreen", undef, "POLLING" );
         } else {
+          $cmdId = $result->{id} if ( defined( $result->{id} ) );
           $ret = "waiting for command to be finished";
           $maxRetries = 3;
         }
@@ -1341,7 +1352,7 @@ sub BlinkCamera_Callback($$$)
       if ( defined( $filename ) ) {
         $hash->{cmdJson} = (defined($data)?"length :".length($data):"<undef>");
       } else {
-        Debug "Result :".$data.":";
+#        Debug "Result :".$data.":";
         
         $hash->{cmdJson} = (defined($data)?$data:"<undef>");
       }

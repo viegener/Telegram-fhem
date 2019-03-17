@@ -134,6 +134,7 @@
 #   set cmdId also on command waiting to finish in callback
 #   FIX: Overlapping homescreen will not lead to double thumbnail picture requests - #msg887087
 
+#   Password is not stored in define after first run - setkeyvalue
 #
 #
 # 
@@ -160,7 +161,6 @@
 #   
 #   get camera config in different device or detailed
 #   
-#   remove password from define - discard it
 #   host cofigurable?
 #   setkey for authtoken
 #
@@ -298,21 +298,34 @@ sub BlinkCamera_Define($$) {
   my $errmsg = '';
   
   # Check parameter(s)
-  if( int(@a) != 4 ) {
-    $errmsg = "syntax error: define <name> BlinkCamera <email> <password> ";
+  if ( ( int(@a) != 4 ) && ( int(@a) != 3 ) ) {
+    $errmsg = "syntax error: define <name> BlinkCamera <email> [ <password> ] ";
     Log3 $name, 1, "BlinkCamera $name: " . $errmsg;
     return $errmsg;
   }
   
   if ( $a[2] =~ /^.+@.+$/ ) {
     $hash->{Email} = $a[2];
-    setKeyValue(  "BlinkCamera_".$hash->{Email}, $a[3] );
   } else {
-    $errmsg = "specify valid email address define <name> BlinkCamera <email> <password> ";
+    $errmsg = "specify valid email address define <name> BlinkCamera <email> [ <password> ] ";
     Log3 $name, 1, "BlinkCamera $name: " . $errmsg;
     return $errmsg;
   }
+
   
+  if ( int(@a) == 3 ) {
+    my ($err, $password) = getKeyValue("BlinkCamera_".$hash->{Email});
+    if ( ( defined($err) ) || ( ! defined($password) ) ) {
+      $errmsg = "no password token found (Error:".$err.") specify password with define <name> BlinkCamera <email> [ <password> ] ";
+      Log3 $name, 1, "BlinkCamera $name: " . $errmsg;
+      return $errmsg;
+    }
+  } else {
+    setKeyValue(  "BlinkCamera_".$hash->{Email}, $a[3] ); 
+    # remove password from def
+    $hash->{DEF} = $hash->{Email};
+  }
+    
   my $ret;
   
   $hash->{TYPE} = "BlinkCamera";
@@ -341,6 +354,8 @@ sub BlinkCamera_Undef($$)
 
   RemoveInternalTimer($hash->{HU_DO_PARAMS});
 
+  setKeyValue(  "BlinkCamera_".$hash->{Email}, undef ); 
+  
   Log3 $name, 4, "BlinkCamera_Undef $name: done ";
   return undef;
 }

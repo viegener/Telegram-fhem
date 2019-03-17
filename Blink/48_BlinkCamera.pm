@@ -2109,9 +2109,11 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
   <a name="BlinkCameradefine"></a>
   <b>Define</b>
   <ul>
-    <code>define &lt;name&gt; BlinkCamera &lt;email&gt; &lt;password&gt; </code>
+    <code>define &lt;name&gt; BlinkCamera &lt;email&gt; [ &lt;password&gt; ] </code>
     <br><br>
-    Defines a BlinkCamera devic, which connects to the cloud servers with the given user name and password (as provided during registration / setup)
+    Defines a BlinkCamera device, which connects to the cloud servers with the given user name and password (as provided during registration / setup)
+    <br><br>
+    The password will be removed from the define and stored separately (so needs to be given on the initial define)
     <br><br>
     Example: <code>define blink BlinkCamera ichbins@nicht.de abc123</code><br>
     <br>

@@ -164,6 +164,8 @@
 #   Pull request: silentDocument, silentLocation, silentVoice
 #   Corrections for single peer not needed for sent command
 #   single peer limited for reply and other change messages
+#   Allow \s for space in message (allows multiple spaces in preformatted messages)
+#   Document \n \t \s in messages
 #   
 ##############################################################################
 # TASKS 

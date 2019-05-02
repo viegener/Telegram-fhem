@@ -1789,6 +1789,7 @@ sub TelegramBot_SendIt($$$$$;$$$)
        } else {
         $hash->{sentMsgText} = $msg;
        }
+      $msg =~ s/(?<![\\])\\s/ /g;
       $msg =~ s/(?<![\\])\\n/\x0A/g;
       $msg =~ s/(?<![\\])\\t/\x09/g;
 
@@ -3497,6 +3498,8 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <li><code>message|msg|_msg|send [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] [ (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) ] &lt;text&gt;</code><br>Sends the given message to the given peer or if peer(s) is ommitted currently defined default peer user. Each peer given needs to be always prefixed with a '@'. Peers can be specified as contact ids, full names (with underscore instead of space), usernames (prefixed with another @) or chat names (also known as groups in telegram groups must be prefixed with #). Multiple peers are to be separated by space<br>
     A reply keyboard can be specified by adding a list of strings enclosed in parentheses "()". Each separate string will make one keyboard row in a reply keyboard. The different keys in the row need to be separated by |. The key strings can contain spaces.<br>
     Messages do not need to be quoted if containing spaces. If you want to use parentheses at the start of the message than add one extra character before the parentheses (i.e. an underline) to avoid the message being parsed as a keyboard <br>
+    Messages can also contain special characters for the message. These include newline =&#92;n, tab = &#92;t and also a normal space = &#92;s <br>
+
     Examples:<br>
       <dl>
         <dt><code>set aTelegramBotDevice message @@someusername a message to be sent</code></dt>

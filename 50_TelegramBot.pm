@@ -167,6 +167,7 @@
 #   Allow \s for space in message (allows multiple spaces in preformatted messages)
 #   Document \n \t \s in messages
 #   Corrected Eol
+# 2.9 2019-05-23  allow \s, addtl silenCmds, fixes 
 
 #   
 ##############################################################################

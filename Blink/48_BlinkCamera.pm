@@ -26,7 +26,7 @@
 # Some information is based on the work here: https://github.com/MattTW/BlinkMonitorProtocol
 # (although this was slightly outdated)
 #
-# Discussed in FHEM Forum: <not yet>
+# Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,59719.0.html
 #
 # $Id: 48_BlinkCamera.pm $
 #
@@ -130,16 +130,19 @@
 #   further checks for missing args in get command
 #   check curl before loging -> see msg884538 (in DoCmd thumbnail)
 #   FIX: getVideoAlert also without parameter
-
 #   set cmdId also on command waiting to finish in callback
 #   FIX: Overlapping homescreen will not lead to double thumbnail picture requests - #msg887087
 
 #   Password is not stored in define after first run - setkeyvalue
-#
+#   Add forum link
+#   make webname configurable to support alternate configurations
+
 #
 # 
 ##############################################################################
 # TASKS 
+#   
+#   webName configurable
 #   
 #   FIX: getThumbnail url failing sometimes
 #   
@@ -152,8 +155,6 @@
 #   allow thumbnailreset
 #   
 #   remove video file
-#   
-#   make a test with unauthorized
 #   
 ##############################################################################
 # Ideas
@@ -277,6 +278,7 @@ sub BlinkCamera_Initialize($) {
           "imgOriginalFile:0,1 ".
           "videoTemplate:textField ".
           "proxyDir:textField ".
+          "webname:textField ".
           "network ".
           "pollingTimeout ".
           $readingFnAttributes;           
@@ -1063,7 +1065,7 @@ sub BlinkCamera_ParseHomescreen($$$)
             }
           } else {
             # already there just update readings
-            $readUpdates->{"networkCamera".$device->{device_id}."Url"} = "/fhem/".
+            $readUpdates->{"networkCamera".$device->{device_id}."Url"} = BlinkCamera_getwebname( $hash ).
                 BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $device->{device_id}, $name ); 
           }
         }
@@ -1235,7 +1237,7 @@ sub BlinkCamera_Callback($$$)
         Log3 $name, 4, "BlinkCamera_Callback $name: binary write  file :".$repfilename;
         $ret = BlinkCamera_BinaryFileWrite( $hash, $proxyDir.$repfilename, $data );
         
-        $fullurl = "/fhem/".$filename;
+        $fullurl = BlinkCamera_getwebname( $hash ).$filename;
       }
       
     } else {
@@ -1333,9 +1335,9 @@ sub BlinkCamera_Callback($$$)
         $hash->{"thumbnail".$par1."Url"} = $hash->{"thumbnail".$par1."Req"};
         delete( $hash->{"thumbnail".$par1."Req"} );
         
-#        $readUpdates{"networkCamera".$par1."Url"} = "/fhem/".
+#        $readUpdates{"networkCamera".$par1."Url"} = BlinkCamera_getwebname( $hash ).
 #            BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $par1, $name ); 
-        $readUpdates{"networkCamera".$par1."Url"} = "/fhem/".$filename;
+        $readUpdates{"networkCamera".$par1."Url"} = BlinkCamera_getwebname( $hash ).$filename;
 
         my $proxyDir = AttrVal($name,"proxyDir","/tmp/");
         $readUpdates{"networkCamera".$par1."File"} = $proxyDir.$repfilename;
@@ -1727,6 +1729,21 @@ sub BlinkCamera_Setup($) {
 ##############################################################################
 ##############################################################################
 
+
+#####################################
+#  INTERNAL: get pattern replaced
+sub BlinkCamera_getwebname( $ ) {
+  my ( $hash ) = @_;
+
+  my $wn = AttrVal($hash->{NAME},'webname',"fhem");
+
+  # might add parsing for removing trailing / leadings slashes
+  
+  $wn =~ s/^\/+//;
+  $wn =~ s/\/+$//;
+  
+  return "/".$wn."/";
+}
 
 #####################################
 #  INTERNAL: get pattern replaced

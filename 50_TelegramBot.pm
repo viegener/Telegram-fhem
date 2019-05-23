@@ -166,9 +166,13 @@
 #   single peer limited for reply and other change messages
 #   Allow \s for space in message (allows multiple spaces in preformatted messages)
 #   Document \n \t \s in messages
+#   Corrected Eol
+
 #   
 ##############################################################################
 # TASKS 
+#   Restructure help in logical blocks
+#   
 #   
 #   queryDialogStart / queryDialogEnd - keep msg id 
 #   
@@ -178,7 +182,6 @@
 #   
 #   replyKeyboardRemove - #msg592808
 #   
-#   \n in inline keyboards - not possible currently
 #   
 ##############################################################################
 

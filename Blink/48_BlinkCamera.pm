@@ -142,8 +142,6 @@
 ##############################################################################
 # TASKS 
 #   
-#   webName configurable
-#   
 #   FIX: getThumbnail url failing sometimes
 #   
 #   FIX: imgOriginalFile not fully working
@@ -2212,6 +2210,9 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
     </li> 
 
     <li><code>vidTemplate &lt;HTML template for reading&gt;</code><br>Give an HTML template for the video reading that shows the video of a notification from the camera. Default is a template which shows the video a link to the video and also the url and id as text. In the template the string #URL# will be replaced with the actual URL of the video and #ID# will be replaced by the video ID.
+    </li> 
+
+    <li><code>webname &lt;path to fhem web&gt;</code><br>can be set if fhem is not accessible through the standard url of FHEMWeb <code>/fhem/... </code> (Default value is fhem). 
     </li> 
 
   </ul>

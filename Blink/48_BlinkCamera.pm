@@ -132,16 +132,20 @@
 #   FIX: getVideoAlert also without parameter
 #   set cmdId also on command waiting to finish in callback
 #   FIX: Overlapping homescreen will not lead to double thumbnail picture requests - #msg887087
-
 #   Password is not stored in define after first run - setkeyvalue
 #   Add forum link
 #   make webname configurable to support alternate configurations
 
-#
+#   parsed account from login result -> needed for alerts
+#   new media access for getting alerts (v1 reactivated / v2 not working-used)
+#   Fix: AlertID with API V1 call
+#   networks parsing changed to onboarded networks are at the beginning
+
 # 
 ##############################################################################
 # TASKS 
-#   
+#   FIX: New homescreen on V3
+#
 #   FIX: getThumbnail url failing sometimes
 #   
 #   FIX: imgOriginalFile not fully working
@@ -728,7 +732,11 @@ sub BlinkCamera_DoCmd($$;$$$)
       
       $hash->{HU_DO_PARAMS}->{method} = "GET";
       
-      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v2/videos/changed?page=".$par1."&since=".$hash->{alertUpdate};
+# OLD V2      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v2/videos/changed?page=".$par1."&since=".$hash->{alertUpdate};
+
+# V1 seems still working here (v2 has been removed)
+# GET https://rest-prde.immedia-semi.com/api/v1/accounts/<id>/media/changed?since=2019-05-26T15%3A22%3A36Z&page=1
+      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}."/media/changed?page=".$par1."&since=".$hash->{alertUpdate};
 #      my $net =  BlinkCamera_GetNetwork( $hash );
 #      if ( defined( $net ) ) {
 #        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v2/videos?page=1";
@@ -962,6 +970,12 @@ sub BlinkCamera_ParseLogin($$$)
     if ( defined( $at->{authtoken} ) ) {
       $hash->{AuthToken} = $at->{authtoken};
     }
+    if ( defined( $result->{account} ) ) {
+      my $acc = $result->{account};
+      if ( defined( $acc->{id} ) ) {
+        $hash->{account} = $acc->{id};
+      }
+    }
   }
   
   # grab network list
@@ -972,8 +986,16 @@ sub BlinkCamera_ParseLogin($$$)
     foreach my $netkey ( keys %$resnet ) {
       Log3 $name, 4, "BlinkCamera_Callback $name: network  ".$netkey ;
       my $net =  $resnet->{$netkey};
-      $netlist .= "\n" if ( length( $netlist) > 0 );
-      $netlist .= $netkey.":".$net->{name};
+      my $ob = 0;
+      $ob = 1 if ( ( defined( $net->{onboarded} ) ) &&( $net->{onboarded} eq "true" ) );
+      my $ns = $netkey.":".$net->{name};
+      if ( $ob ) {
+        $ns .= "\n" if ( length( $netlist) > 0 );
+        $netlist = $ns.$netlist;
+      } else {
+        $netlist .= "\n" if ( length( $netlist) > 0 );
+        $netlist .= $ns;
+      }
     }
   }
   $readUpdates->{networks} = $netlist;
@@ -1143,7 +1165,7 @@ sub BlinkCamera_ParseStartAlerts($;$$$)
     $hash->{alertResults} = \@a;
   } else {
     # Store results
-    my $v = $result->{videos}; 
+    my $v = $result->{media}; 
     push( @{$hash->{alertResults}}, @$v );
     
     $isLast = ( BlinkCamera_IsLastAlertPage( $hash, $result ) ); 
@@ -1921,18 +1943,16 @@ sub BlinkCamera_GetAlertEntry( $$ ) {
     $entrystring .= $updated;
     $entrystring .= "|";
     
-    $entrystring .= $jentry->{camera_id} if ( defined( $jentry->{camera_id} ) );
+    $entrystring .= $jentry->{device_id} if ( defined( $jentry->{device_id} ) );
     $entrystring .= "|";
     
-    $entrystring .= $jentry->{viewed} if ( defined( $jentry->{viewed} ) );
+    $entrystring .= (( $jentry->{watched} eq "true" )?"1":"") if ( defined( $jentry->{watched} ) );
     $entrystring .= "|";
     
-    $entrystring .= $jentry->{address} if ( defined( $jentry->{address} ) );
+    $entrystring .= $jentry->{media} if ( defined( $jentry->{media} ) );
 
     $deleted = 0;
-    if ( defined( $jentry->{deleted} ) ) {
-      $deleted .= ( $jentry->{deleted} eq "true" );
-    }
+    $deleted = (( $jentry->{deleted} eq "true" )?1:0) if ( defined( $jentry->{deleted} ) );
   }
   
   return ($id, $deleted, $updated, $entrystring);
@@ -1968,13 +1988,13 @@ sub BlinkCamera_IsLastAlertPage( $$ ) {
 
   my ( $limit, $entries );
   
-  return 1 if ( ( ! defined( $jpage->{limit} ) ) || ( ! defined( $jpage->{videos} ) ) );
+  return 1 if ( ( ! defined( $jpage->{limit} ) ) || ( ! defined( $jpage->{media} ) ) );
   
   $limit = $jpage->{limit}; 
   
   $entries = 0;
-  my $v = $jpage->{videos};
-  $entries = scalar( @$v ) if ( ( defined( $jpage->{videos} ) ) && ( ref( $v ) eq "ARRAY" ) );
+  my $v = $jpage->{media};
+  $entries = scalar( @$v ) if ( ( defined( $jpage->{media} ) ) && ( ref( $v ) eq "ARRAY" ) );
 
   Log3 $name, 4, "BlinkCamera_IsLastAlertPage $name: limit :$limit: / entries :$entries: ";
   
@@ -2017,8 +2037,10 @@ sub BlinkCamera_HandleAlertEntry( $$$$ ) {
       my $lastUpdate = $hash->{eventTimestamp};
 
       Log3 $name, 5, "BlinkCamera_HandleAlertEntry $name: id  :$id: alert time  :$alertTime: ";
+      Log3 $name, 5, "BlinkCamera_HandleAlertEntry lastUpdate was  :$lastUpdate:  and viewed :$alertViewed:";
       
       if ( ( $alertTime gt $lastUpdate ) && ( length($alertViewed) == 0 ) ) {
+        Log3 $name, 5, "BlinkCamera_HandleAlertEntry $name: id  :$id: is new alert ";
         readingsBeginUpdate($hash);
         readingsBulkUpdate($hash, "alertVideo", $alertVideo );        
         readingsBulkUpdate($hash, "alertCamera", $alertCamera );        

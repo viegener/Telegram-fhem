@@ -135,12 +135,15 @@
 #   Password is not stored in define after first run - setkeyvalue
 #   Add forum link
 #   make webname configurable to support alternate configurations
-
 #   parsed account from login result -> needed for alerts
 #   new media access for getting alerts (v1 reactivated / v2 not working-used)
 #   Fix: AlertID with API V1 call
 #   networks parsing changed to onboarded networks are at the beginning
 
+#   FIX: onboarded networks correctly identified
+# 
+# 
+# 
 # 
 ##############################################################################
 # TASKS 
@@ -987,9 +990,11 @@ sub BlinkCamera_ParseLogin($$$)
       Log3 $name, 4, "BlinkCamera_Callback $name: network  ".$netkey ;
       my $net =  $resnet->{$netkey};
       my $ob = 0;
-      $ob = 1 if ( ( defined( $net->{onboarded} ) ) &&( $net->{onboarded} eq "true" ) );
+      $ob = 1 if ( ( defined( $net->{onboarded} ) ) && ( $net->{onboarded}) );
       my $ns = $netkey.":".$net->{name};
+#      Log3 $name, 4, "BlinkCamera_Callback $name: onboarded  :".$net->{onboarded}.":" ;
       if ( $ob ) {
+      Log3 $name, 4, "BlinkCamera_Callback $name: found onboarded network  ".$netkey ;
         $ns .= "\n" if ( length( $netlist) > 0 );
         $netlist = $ns.$netlist;
       } else {

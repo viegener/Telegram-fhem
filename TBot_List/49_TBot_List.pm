@@ -86,6 +86,8 @@
 #   document deleteOnly
 # 0.7 2018-03-11   deleteonly lists / internal changes
   
+#   show entry content in response for add/del 
+
 #   
 ##############################################################################
 # TASKS 
@@ -945,7 +947,7 @@ sub TBot_List_handler($$$$;$)
     if ( ( $no >= 0 ) && ( $no < scalar(@list) ) ) {
     
       # remove from array the entry with the index 
-      splice(@list, $no, 1);    
+      my $rementry = splice(@list, $no, 1);    
 
       my $text = join(",", @list );
       
@@ -953,7 +955,7 @@ sub TBot_List_handler($$$$;$)
       AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." add $lname $text" );
       
       # show updated list -> call recursively
-      TBot_List_handler( $hash,  "list_edit", $tbot, $peer, " Eintrag geloescht" );
+      TBot_List_handler( $hash,  "list_edit", $tbot, $peer, " Eintrag \"".$rementry."\" geloescht" );
     
     }
     
@@ -1156,7 +1158,7 @@ sub TBot_List_handler($$$$;$)
       AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." add $lname ".$addentry );
       # show list again -> call recursively
       if ( defined($msgId ) ) {
-        TBot_List_handler( $hash,  "list_edit", $tbot, $peer, " Eintrag hinzugefuegt" );
+        TBot_List_handler( $hash,  "list_edit", $tbot, $peer, " Eintrag \"".$addentry."\" hinzugefuegt" );
       } else {
         $ret = "TBot_List_handler: $name - $tbot  ERROR no msgId known for peer :$peer: chat :$chatId:  cmd :$cmd:  ".(defined($arg)?"arg :$arg:":"");
       }

@@ -141,6 +141,7 @@
 #   networks parsing changed to onboarded networks are at the beginning
 #   FIX: onboarded networks correctly identified
 
+#   FIX: url build to use region reading not networkRegion
 # 
 # 
 # 
@@ -637,7 +638,7 @@ sub BlinkCamera_DoCmd($$;$$$)
     $hash->{HU_DO_PARAMS}->{method} = "POST";
     
     my $dynhost = $BlinkCamera_hostpattern;
-    my $region = ReadingsVal( $name, "networkRegion", "prde" );
+    my $region = ReadingsVal( $name, "region", "prde" );
     if ($cmd eq "login") {
       $dynhost =~ s/##region##/prod/;
     } else {

@@ -142,7 +142,7 @@
 #   FIX: onboarded networks correctly identified
 
 #   FIX: url build to use region reading not networkRegion
-# 
+#   FIX: define failed in rereadcfg/cfgedit - deletefn  
 # 
 # 
 # 
@@ -206,6 +206,7 @@ use Scalar::Util qw(reftype looks_like_number);
 # Forward declaration
 sub BlinkCamera_Define($$);
 sub BlinkCamera_Undef($$);
+sub BlinkCamera_Delete($$);
 
 sub BlinkCamera_Set($@);
 sub BlinkCamera_Get($@);
@@ -276,6 +277,7 @@ sub BlinkCamera_Initialize($) {
 
   $hash->{DefFn}      = "BlinkCamera_Define";
   $hash->{UndefFn}    = "BlinkCamera_Undef";
+  $hash->{DeleteFn}    = "BlinkCamera_Delete";
   $hash->{GetFn}      = "BlinkCamera_Get";
   $hash->{SetFn}      = "BlinkCamera_Set";
   $hash->{AttrFn}     = "BlinkCamera_Attr";
@@ -323,8 +325,12 @@ sub BlinkCamera_Define($$) {
   
   if ( int(@a) == 3 ) {
     my ($err, $password) = getKeyValue("BlinkCamera_".$hash->{Email});
-    if ( ( defined($err) ) || ( ! defined($password) ) ) {
+    if ( defined($err) ){
       $errmsg = "no password token found (Error:".$err.") specify password with define <name> BlinkCamera <email> [ <password> ] ";
+      Log3 $name, 1, "BlinkCamera $name: " . $errmsg;
+      return $errmsg;
+    } elsif ( ! defined($password) ) {
+      $errmsg = "no password token found specify password with define <name> BlinkCamera <email> [ <password> ] ";
       Log3 $name, 1, "BlinkCamera $name: " . $errmsg;
       return $errmsg;
     }
@@ -362,9 +368,23 @@ sub BlinkCamera_Undef($$)
 
   RemoveInternalTimer($hash->{HU_DO_PARAMS});
 
+  Log3 $name, 4, "BlinkCamera_Undef $name: done ";
+  return undef;
+}
+
+#####################################
+#  Undef function is corresponding to the delete command the opposite to the define function 
+#  Cleanup the device specifically for external ressources like connections, open files, 
+#    external memory outside of hash, sub processes and timers
+sub BlinkCamera_Delete($$)
+{
+  my ($hash, $name) = @_;
+
+  Log3 $name, 3, "BlinkCamera_Delete $name: called ";
+
   setKeyValue(  "BlinkCamera_".$hash->{Email}, undef ); 
   
-  Log3 $name, 4, "BlinkCamera_Undef $name: done ";
+  Log3 $name, 4, "BlinkCamera_Delete $name: done ";
   return undef;
 }
 

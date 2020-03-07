@@ -68,7 +68,10 @@
 # - change log entries and remove debug in _Parse
 # - added back parsestate temporarily - #msg743423
 # - new attributes 	disable/disabledForIntervals
+#
+#
 # - disabled will be honored - no updates/no sending/no received commands
+# - allow 20 characters messages for SOMFY (not just 14)
 #
 ###############################################################################
 #
@@ -78,8 +81,6 @@
 # Somfy Modul - OPEN
 ###############################################################################
 # 
-# - Add disable functionality
-# - 
 # - Doc rework on model, set commands, rawDevice, coupling remotes
 # - 
 # - test parseFn / Remotes
@@ -491,8 +492,8 @@ sub SOMFY_Parse($$) {
 	# preprocessing if IODev is SIGNALduino	
 	if ($ioType eq "SIGNALduino") {
 		my $encData = substr($msg, 2);
-    $ret = "Somfy RTS message format error (length)! :".$encData.":" if (length($encData) != 14);
-    $ret = "Somfy RTS message format error! :".$encData.":" if ( ( ! $ret ) && ($encData !~ m/[0-9A-F]{14}/) );
+    $ret = "Somfy RTS message format error (length must be 14 or 20)! :".$encData.":" if ( (length($encData) != 14) && (length($encData) != 20));
+    $ret = "Somfy RTS message format error! :".$encData.":" if ( ( ! $ret ) && ($encData !~ m/^[0-9A-F]+$/) );
 	
     my ( $decData, $check );
     if ( ! $ret ) {

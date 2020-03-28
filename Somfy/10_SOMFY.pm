@@ -19,7 +19,7 @@
 #
 ##############################################################################
 #
-# $Id: 10_SOMFY.pm 12918 2016-12-31 10:10:47Z viegener $
+# $Id: 10_SOMFY.pm 61889 2020-03-28 07:30:00Z viegener $
 #  
 # SOMFY RTS / Simu Hz protocol module for FHEM
 # (c) Thomas Dankert <post@thomyd.de>
@@ -32,69 +32,28 @@
 #	1.0		thomyd			initial implementation
 #	1.1		Elektrolurch		state changed to open,close,pos <x>
 #	1.6		viegener		New state and action handling (trying to stay compatible also adding virtual receiver capabilities)
-#  2016-12-30 viegener - New sets / code-commands 9 / a  - wind_sun_9 / wind_only_a
-#  2017-01-08 viegener - Handle fixed encryption A0 for switches - switchable fixed_enckey
-#  2017-01-21 viegener - updatestate also called in non virtual mode to sent events
-#  2017-02-19 viegener - Restructuring of method blocks
-######################################################
-# 
-# 1.9 Prep for rebuilt and signalduino
-# - myUtilsSOMFY_Initialize removed
-# - SOMFY_StartTime removed
-# - prepare: restructure code
-# - clean up history
-# - modify of definition to replace attr handling for enc and rolling_code
-# - remove attribute for enc_key and rollingcode
-# - cleanup namings of globals
-# - set default model as attribute to shutter
-# - support different settings for different models  
-# - rawDevice attr
-# - parse function calls dispatcher for rawDevices on remotes
-# - changed errors in parseFn to log
-# - some doc cleanup
-
-# - remove dummy attribute
-# - special cases for pos to avoid mypos being used since stop signal is sent after automatic stop
-# 
-# - changed Ys format only . no 0
-# - doc rework on set commands
-# - allow define with encryption key without starting with A
-# - added manual function for setting position manually without movement commands
-#
-# - remove any postfiy on position setting (like 50 pct)
-# - allow set command position
-# 2.0 Update for official version to allow further rework and Alexa handling
-
-# - change log entries and remove debug in _Parse
-# - added back parsestate temporarily - #msg743423
-# - new attributes 	disable/disabledForIntervals
-#
-#
-# - disabled will be honored - no updates/no sending/no received commands
-# - allow 20 characters messages for SOMFY (not just 14)
+#	2.0					Update for official version to allow further rework and Alexa handling
+#	2.1					new attributes 	disable/disabledForIntervals
+#						disabled will be honored - no updates/no sending/no received commands
+#						allow 20 characters messages for SOMFY (not just 14)
 #
 ###############################################################################
-#
-#
-###############################################################################
-###############################################################################
-# Somfy Modul - OPEN
+# Somfy Modul - ToDo
 ###############################################################################
 # 
 # - Doc rework on model, set commands, rawDevice, coupling remotes
-# - 
 # - test parseFn / Remotes
-# - 
 # - send also wind/sun sensor codes with code E and constant rolling code --> allow complete raw send (just address is added)
-# - 
 # - Check readings set
 # - add queuing for commands
-# - Autocreate 
+# - Autocreate
 # - Complete shutter / blind as different model
 # - Make better distinction between different IoTypes - CUL+SCC / Signalduino
 # - Known Issue - if timer is running and last command equals new command (only for open / close) - considered minor/but still relevant
-# - 
-# - switch to standard 100 to 0 position 
+# - switch to standard 100 to 0 position
+#
+# - save RollingCode to fhem.save
+# - add associated-devices
 #
 ###############################################################################
 #   
@@ -112,13 +71,13 @@ use warnings;
 #use List::Util qw(first max maxstr min minstr reduce shuffle sum);
 
 my %somfy_codes = (
-	"10" => "go-my",    # goto "my" position
+	"10" => "go-my",	# goto "my" position
 	"11" => "stop", 	# stop the current movement
-	"20" => "off",      # go "up"
-	"40" => "on",       # go "down"
-	"80" => "prog",     # finish pairing
-	"90" => "wind_sun_9",     # wind and sun (sun + flag)
-	"A0" => "wind_only_a",     # wind only (flag)
+	"20" => "off",		# go "up"
+	"40" => "on",		# go "down"
+	"80" => "prog", 	# finish pairing
+	"90" => "wind_sun_9",	# wind and sun (sun + flag)
+	"A0" => "wind_only_a",	# wind only (flag)
 	"100" => "on-for-timer",
 	"101" => "off-for-timer",
 	"XX" => "z_custom",	# custom control code
@@ -235,7 +194,7 @@ sub SOMFY_Initialize($) {
 	  . " drive-up-time-to-100"
 	  . " drive-up-time-to-open "
 	  . " additionalPosReading  "
-    . " positionInverse:1,0  "
+	  . " positionInverse:1,0  "
 	  . " IODev"
 	  . " symbol-length"
 	  . " repetition"
@@ -244,8 +203,8 @@ sub SOMFY_Initialize($) {
 	  . " do_not_notify:1,0"
 	  . " ignore:0,1"
 	  . " disable:0,1"
-    . " disabledForIntervals "
-    . " model:somfyblinds,somfyshutter,somfyremote,somfyswitch2,somfyswitch4"
+	  . " disabledForIntervals "
+	  . " model:somfyblinds,somfyshutter,somfyremote,somfyswitch2,somfyswitch4"
 	  . " loglevel:0,1,2,3,4,5,6"
 	  . " rawDevice"
 	  . " $readingFnAttributes";
@@ -1194,7 +1153,8 @@ sub SOMFY_CalcCurrentPos($$$$) {
 					$newPos = maxNum( 0, ($pos - $newPos) );
 				}
 			} else {
-				Log3($name,1,"SOMFY_CalcCurrentPos: $name move wrong $move");
+				Log3($name,1,"SOMFY_CalcCurrentPos: $name move wrong $move - set to 4POS");
+						$newPos = $pos;
 			}			
 		} else {
 			if($move eq 'on') {
@@ -1228,7 +1188,8 @@ sub SOMFY_CalcCurrentPos($$$$) {
 					}
 				}
 			} else {
-				Log3($name,1,"SOMFY_CalcCurrentPos: $name move wrong $move");
+				Log3($name,1,"SOMFY_CalcCurrentPos: $name move wrong $move - set to 4POS");
+						$newPos = $pos;
 			}			
 		}
 	} else {
@@ -1690,11 +1651,9 @@ sub SOMFY_SendCommand($@)
 <ul>
   The Somfy RTS (identical to Simu Hz) protocol is used by a wide range of devices,
   which are either senders or receivers/actuators.
-  Right now only SENDING of Somfy commands is implemented in the CULFW, so this module currently only
-  supports devices like blinds, dimmers, etc. through a <a href="#CUL">CUL</a> device (which must be defined first).
-  Reception of Somfy remotes is only supported indirectly through the usage of an FHEMduino 
-  <a href="http://www.fhemwiki.de/wiki/FHEMduino">http://www.fhemwiki.de/wiki/FHEMduino</a>
-  which can then be used to connect to the SOMFY device.
+  Sending and reception of Somfy remotes is supported through the usage of an SIGNALduino
+  <a href="https://wiki.fhem.de/wiki/SIGNALduino">https://wiki.fhem.de/wiki/SIGNALduino</a>
+  device (which must be defined first). Which can then be used to connect to the SOMFY device.
 
   <br><br>
 

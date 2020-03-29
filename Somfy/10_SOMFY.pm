@@ -237,7 +237,7 @@ sub SOMFY_Define($$) {
 	$hash->{ADDRESS} = uc($address);
 
   # set default model if not yet set
-    	$attr{$name}{model} //= "somfyshutter";
+	$attr{$name}{model} //= "somfyshutter";
   
 	# check optional arguments for device definition
 	if ( int(@a) > 3 ) {
@@ -295,7 +295,7 @@ sub SOMFY_Undef($$) {
 			}
 		}
 	}
-	return undef;
+	return;
 }
 
 ##############################
@@ -375,7 +375,7 @@ sub SOMFY_Attr(@) {
 		}
 	}
 
-	return undef;
+	return;
 }
 
 ##############################################################################
@@ -460,7 +460,7 @@ sub SOMFY_Parse($$) {
     
     if ( $ret ) {
       Log3 $name, 1, "$name: SOMFY_Parse : ".$ret;
-      return undef;
+      return;
     }
 		
 		Log3 $name, 4, "$name: Somfy RTS preprocessing check: $check enc: $encData dec: $decData";
@@ -479,7 +479,7 @@ sub SOMFY_Parse($$) {
   # Check for correct length
   if ( length($msg) != 16 ) {
     Log3 $name, 1, "$name: SOMFY_Parse : SOMFY incorrect length for command (".$msg.") / length should be 16";
-    return undef;
+    return;
   }
   
   # get address
@@ -931,7 +931,7 @@ sub SOMFY_InternalSet($@) {
 		delete $hash->{starttime};
 	}
 
-	return undef;
+	return;
 } # end sub SOMFY_setFN
 ###############################
 

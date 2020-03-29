@@ -237,11 +237,7 @@ sub SOMFY_Define($$) {
 	$hash->{ADDRESS} = uc($address);
 
   # set default model if not yet set
-  if ( ! defined( $attr{$name}{model} ) ) {
-    $attr{$name}{model} = "somfyshutter";
-  }
-  
-  
+    	$attr{$name}{model} //= "somfyshutter";
   
 	# check optional arguments for device definition
 	if ( int(@a) > 3 ) {

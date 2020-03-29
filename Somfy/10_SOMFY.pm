@@ -575,9 +575,9 @@ sub SOMFY_Set {
 sub SOMFY_InternalSet {
 	my ( $hash, $name, $mode, @args ) = @_;
 	
-  return undef if ( IsIgnored($name) );
+  return () if ( IsIgnored($name) );
   
-  return undef if ( IsDisabled($name) );
+  return () if ( IsDisabled($name) );
   
 ### Check Args
 	return "SOMFY_InternalSet: mode must be virtual or send: $mode " if ( $mode !~m/(virtual|send)/ );

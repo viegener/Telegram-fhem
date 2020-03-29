@@ -19,7 +19,7 @@
 #
 ##############################################################################
 #
-# $Id: 10_SOMFY.pm 61889 2020-03-28 07:30:00Z viegener $
+# $Id: 10_SOMFY.pm 59878 2020-03-29 15:22:00Z viegener $
 #  
 # SOMFY RTS / Simu Hz protocol module for FHEM
 # (c) Thomas Dankert <post@thomyd.de>
@@ -208,7 +208,8 @@ sub SOMFY_Initialize {
 	  . " loglevel:0,1,2,3,4,5,6"
 	  . " rawDevice"
 	  . " $readingFnAttributes";
-
+	  
+	  return;
 }
 
 
@@ -277,6 +278,8 @@ sub SOMFY_Define {
 	$modules{SOMFY}{defptr}{$code}{$name} = $hash;
 	$hash->{move} = 'stop';
 	AssignIoPort($hash);
+	
+	return;
 }
 
 
@@ -431,6 +434,7 @@ sub SOMFY_DispatchRemoteCmd {
 	} else {
 		Log3 $hash, 1, "SOMFY_DispatchRemoteCmd No rawDevice set in remote $name";
 	}
+	return;
 
 }
 
@@ -567,6 +571,7 @@ sub SOMFY_Set {
 	} else {
 		SOMFY_InternalSet( $hash, $name, 'send', @args );
 	}
+	return;
 }
 
 	
@@ -998,6 +1003,7 @@ sub SOMFY_updateDef
   $rc = ReadingsVal($name, "rolling_code", "0000") if ( ! defined( $rc ) );
   
   $hash->{DEF} = $hash->{ADDRESS}." ".uc($ec)." ".uc($rc);
+  return;
 }
 
 ######################################################
@@ -1276,6 +1282,7 @@ sub SOMFY_TimedUpdate {
 	}
 	
 	Log3($hash->{NAME},5,"SOMFY_TimedUpdate DONE");
+	return;
 } # end sub SOMFY_TimedUpdate
 
 
@@ -1344,7 +1351,8 @@ sub SOMFY_UpdateState {
 	}
 	$hash->{move} = $move;
 	
-	readingsEndUpdate($hash,$doTrigger); 
+	readingsEndUpdate($hash,$doTrigger);
+	return;
 } # end sub SOMFY_UpdateState
 
 

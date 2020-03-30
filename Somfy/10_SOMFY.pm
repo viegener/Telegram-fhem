@@ -1194,7 +1194,8 @@ sub SOMFY_CalcCurrentPos($$$$) {
 					$newPos = maxNum( 0, ($pos - $newPos) );
 				}
 			} else {
-				Log3($name,1,"SOMFY_CalcCurrentPos: $name move wrong $move");
+				Log3($name,1,"SOMFY_CalcCurrentPos: $name move wrong $move - set to 4POS");
+						$newPos = $pos;
 			}			
 		} else {
 			if($move eq 'on') {
@@ -1228,7 +1229,8 @@ sub SOMFY_CalcCurrentPos($$$$) {
 					}
 				}
 			} else {
-				Log3($name,1,"SOMFY_CalcCurrentPos: $name move wrong $move");
+				Log3($name,1,"SOMFY_CalcCurrentPos: $name move wrong $move - set to 4POS");
+						$newPos = $pos;
 			}			
 		}
 	} else {

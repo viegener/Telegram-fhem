@@ -73,6 +73,10 @@
 # - disabled will be honored - no updates/no sending/no received commands
 # - allow 20 characters messages for SOMFY (not just 14)
 #
+# - new attr autoStoreRollingCode - store rc in uniqueID
+# - store rolling code in uniqueid based on addr
+#
+#
 ###############################################################################
 #
 #
@@ -198,7 +202,11 @@ sub SOMFY_CalcCurrentPos($$$$);
 sub SOMFY_isSwitch($);
 sub SOMFY_SendCommand($@);
 
+sub SOMFY_readRollCode($);
+sub SOMFY_storeRollCode($$);
+sub SOMFY_getRollCode($);
 
+######################### 
 ######################################################
 ######################################################
 
@@ -245,6 +253,7 @@ sub SOMFY_Initialize($) {
 	  . " ignore:0,1"
 	  . " disable:0,1"
     . " disabledForIntervals "
+    . " autoStoreRollingCode:0,1 "
     . " model:somfyblinds,somfyshutter,somfyremote,somfyswitch2,somfyswitch4"
 	  . " loglevel:0,1,2,3,4,5,6"
 	  . " rawDevice"
@@ -340,6 +349,10 @@ sub SOMFY_Undef($$) {
 			}
 		}
 	}
+  
+  # on delete - remove key
+  SOMFY_storeRollCode( $hash, undef );
+  
 	return undef;
 }
 
@@ -418,6 +431,15 @@ sub SOMFY_Attr(@) {
 			$attr{$name}{'drive-up-time-to-open'} = $aVal;
 			$attr{$name}{'drive-up-time-to-100'} = 0 if(!defined($attr{$name}{'drive-up-time-to-100'}) || ($attr{$name}{'drive-up-time-to-100'} > $aVal));
 		}
+
+
+  } elsif ($aName eq 'autoStoreRollingCode') {
+    if ($cmd eq "set") {
+      SOMFY_storeRollCode( $hash, undef ) if ( ! $aVal );
+    } elsif ($cmd eq "del") {
+      SOMFY_storeRollCode( $hash, undef );
+    }
+  
 	}
 
 	return undef;
@@ -982,7 +1004,6 @@ sub SOMFY_InternalSet($@) {
 
 
 
-
 ##############################################################################
 ##############################################################################
 ##
@@ -990,6 +1011,67 @@ sub SOMFY_InternalSet($@) {
 ##
 ##############################################################################
 ##############################################################################
+
+
+
+
+#####################################
+# stores ROllingcode  // rcode empty means delete 
+sub SOMFY_storeRollCode($$)
+{
+    my ($hash, $rcode) = @_;
+     
+    my $index = "SOMFY_".$hash->{ADDRESS}."_rollingcode";
+#OLD    my $index = "SOMFY_".$name."_rollingcode";
+
+
+    my $err = setKeyValue($index, $rcode);
+
+    return "error while saving the API token - $err" if(defined($err));
+    return "API token successfully saved";
+} # end SOMFY_storeRollCode
+
+#####################################
+# read the rolling code either from uniqueid
+sub SOMFY_readRollCode($)
+{
+   my ($hash ) = @_;
+   
+   my $index = "SOMFY_".$hash->{ADDRESS}."_rollingcode";
+#OLD   my $index = "SOMFY_" . $name . "_rollingcode";
+ 
+   my $rcode;
+   my $err;
+   ($err, $rcode) = getKeyValue($index);
+
+   if ( defined($err) ) {
+      Log3 $hash, 1, "SOMFY_readRollCode: Error: unable to read rolling code from file: $err";
+      return "";
+   }  
+    
+   return $rcode;
+} # end SOMFY_readRollCode
+ 
+
+#####################################
+# get the rolling code either from Reading or if empty consider stored from uniqueid
+sub SOMFY_getRollCode($)
+{
+   my ($hash) = @_;
+   
+   my $name = $hash->{NAME};
+ 	 my $rollingcode = ReadingsVal($name, "rolling_code", undef);
+
+   if ( ! defined( $rollingcode ) ) {
+      if ( AttrVal( $name, "autoStoreRollingCode", 0 ) ) {
+        $rollingcode = SOMFY_readRollCode( $hash );
+      $rollingcode = "0000" if ( ! defined( $rollingcode ) );
+      }
+   }
+
+   return uc($rollingcode);
+} # end SOMFY_getRollCode
+ 
 
 
 
@@ -1040,7 +1122,7 @@ sub SOMFY_updateDef($;$$)
 	my $name = $hash->{NAME};
 
   $ec = ReadingsVal($name, "enc_key", "A0") if ( ! defined( $ec ) );
-  $rc = ReadingsVal($name, "rolling_code", "0000") if ( ! defined( $rc ) );
+  $rc = SOMFY_getRollCode( $hash ) if ( ! defined( $rc ) );
   
   $hash->{DEF} = $hash->{ADDRESS}." ".uc($ec)." ".uc($rc);
 }
@@ -1568,7 +1650,7 @@ sub SOMFY_SendCommand($@)
 	# Ys ad 20 0ae3 a2 98 42
 
 	my $enckey = uc(ReadingsVal($name, "enc_key", "A0"));
-	my $rollingcode = uc(ReadingsVal($name, "rolling_code", "0000"));
+	my $rollingcode = SOMFY_getRollCode( $hash );
 
 	if($command eq "XX") {
 		# use user-supplied custom command
@@ -1613,6 +1695,8 @@ sub SOMFY_SendCommand($@)
 	# update the readings, but do not generate an event
 	setReadingsVal($hash, "enc_key", $new_enc_key, $timestamp); 
 	setReadingsVal($hash, "rolling_code", $new_rolling_code, $timestamp);
+  # store in uniqueID if requested
+  SOMFY_storeRollCode( $hash, $new_rolling_code ) if ( AttrVal( $name, "autoStoreRollingCode", 0 ) );
   
   # modify definition of device with actual enc/rc
   SOMFY_updateDef( $hash, $new_enc_key, $new_rolling_code );
@@ -1834,6 +1918,11 @@ sub SOMFY_SendCommand($@)
         If set to 1 the enc-key is not changed after a command sent to the device. Default is value 0 meaning enc-key is changed normally for the RTS protocol.
 		</li><br>
     
+    <li>autoStoreRollingCode 1|0<br>
+        If set to 1 the rolling code is stored automatically in the FHEM uniqueID file (Default is 0 - off). After setting the attribute, the code is first saved after the next change of the rolling code. 
+		</li><br>
+    
+
     <li>eventMap<br>
         Replace event names and set arguments. The value of this attribute
         consists of a list of space separated values, each value is a colon

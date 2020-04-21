@@ -75,7 +75,7 @@
 #
 # - new attr autoStoreRollingCode - store rc in uniqueID
 # - store rolling code in uniqueid based on addr
-#
+# - ensure largest rollingcode (either reading or unqieid is used)
 #
 ###############################################################################
 #
@@ -321,6 +321,8 @@ sub SOMFY_Define($$) {
 			# store it, if old reading does not exist yet
 #      if(! defined( ReadingsVal($name, "rolling_code", undef) )) {
 				setReadingsVal($hash, "rolling_code", uc($a[4]), $tzero);
+        # store in uniqueID if requested
+        SOMFY_storeRollCode( $hash, uc($a[4]) ) if ( AttrVal( $name, "autoStoreRollingCode", 0 ) );
 #			}
 		}
 	}
@@ -1046,7 +1048,7 @@ sub SOMFY_readRollCode($)
 
    if ( defined($err) ) {
       Log3 $hash, 1, "SOMFY_readRollCode: Error: unable to read rolling code from file: $err";
-      return "";
+      return "0000";
    }  
     
    return $rcode;
@@ -1060,16 +1062,18 @@ sub SOMFY_getRollCode($)
    my ($hash) = @_;
    
    my $name = $hash->{NAME};
- 	 my $rollingcode = ReadingsVal($name, "rolling_code", undef);
+   
+ 	 my $rollingcode = uc(ReadingsVal($name, "rolling_code", "0000"));
 
-   if ( ! defined( $rollingcode ) ) {
-      if ( AttrVal( $name, "autoStoreRollingCode", 0 ) ) {
-        $rollingcode = SOMFY_readRollCode( $hash );
-      $rollingcode = "0000" if ( ! defined( $rollingcode ) );
+   if ( AttrVal( $name, "autoStoreRollingCode", 0 ) ) {
+      my $storeRC = uc( SOMFY_readRollCode( $hash ) );
+      $storeRC = "0000" if ( $storeRC !~ /[0-9a-f]{4}/ );
+      if ( $storeRC > $rollingcode ) {
+        $rollingcode = $storeRC;
       }
    }
 
-   return uc($rollingcode);
+   return $rollingcode;
 } # end SOMFY_getRollCode
  
 

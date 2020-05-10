@@ -122,7 +122,7 @@
 #   add region for readings
 #   host calculated dynamically starting with prod - then region from login
 #   CommandDeleteReading(undef,$readName);  instead of manually deleting
-#   Fix - wait undefined when error before in DoCmd
+#   Fix - wait undefined when error before in f
 #   Fix: handle unicode in json - e.g. names
 #   added cameraList as new get
 #   added ...Name und ...Active to Camera readings
@@ -143,8 +143,15 @@
 
 #   FIX: url build to use region reading not networkRegion
 #   FIX: define failed in rereadcfg/cfgedit - deletefn  
-# 
-# 
+
+
+##### API change
+#   Change to new login API - V4 (not containing networks)
+#   getNetworks as new getter
+#   set networks reading to INVALID on reading networks
+#   ensure networks retrieved in docmd before other cmds
+#   parse networks
+#
 # 
 ##############################################################################
 # TASKS 
@@ -229,7 +236,7 @@ sub BlinkCamera_AnalyzeAlertPage( $$$ );
 #my $BlinkCamera_host = "rest.prir.immedia-semi.com";
 #my $BlinkCamera_host = "rest.prde.immedia-semi.com";
 
-my $BlinkCamera_hostpattern = "rest.##region##.immedia-semi.com";
+my $BlinkCamera_hostpattern = "rest##sep####region##.immedia-semi.com";
 
 
 my $BlinkCamera_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0";
@@ -474,6 +481,9 @@ sub BlinkCamera_Get($@)
   } elsif($cmd eq 'getInfo') {
     $ret = BlinkCamera_DoCmd( $hash, "homescreen" );
   
+  } elsif($cmd eq 'getNetworks') {
+    $ret = BlinkCamera_DoCmd( $hash, "networks" );
+  
   } elsif ($cmd eq 'getInfoCamera') {
     return "BlinkCamera_Get: No value specified for get $cmd" if ( $numberOfArgs < 2 ) ;
     $ret = BlinkCamera_CameraDoCmd( $hash, "cameraConfig", $arg );
@@ -618,13 +628,39 @@ sub BlinkCamera_DoCmd($$;$$$)
     return;
   } 
   
+  
+  #######################
+  # check networks if not existing queue current cmd and get networks first
+  my $net =  BlinkCamera_GetNetwork( $hash ); 
+  if ( ($cmd ne "login") && ($cmd ne "networks") && ( ! defined( $net ) ) ) {
+    # add to queue
+    Log3 $name, 4, "BlinkCamera_DoCmd $name: add send to queue cmd ".$cmdString;
+    push( @{ $hash->{cmdQueue} }, \@args );
+    $cmd = "networks";
+    $par1 = undef;
+    $par2 = undef;
+    # update cmdstring
+    $cmdString = "cmd :$cmd: ".(defined($par1)?"  par1:".$par1.":":"").(defined($par2)?"  par2:".$par2.":":"");
+  }
+  
+  #######################
+  # Check for invalid auth token and just remove cmds
+  if ( ($cmd ne "login") && ($cmd ne "networks") && ( $net eq "INVALID" ) ) {
+    # add to queue
+    Log3 $name, 2, "BlinkCamera_DoCmd $name: failed due to invalid networks list (set attribute network) ".$cmdString;
+    return;
+  } 
+
   my $ret;
 
   $hash->{doStatus} = "WAITING";
   $hash->{doStatus} .= " retry $retryCount" if ( $retryCount > 0 );
   
   $hash->{AuthToken} = "INVALID" if ($cmd eq "login");
-
+  
+  # reset networks reading for reading networks
+  readingsSingleUpdate($hash, "networks", "INVALID", 0 ) if ( ($cmd eq "networks") );
+ 
   Log3 $name, 4, "BlinkCamera_DoCmd $name: try to send cmd ".$cmdString;
 
   if ( ( !defined( $par2 ) ) || ( ($par2 ne "POLLING" ) && ($par2 ne "HIDDEN" ) ) ) {
@@ -651,6 +687,22 @@ sub BlinkCamera_DoCmd($$;$$$)
   
   $hash->{HU_DO_PARAMS}->{callback} = \&BlinkCamera_Callback;
 
+#????????????
+#SIZE_NOTIFICATION_KEY = 152
+#SIZE_UID = 16
+#         uid = util.gen_uid(const.SIZE_UID)
+#        notification_key = util.gen_uid(const.SIZE_NOTIFICATION_KEY) 
+#
+#
+#
+#
+#
+# generate 32 hex values or 16 HEx BYTES
+#my $rand_hex = join "", map { unpack "H*", chr(rand(256)) } 1..16;
+
+my $notif_key = join "", map { unpack "H*", chr(rand(256)) } 1..76;
+my $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..8;
+
 
   # handle data creation only if no error so far
   if ( ! defined( $ret ) ) {
@@ -659,10 +711,13 @@ sub BlinkCamera_DoCmd($$;$$$)
     
     my $dynhost = $BlinkCamera_hostpattern;
     my $region = ReadingsVal( $name, "region", "prde" );
+    
     if ($cmd eq "login") {
       $dynhost =~ s/##region##/prod/;
+      $dynhost =~ s/##sep##/-/;
     } else {
       $dynhost =~ s/##region##/$region/;
+      $dynhost =~ s/##sep##/./;
     }
     $hash->{URL} = "https://".$dynhost;
   
@@ -674,7 +729,8 @@ sub BlinkCamera_DoCmd($$;$$$)
     
         $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."Content-Type: application/json";
 
-      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/login";
+###      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/login";
+      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v3/login";
 #      $hash->{HU_DO_PARAMS}->{url} = "http://requestb.in";
       
       $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_loginjson;
@@ -734,6 +790,16 @@ sub BlinkCamera_DoCmd($$;$$$)
       } else {
         $ret = "BlinkCamera_DoCmd $name: no network identifier found for arm/disarm - set attribute";
       }
+
+    #######################
+    } elsif ( ($cmd eq "networks" ) ) {
+
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken};
+      
+      $hash->{HU_DO_PARAMS}->{method} = "GET" ;
+
+      $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/networks";
+
 
     #######################
     } elsif ( ($cmd eq "command" )  ) {
@@ -1002,8 +1068,90 @@ sub BlinkCamera_ParseLogin($$$)
     }
   }
   
-  # grab network list
-  my $resnet = $result->{networks};
+  my $resreg = $result->{region};
+  if ( defined( $resreg ) ) {
+    my $regkey = ( keys %$resreg )[0];
+    $readUpdates->{region} = $regkey;
+    $readUpdates->{regionName} = $resreg->{$regkey};
+  } else {
+    $readUpdates->{region} = undef;    
+    $readUpdates->{regionName} = undef;    
+  }
+  
+  return $ret;
+}
+
+
+# OLD LOGIN #####################################
+# #  INTERNAL: Parse the login results
+# sub BlinkCamera_ParseLogin($$$)
+# {
+  # my ( $hash, $result, $readUpdates ) = @_;
+  # my $name = $hash->{NAME};
+
+  # my $ret;
+
+  # if ( defined( $result->{authtoken} ) ) {
+    # my $at = $result->{authtoken};
+    # if ( defined( $at->{authtoken} ) ) {
+      # $hash->{AuthToken} = $at->{authtoken};
+    # }
+    # if ( defined( $result->{account} ) ) {
+      # my $acc = $result->{account};
+      # if ( defined( $acc->{id} ) ) {
+        # $hash->{account} = $acc->{id};
+      # }
+    # }
+  # }
+  
+  # # grab network list
+  # my $resnet = $result->{networks};
+  # my $netlist = "";
+  # if ( defined( $resnet ) ) {
+    # Log3 $name, 4, "BlinkCamera_Callback $name: login number of networks ".scalar(keys %$resnet) ;
+    # foreach my $netkey ( keys %$resnet ) {
+      # Log3 $name, 4, "BlinkCamera_Callback $name: network  ".$netkey ;
+      # my $net =  $resnet->{$netkey};
+      # my $ob = 0;
+      # $ob = 1 if ( ( defined( $net->{onboarded} ) ) && ( $net->{onboarded}) );
+      # my $ns = $netkey.":".$net->{name};
+# #      Log3 $name, 4, "BlinkCamera_Callback $name: onboarded  :".$net->{onboarded}.":" ;
+      # if ( $ob ) {
+      # Log3 $name, 4, "BlinkCamera_Callback $name: found onboarded network  ".$netkey ;
+        # $ns .= "\n" if ( length( $netlist) > 0 );
+        # $netlist = $ns.$netlist;
+      # } else {
+        # $netlist .= "\n" if ( length( $netlist) > 0 );
+        # $netlist .= $ns;
+      # }
+    # }
+  # }
+  # $readUpdates->{networks} = $netlist;
+  # my $resreg = $result->{region};
+  # if ( defined( $resreg ) ) {
+    # my $regkey = ( keys %$resreg )[0];
+    # $readUpdates->{region} = $regkey;
+    # $readUpdates->{regionName} = $resreg->{$regkey};
+  # } else {
+    # $readUpdates->{region} = undef;    
+    # $readUpdates->{regionName} = undef;    
+  # }
+  
+  # return $ret;
+# }
+
+
+#####################################
+#  INTERNAL: Parse the networks results
+sub BlinkCamera_ParseNetworks($$$)
+{
+  my ( $hash, $result, $readUpdates ) = @_;
+  my $name = $hash->{NAME};
+
+  my $ret;
+
+  # grab network list from summary
+  my $resnet = $result->{summary};
   my $netlist = "";
   if ( defined( $resnet ) ) {
     Log3 $name, 4, "BlinkCamera_Callback $name: login number of networks ".scalar(keys %$resnet) ;
@@ -1025,18 +1173,10 @@ sub BlinkCamera_ParseLogin($$$)
     }
   }
   $readUpdates->{networks} = $netlist;
-  my $resreg = $result->{region};
-  if ( defined( $resreg ) ) {
-    my $regkey = ( keys %$resreg )[0];
-    $readUpdates->{region} = $regkey;
-    $readUpdates->{regionName} = $resreg->{$regkey};
-  } else {
-    $readUpdates->{region} = undef;    
-    $readUpdates->{regionName} = undef;    
-  }
-  
+
   return $ret;
 }
+
 
 
 #####################################
@@ -1334,6 +1474,10 @@ sub BlinkCamera_Callback($$$)
     # handle different commands
     if ( $cmd eq "login" ) {
       $ret = BlinkCamera_ParseLogin( $hash, $result, \%readUpdates );
+      
+    } elsif ( ($cmd eq "networks")  ) {
+      $ret = BlinkCamera_ParseNetworks( $hash, $result, \%readUpdates );
+
     } elsif ( ($cmd eq "arm") || ($cmd eq "disarm" ) || ($cmd eq "camEnable" ) || ($cmd eq "camDisable" ) ) {
       # Debug "result :".Dumper( $result );
       $cmdId = $result->{id} if ( defined( $result->{id} ) );
@@ -1678,6 +1822,8 @@ sub BlinkCamera_Setup($) {
   );
 
   my %gets = (
+    "getNetworks" => undef,
+
     "getInfo" => undef,
     "getInfoCamera" => undef,
 
@@ -1912,8 +2058,9 @@ sub BlinkCamera_GetNetwork( $ ) {
   
   if ( ! defined( $net ) ) {
     # grab reading
-    my $nets = ReadingsVal($hash->{NAME},'networks',undef);
-    if ( ( defined( $nets ) ) && ( $nets =~ /^([^:]+):/ ) ) {
+    my $nets = ReadingsVal($hash->{NAME},'networks',"INVALID");
+    
+    if ( ( defined( $nets ) ) && ( $nets ne "INVALID" ) && ( $nets =~ /^([^:]+):/ ) ) {
       $net = $1;
     }
   }
@@ -2216,6 +2363,7 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
     where &lt;what&gt; / &lt;value&gt; is one of
 
   <br><br>
+    <li><code>getNetworks</code><br>Retrieve the networks defined in the blink account. This is needed for further operations and information request to blink. For specifying a specific network (id), the attribute network can be also set</li>
     <li><code>getInfo</code><br>Get information about the system from the blink servers (including cameras and state) . This is usually done automatically based on the reular interval specified in attribute <code>pollingTimeout</code>
     </li>
     <li><code>getInfoCamera &lt;camera name or number or "all"&gt;</code><br>Get the information about the specified camera from the blink system. Currently the information about the camera is just stored in raw json format in a single reading <code>cameraConfig&lt;camera id&gt;</code>

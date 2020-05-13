@@ -31,154 +31,35 @@
 # $Id: 48_BlinkCamera.pm $
 #
 ##############################################################################
-# 0.0 2016-10-16 Started
-#   set login
-#   parse of login
-#   change internals to show only pars that exist (not undef)
-#   add JSON from commands to internals 
-#   add specific client identifier
-#   get networks from authentication
-#   Arm /disarm
-#   get information from homescreen into readings
-#   parse return data - cmd Id - also not yet used
-#   poll for status info - homescreen
-#   check status for commands
-#   regular polling 
-#   test polling of homescreen
-#   get thumbnails and put to readings
-#     urls:  /BlinkCamera/<device>/thumbnail/camera/<cameraid>_1.jpg
-#   readings also deleted in homescreen/getInfo
-#   show thumbnail for cameras
-#   proxydir to be configured
-#   get camera config - as dump
-#   enable/disable cam
-#   reset to remove all readings?
-#   enable/disable cam also have selection
-#   simplify set / get
-#   enable/disable cam also have selection - remove all
-#   FIX: maxretries reached will not be removed from queue / no new start
-#   FIX: wait also for update config on command end
-#   FIX: misc. status and retry issues / adding hidden commands beside polling
-#   addtl call after homescreen with timestamps
-#     Get videos and make events/alerts - store in internal hash
-#     store list of videos in hash/intern - id -> deleted -> created_at, updated_at, camera_id, viewed, video
-#        "/api/v2/videos/changed?page=2&since=2016-01-24T14:33:02Z";
-#     reading
-#       alertTime - 
-#       alertCamera - 
-#       alertVideo - 
-#       alertID - is relevant last set - for notify
-#   reading:    updateTimestamp - timestamp for reading changes (ignored if internal hash not defined)
-#   reading:    eventTimestamp - newest notification/video that was already used for an event
-#   send events only for new notifications after eventTimestamp
-#   add cameraname to alert
-#   get video (marks as viewed automatically) - reading video with proxy url 
-#   remove proxy files in reste
-#   clean some log entries
-#   FIX: alert / videos in correct sequence
-#   FIX: Video deletion returns messge: ""Successfully deleted all videos"
-#   remove video
-#   polling works
-#   FIXED: Use of uninitialized value $page in concatenation (.) or string at ./FHEM/48_BlinkCamera.pm line 939.
-#   get Videofilename --> intern video file
-#   check for succesful writing of video file - otherwise not setting readings/interns
-#   check for succesful received video file - otherwise get message returned
-#   send message on new video alert with video
-#      define blinkNewVideoAlert notify blink:alertID.* get blink getVideoAlert
-#      define blinkNewVideoAvailable notify blink:videoFilename.* set telegramBot sendMedia /tmp/[blink:videoFilename]
-#   reduce logging on callback to loglevel 4
-#   cmdJson only set of log level > 3
-#   ensure complete reload of videos on restart - internanl instead of reading?
-#   no proxy url in fhemweb - setting name to undef
-#   alert will only be called from homescreen if not yet active
-#     overlapping alerts will fail due to timestamp being removed
-#   alert pages will be called first
-#   remove getNotifications
-#   add specialLog setting $BlinkCamera_specialLog for calls/results = 3 or 4
-# 1.0 2016-11-6 Basic capabilities working including setting and alerting plus video download
-
-#   change cameraurl to point to fhemurl
-#   add intern for originalurl and storing which picture was retrieved
-#   load picture only if same thumbnail not there
-#   get new thumbnail for camera
-#   first commandref version
-#   new File reading for thumbnails
-#   reading for camera battery status - msg539729
-#   reading for camera temperature - msg539729
-#   thumbnail org name / timestamp sa reading
-#   get liveview - live video - msg539729
-#   FIX: Warnings on usage of reference #msg648612
-#   
-#   Docu correction
-#   New attribute imgOriginalFile --> for thumbnails store original filename
-#      (no cleanup of old filenames)
-#   Docu for imgOriginalFile
-#   fix debug output
-#   set no caching for web content
-#   fix url path separators
-#   Add automatic homescreen after cameraThumbnail
-#   avoid logging set/get with ? cmd
-#   added wait for transaction finish also for cameraThumbnail
-#   add region for readings
-#   host calculated dynamically starting with prod - then region from login
-#   CommandDeleteReading(undef,$readName);  instead of manually deleting
-#   Fix - wait undefined when error before in f
-#   Fix: handle unicode in json - e.g. names
-#   added cameraList as new get
-#   added ...Name und ...Active to Camera readings
-#   
-#   further checks for missing args in get command
-#   check curl before loging -> see msg884538 (in DoCmd thumbnail)
-#   FIX: getVideoAlert also without parameter
-#   set cmdId also on command waiting to finish in callback
-#   FIX: Overlapping homescreen will not lead to double thumbnail picture requests - #msg887087
-#   Password is not stored in define after first run - setkeyvalue
-#   Add forum link
-#   make webname configurable to support alternate configurations
-#   parsed account from login result -> needed for alerts
-#   new media access for getting alerts (v1 reactivated / v2 not working-used)
-#   Fix: AlertID with API V1 call
-#   networks parsing changed to onboarded networks are at the beginning
-#   FIX: onboarded networks correctly identified
-
-#   FIX: url build to use region reading not networkRegion
-#   FIX: define failed in rereadcfg/cfgedit - deletefn  
-
-
+#
 ##### API change
 #   Change to new login API - V4 (not containing networks)
 #   getNetworks as new getter
 #   set networks reading to INVALID on reading networks
 #   ensure networks retrieved in docmd before other cmds
 #   parse networks
-#
+# 2.0 2020-05-13 CheckIn to SVN for regular FHEM update
 # 
+# 
+# 
+# 
+# 
+##############################################################################
+##############################################################################
+##############################################################################
 ##############################################################################
 # TASKS 
 #   FIX: New homescreen on V3
-#
 #   FIX: getThumbnail url failing sometimes
-#   
 #   FIX: imgOriginalFile not fully working
-#   
 #   might need to check for transaction id on command post
-#   
 #   store poll failures / digest?
-#   
 #   allow thumbnailreset
-#   
 #   remove video file
 #   
 ##############################################################################
 # Ideas
 #   
-#   
-#   get camera config in different device or detailed
-#   
-#   host cofigurable?
-#   setkey for authtoken
-#
-#
 #
 ##############################################################################
 #

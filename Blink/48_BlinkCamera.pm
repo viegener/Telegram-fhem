@@ -39,7 +39,7 @@
 #   ensure networks retrieved in docmd before other cmds
 #   parse networks
 # 2.0 2020-05-13 CheckIn to SVN for regular FHEM update
-# 
+#   use DevIo according to commit hook
 # 
 # 
 # 
@@ -89,6 +89,8 @@ use Data::Dumper;
 use URI::Escape;
 
 use Scalar::Util qw(reftype looks_like_number);
+
+use DevIo;
 
 #########################
 # Forward declaration
@@ -160,8 +162,6 @@ my $BlinkCamera_specialLog = 4;
 
 sub BlinkCamera_Initialize($) {
   my ($hash) = @_;
-
-  require "$attr{global}{modpath}/FHEM/DevIo.pm";
 
   $hash->{DefFn}      = "BlinkCamera_Define";
   $hash->{UndefFn}    = "BlinkCamera_Undef";

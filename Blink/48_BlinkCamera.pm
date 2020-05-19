@@ -50,9 +50,13 @@
 #   new camtype dependant camEnable / camDisable 
 #   ...Cam...active state corrected (was always disabled)
 #   getThumbnail also for Blink Mini
-
 #   login using V4 for V3 attr
 #   Digest networks from homescreen / eliminate networks call
+
+#   FIX: cam type not send for old homescreen
+#   FIX: remove also FUUID keyvalue on delete
+# 
+# 
 # 
 # 
 # 
@@ -62,7 +66,7 @@
 ##############################################################################
 # TASKS 
 #
-#
+#   use fuuid of device for 
 #
 #
 #   Analyze more information and settings
@@ -144,7 +148,7 @@ my $BlinkCamera_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0"
 # my $BlinkCamera_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0\r\nAccept-Charset: utf-8";
 
 my $BlinkCamera_loginjson = "{ \"password\" : \"q_password_q\", \"client_specifier\" : \"FHEM blinkCameraModule 1 - q_name_q\", \"email\" : \"q_email_q\" }";
-my $BlinkCamera_loginjsonV4 = "{ \"app_version\": \"6.0.10 (8280) #881c8812\", \"client_name\": \"fhem q_name_q\",  \"client_type\": \"ios\", \"device_identifier\": \"fhem q_name_q\", \"email\": \"q_email_q\", \"os_version\": \"13.4.1\", \"password\": \"q_password_q\", \"reauth\": true, \"unique_id\": \"q_uniqueid_q\" }";
+my $BlinkCamera_loginjsonV4 = "{ \"app_version\": \"6.0.10 (8280) #881c8812\", \"client_name\": \"fhem q_name_q\",  \"client_type\": \"ios\", \"device_identifier\": \"fhem q_fuuid_q\", \"email\": \"q_email_q\", \"os_version\": \"13\", \"password\": \"q_password_q\", \"reauth\": q_reauth_q, \"unique_id\": \"q_uniqueid_q\" }";
 
 my $BlinkCamera_configCamAlertjson = "{ \"camera\" : \"q_id_q\", \"id\" : \"q_id_q\", \"network\" : \"q_network_q\", \"motion_alert\" : \"q_alert_q\" }";
 
@@ -293,6 +297,7 @@ sub BlinkCamera_Delete($$)
   Log3 $name, 3, "BlinkCamera_Delete $name: called ";
 
   setKeyValue(  "BlinkCamera_".$hash->{Email}, undef ); 
+  setKeyValue(  "BlinkCamera_BLINKUID_".$fuuid, undef ); 
   
   Log3 $name, 4, "BlinkCamera_Delete $name: done ";
   return undef;
@@ -656,10 +661,13 @@ sub BlinkCamera_DoCmd($$;$$$)
       } else {
       
         if ( $newHomeScreen ) {
-          my ($err, $uid_key) = getKeyValue("BlinkCamera_UID_".$name); 
+          my $isReauth = "true";
+          my $fuuid = $hash->{FUUID};
+          my ($err, $uid_key) = getKeyValue("BlinkCamera_BLINKUID_".$fuuid); 
           if ( ( defined($err) ) || ( ! defined($uid_key) ) ) { 
             $uid_key = join "", map { unpack "H*", chr(rand(256)) } 1..16;
-            setKeyValue(  "BlinkCamera_UID_".$name, $uid_key );  
+            setKeyValue(  "BlinkCamera_BLINKUID_".$fuuid, $uid_key ); 
+            $isReauth = "false";            
           }
 
           $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v4/account/login";
@@ -670,6 +678,11 @@ sub BlinkCamera_DoCmd($$;$$$)
           $hash->{HU_DO_PARAMS}->{data} =~ s/q_email_q/$email/g;
           $hash->{HU_DO_PARAMS}->{data} =~ s/q_name_q/$name/g;
           $hash->{HU_DO_PARAMS}->{data} =~ s/q_uniqueid_q/$uid_key/g;
+          
+          $hash->{HU_DO_PARAMS}->{data} =~ s/q_reauth_q/$isReauth/g;
+          $hash->{HU_DO_PARAMS}->{data} =~ s/q_fuuid_q/$fuuid/g;
+
+
 
           Log3 $name, 4, "BlinkCamera_DoCmd $name: loginV4  data :".$hash->{HU_DO_PARAMS}->{data}.":";
 
@@ -723,7 +736,7 @@ sub BlinkCamera_DoCmd($$;$$$)
           $hash->{HU_DO_PARAMS}->{data} =~ s/q_value_q/$alert/g;
           Log3 $name, 4, "BlinkCamera_DoCmd $name:   cam type: ".$ctype.":  - data :".$hash->{HU_DO_PARAMS}->{data}.":";
         } else {
-          $ret = "BlinkCamera_DoCmd $name: camera type (".$ctype."( unknown !!";
+          $ret = "BlinkCamera_DoCmd $name: camera type (".$ctype.") unknown !!";
         }
 
       }
@@ -841,7 +854,7 @@ sub BlinkCamera_DoCmd($$;$$$)
           $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}."/networks/".$net."/owls/".$par1."/thumbnail";
           Log3 $name, 4, "BlinkCamera_DoCmd $name:  $cmd cam type: ".$ctype.":  ";
         } else {
-          $ret = "BlinkCamera_DoCmd $name: $cmd camera type (".$ctype."( unknown !!";
+          $ret = "BlinkCamera_DoCmd $name: $cmd camera type (".$ctype.") unknown !!";
         }
       
       } else {
@@ -1264,6 +1277,7 @@ sub BlinkCamera_ParseHomescreenOLD($$$)
 #        Debug "Device loop: ".$device->{device_id};
         $readUpdates->{"networkCamera".$device->{device_id}} = $device->{name}.":".$device->{active};
         $readUpdates->{"networkCamera".$device->{device_id}."Name"} = $device->{name};
+        $readUpdates->{"networkCamera".$device->{device_id}."Type"} = "camera";
         $readUpdates->{"networkCamera".$device->{device_id}."Active"} = $device->{active};
         $cameraGets .= $device->{name}.",".$device->{device_id}.",";
         $cameras .= $device->{device_id}.":".$device->{name}."\n";

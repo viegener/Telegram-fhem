@@ -79,6 +79,9 @@
 # - FIX: hex value warning for rollcode 
 # - FIX: allow empty ioTypes for testing
 #
+# - finalPosReading as addtl attribute - specify name
+# -   finalPosReading set at the end of a move with final position
+#
 #
 #
 ###############################################################################
@@ -101,8 +104,6 @@
 # - Complete shutter / blind as different model
 # - Make better distinction between different IoTypes - CUL+SCC / Signalduino
 # - Known Issue - if timer is running and last command equals new command (only for open / close) - considered minor/but still relevant
-# - 
-# - switch to standard 100 to 0 position 
 #
 ###############################################################################
 #   
@@ -210,6 +211,9 @@ sub SOMFY_readRollCode($);
 sub SOMFY_storeRollCode($$);
 sub SOMFY_getRollCode($);
 
+sub SOMFY_UpdateState($$$$$$);
+
+
 ######################### 
 ######################################################
 ######################################################
@@ -247,6 +251,7 @@ sub SOMFY_Initialize($) {
 	  . " drive-up-time-to-100"
 	  . " drive-up-time-to-open "
 	  . " additionalPosReading  "
+	  . " finalPosReading  "
     . " positionInverse:1,0  "
 	  . " IODev"
 	  . " symbol-length"
@@ -734,6 +739,7 @@ sub SOMFY_InternalSet($@) {
 	my $move = $cmd;
 	my $newState;
 	my $updateState;
+ 
 	
 	# translate state info to numbers - closed = 200 , open = 0    (correct missing values)
 	if ( !defined($pos) ) {
@@ -775,7 +781,6 @@ sub SOMFY_InternalSet($@) {
 			$newState = 'open';
     } else {
     }
-
   
 	} elsif(!defined($t1downclose) || !defined($t1down100) || !defined($t1upopen) || !defined($t1up100)) {
 		#if timings not set 
@@ -954,10 +959,16 @@ sub SOMFY_InternalSet($@) {
 	} else {
 		Log3($name,5,"SOMFY_set: handled for drive/udpate:  updateState ::  drivet :$drivetime: updatet :$updatetime: ");
 	}
+  
+  # check if finalPos or will be updated after time
+  my $isFinal = 0;
+  $isFinal = 1 if ( ( $updatetime != 0 ) || ( $drivetime != 0 ) );  
+  $isFinal = 0 if ( ( $mode eq 'virtual' ) || ( $drivetime == 0 ) );   ## special case for virtual devices since no commands are send (i.e. no update time)
+  
 			
 	# bulk update should do trigger if virtual mode
 #	SOMFY_UpdateState( $hash, $newState, $move, $updateState, ( $mode eq 'virtual' ) );
-	SOMFY_UpdateState( $hash, $newState, $move, $updateState, 1 );
+	SOMFY_UpdateState( $hash, $newState, $move, $updateState, 1, $isFinal );
 	
 	### send command
 	if ( $mode ne 'virtual' ) {
@@ -1391,7 +1402,7 @@ sub SOMFY_TimedUpdate($) {
 			SOMFY_SendCommand($hash, $hash->{runningcmd});
 		}
 		# trigger update from timer
-		SOMFY_UpdateState( $hash, $hash->{updateState}, 'stop', undef, 1 );
+		SOMFY_UpdateState( $hash, $hash->{updateState}, 'stop', undef, 1, 1 );   ## is final 
 		delete $hash->{starttime};
 		delete $hash->{runningtime};
 		delete $hash->{runningcmd};
@@ -1400,7 +1411,7 @@ sub SOMFY_TimedUpdate($) {
 		if($utime > $somfy_updateFreq) {
 			$utime = $somfy_updateFreq;
 		}
-		SOMFY_UpdateState( $hash, $pos, $hash->{move}, $hash->{updateState}, 1 );
+		SOMFY_UpdateState( $hash, $pos, $hash->{move}, $hash->{updateState}, 1, 0 );   ## not final yet
 		if ( defined( $hash->{runningcmd} )) {
 			Log3($hash->{NAME},4,"SOMFY_TimedUpdate: $hash->{NAME} -> stopping in $hash->{runningtime} sec");
 		} else {
@@ -1416,14 +1427,20 @@ sub SOMFY_TimedUpdate($) {
 
 
 ###################################
-#	SOMFY_UpdateState( $hash, $newState, $move, $updateState );
-sub SOMFY_UpdateState($$$$$) {
-	my ($hash, $newState, $move, $updateState, $doTrigger) = @_;
+#	SOMFY_UpdateState( $hash, $newState, $move, $updateState, drotrigger, isFinal );
+sub SOMFY_UpdateState($$$$$$) {
+	my ($hash, $newState, $move, $updateState, $doTrigger, $isFinal) = @_;
 	my $name = $hash->{NAME};
 
   my $addtlPosReading = AttrVal($hash->{NAME},'additionalPosReading',undef);
   if ( defined($addtlPosReading )) {
     $addtlPosReading = undef if ( ( $addtlPosReading eq "" ) or ( $addtlPosReading eq "state" ) or ( $addtlPosReading eq "position" ) or ( $addtlPosReading eq "exact" ) );
+  }
+
+  $isFinal = 0 if ( ! defined( $isFinal ) );
+  my $finalPosReading = AttrVal($hash->{NAME},'finalPosReading',undef);
+  if ( defined($finalPosReading )) {
+    $finalPosReading = undef if ( ( $finalPosReading eq "" ) or ( $finalPosReading eq "state" ) or ( $finalPosReading eq "position" ) or ( $finalPosReading eq "exact" ) );
   }
 
   my $newExact = $newState;
@@ -1467,12 +1484,12 @@ sub SOMFY_UpdateState($$$$$) {
 
 		readingsBulkUpdate($hash,"position",$rounded);
 
-    readingsBulkUpdate($hash,$addtlPosReading,$rounded) if ( defined($addtlPosReading) );
-
   }
 
   readingsBulkUpdate($hash,"exact",$newExact);
 
+  readingsBulkUpdate($hash,$finalPosReading,$newExact) if ( ( defined($finalPosReading) ) && ( $isFinal ) );
+  
 	if ( defined( $updateState ) ) {
 		$hash->{updateState} = $updateState;
 	} else {
@@ -1924,6 +1941,11 @@ sub SOMFY_SendCommand($@)
     <li>additionalPosReading<br>
         Position of the shutter will be stored in the reading <code>pos</code> as numeric value. 
         Additionally this attribute might specify a name for an additional reading to be updated with the same value than the pos.
+		</li><br>
+
+    <li>finalPosReading<br>
+        This attribute can specify the name of an additional posReading that is only set at the end of a move. Meaning intermediate values are not set.
+        The name can not be any of the standard readings
 		</li><br>
 
     <li>fixed_enckey 1|0<br>

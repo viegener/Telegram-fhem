@@ -52,10 +52,10 @@
 #   getThumbnail also for Blink Mini
 #   login using V4 for V3 attr
 #   Digest networks from homescreen / eliminate networks call
-
 #   FIX: cam type not send for old homescreen
 #   FIX: remove also FUUID keyvalue on delete
-# 
+
+#   FIX: FUUID in undef corrected
 # 
 # 
 # 
@@ -294,6 +294,8 @@ sub BlinkCamera_Delete($$)
 {
   my ($hash, $name) = @_;
 
+  my $fuuid = $hash->{FUUID};
+  
   Log3 $name, 3, "BlinkCamera_Delete $name: called ";
 
   setKeyValue(  "BlinkCamera_".$hash->{Email}, undef ); 

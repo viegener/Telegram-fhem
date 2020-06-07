@@ -78,9 +78,13 @@
 # - ensure largest rollingcode (either reading or unqieid is used)
 # - FIX: hex value warning for rollcode 
 # - FIX: allow empty ioTypes for testing
-#
 # - finalPosReading as addtl attribute - specify name
 # -   finalPosReading set at the end of a move with final position
+
+# - change all old log commands to log3
+# - log rolling code and enc key on sending verbose 5
+#
+#
 #
 #
 #
@@ -1655,8 +1659,7 @@ sub SOMFY_SendCommand($@)
 		{
 			$message = "t" . $attr{ $name }{"symbol-length"};
 			IOWrite( $hash, "Y", $message );
-			Log GetLogLevel( $name, 4 ),
-			  "SOMFY set symbol-length: $message for $io->{NAME}";
+			Log3 $hash, 5, "SOMFY_send set symbol-length: $message for $io->{NAME}";
 		}
 	
 	
@@ -1666,8 +1669,7 @@ sub SOMFY_SendCommand($@)
 		{
 			$message = "r" . $attr{ $name }{"repetition"};
 			IOWrite( $hash, "Y", $message );
-			Log GetLogLevel( $name, 4 ),
-			  "SOMFY set repetition: $message for $io->{NAME}";
+			Log3 $hash, 5, "SOMFY_send set repetition: $message for $io->{NAME}";
 		}
 	}
 	
@@ -1703,7 +1705,8 @@ sub SOMFY_SendCommand($@)
 	  . uc( $hash->{ADDRESS} );
 
 	## Log that we are going to switch Somfy
-	Log GetLogLevel( $name, 4 ), "SOMFY set $name " . join(" ", @args) . ": $message";
+	Log3 $hash, 4, "SOMFY_send $name " . join(" ", @args) . ": $message";
+	Log3 $hash, 5, "SOMFY_send $name enc key : ". $new_enc_key."  rolling code : ".$new_rolling_code;
 
 	## Send Message to IODev using IOWrite
 	if ($ioType eq "SIGNALduino") {
@@ -1717,7 +1720,7 @@ sub SOMFY_SendCommand($@)
 		#Log3 $hash, 4, "$hash->{IODev}->{NAME} SOMFY_sendCommand: $name -> message :$message: ";
 		IOWrite($hash, 'sendMsg', $message);
 	} else {
-		Log3($name,5,"SOMFY_sendCommand: $name -> message :$message: ");
+		#Log3($name,5,"SOMFY_sendCommand: $name -> message :$message: ");
 		IOWrite( $hash, "Y", $message );
 	}
 
@@ -1738,8 +1741,7 @@ sub SOMFY_SendCommand($@)
 		{
 			$message = "t" . $somfy_defsymbolwidth;
 			IOWrite( $hash, "Y", $message );
-			Log GetLogLevel( $name, 4 ),
-			  "SOMFY set symbol-length back: $message for $io->{NAME}";
+			Log3 $hash, 5, "SOMFY_send set symbol-length back: $message for $io->{NAME}";
 		}
 	
 		## Do we need to change repetition back?
@@ -1748,8 +1750,7 @@ sub SOMFY_SendCommand($@)
 		{
 			$message = "r" . $somfy_defrepetition;
 			IOWrite( $hash, "Y", $message );
-			Log GetLogLevel( $name, 4 ),
-			  "SOMFY set repetition back: $message for $io->{NAME}";
+			Log3 $hash, 5, "SOMFY_send set repetition back: $message for $io->{NAME}";
 		}
 	
 		## Do we need to change RFMode back to HomeMatic??

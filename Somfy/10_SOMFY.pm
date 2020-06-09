@@ -80,11 +80,12 @@
 # - FIX: allow empty ioTypes for testing
 # - finalPosReading as addtl attribute - specify name
 # -   finalPosReading set at the end of a move with final position
-
 # - change all old log commands to log3
 # - log rolling code and enc key on sending verbose 5
-#
-#
+
+# - document rawdevice
+# - fix for finalposreading also reacting in virtual mode
+# - fix for finalposreading also reacting on stop
 #
 #
 #
@@ -966,9 +967,8 @@ sub SOMFY_InternalSet($@) {
   
   # check if finalPos or will be updated after time
   my $isFinal = 0;
-  $isFinal = 1 if ( ( $updatetime != 0 ) || ( $drivetime != 0 ) );  
-  $isFinal = 0 if ( ( $mode eq 'virtual' ) || ( $drivetime == 0 ) );   ## special case for virtual devices since no commands are send (i.e. no update time)
-  
+  $isFinal = 1 if ( ( $updatetime != 0 ) || ( $drivetime != 0 ) || ( $move eq 'stop' ) );  
+    
 			
 	# bulk update should do trigger if virtual mode
 #	SOMFY_UpdateState( $hash, $newState, $move, $updateState, ( $mode eq 'virtual' ) );
@@ -1955,6 +1955,11 @@ sub SOMFY_SendCommand($@)
     
     <li>autoStoreRollingCode 1|0<br>
         If set to 1 the rolling code is stored automatically in the FHEM uniqueID file (Default is 0 - off). After setting the attribute, the code is first saved after the next change of the rolling code. 
+		</li><br>
+    
+
+    <li>rawDevice <somfy address - 6 digit hex> [ <list of further somfy addresses> ]<br>
+        If set this SOMFY device is representing a manual remote, that is used to control a somfy blind. The address of the blind (the physical blind) is specified in the rawdevice attribute to sync position changes in the blind when the remote is used. This requires an iodevice able to receive somfy commands (e.g. signalduino). Multiple physical blinds can be specified separated by space in the attribute.
 		</li><br>
     
 

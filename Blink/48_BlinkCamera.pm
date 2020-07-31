@@ -54,10 +54,10 @@
 #   Digest networks from homescreen / eliminate networks call
 #   FIX: cam type not send for old homescreen
 #   FIX: remove also FUUID keyvalue on delete
-
 #   FIX: FUUID in undef corrected
-# 
-# 
+
+#   New default 1 for homescreenv3 - old apis deactivated
+#   Disclaimer for API changes
 # 
 # 
 ##############################################################################
@@ -540,7 +540,7 @@ sub BlinkCamera_DoCmd($$;$$$)
   
   ## get actual network and attr V3
   my $net =  BlinkCamera_GetNetwork( $hash ); 
-  my $newHomeScreen = AttrVal($name,'homeScreenV3',"0");
+  my $newHomeScreen = AttrVal($name,'homeScreenV3',"1");
 
   if ( $newHomeScreen ) {
 
@@ -1091,7 +1091,7 @@ sub BlinkCamera_ParseLogin($$$)
   my ( $hash, $result, $readUpdates ) = @_;
   my $name = $hash->{NAME};
 
-  my $newHomeScreen = AttrVal($name,'homeScreenV3',"0");
+  my $newHomeScreen = AttrVal($name,'homeScreenV3',"1");
   if ( ! $newHomeScreen ) {
     Log3 $name, 4, "BlinkCamera_ParseLogin $name: Use old login parsing ";
     return BlinkCamera_ParseLoginOLD( $hash, $result, $readUpdates );
@@ -1335,7 +1335,7 @@ sub BlinkCamera_ParseHomescreen($$$)
   my $name = $hash->{NAME};
 
   # Run old homescreen parsing if attribute not set
-  my $newHomeScreen = AttrVal($name,'homeScreenV3',"0");
+  my $newHomeScreen = AttrVal($name,'homeScreenV3',"1");
   if ( ! $newHomeScreen ) {
     Log3 $name, 4, "BlinkCamera_ParseHomescreen $name: Use old home screen parsing ";
     return BlinkCamera_ParseHomescreenOLD( $hash, $result, $readUpdates );
@@ -2583,8 +2583,14 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
   
   <a href="https://blinkforhome.com">Blink Home Cameras</a> are relatively inexpensive wire-free video home security & monitoring system
 
+  <br><br>
+  <b>Disclaimer</b>: Since there are no official APIs for the blink cameras, there is no guarantee for this module to continue working. Several changes over the years have caused temporary outages due to incompatibe changes done by the provider of the Blink cameras. 
+  <br><br>
+
   The blink device contains the possibility to regular poll for updates (i.e. specifically for notificatio0ns/alerts) 
   MOst commands that change configurations are not synchronous, but the result will be returned after polling for status information. This is automatically handled in the device and the result of the cmd is marked in the reading <code>cmdResult</code> with the value "SUCCESS".
+  <br>
+  Traditional Blink cameras and also the BlinkMini types should work
   <br>
   The blink device also contains a proxy for retrieving videos and thumbnails throug an FHEMweb extension in the form of http://&lt;fhem&gt;:&lt;fhemwebport&gt;/fhem/BlinkCamera/&lt;name of the blink device&gt;/...
   
@@ -2675,8 +2681,8 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
     </li> 
 
 
-    <li><code>homeScreenV3 &lt;1 or 0&gt;</code><br>If set to 1 the new version 3 of the blink API will be used. Unfortunately this includes different readings and settings <br>
-    NOTE: This is necessary to show at least the status of Blink Mini cameras - changes are not yet possible 
+    <li><code>homeScreenV3 &lt;1 or 0&gt;</code><br>If set to 1 (default) the new version 3 of the blink API will be used. Unfortunately this includes different readings and settings <br>
+    NOTE: old APIs of Blink have been deactivated so new default 1 has been set in July 2020
     </li> 
 
 

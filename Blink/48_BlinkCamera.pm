@@ -1459,7 +1459,8 @@ sub BlinkCamera_ParseHomescreen($$$)
     foreach my $device ( @$camList ) {
       if ( $device->{network_id} eq $network ) {
         my $active = "disabled";
-        $active = "armed" if ( $device->{enabled} eq "true" );
+        $active = "armed" if ( $device->{enabled} == 1 );
+#        $active = "armed" if ( $device->{enabled} eq "true" );
 #        $active = "armed" if ( $device->{enabled} );
         
         $readUpdates->{"networkCamera".$device->{id}} = $device->{name}.":".$active;
@@ -1507,7 +1508,8 @@ sub BlinkCamera_ParseHomescreen($$$)
     foreach my $device ( @$owlList ) {
       if ( $device->{network_id} eq $network ) {
         my $active = "disabled";
-        $active = "armed" if ( $device->{enabled} eq "true" );
+        $active = "armed" if ( $device->{enabled} == 1 );
+#        $active = "armed" if ( $device->{enabled} eq "true" );
 #        $active = "armed" if ( $device->{enabled}  );
         
         $readUpdates->{"networkCamera".$device->{id}} = $device->{name}.":".$active;

@@ -28,7 +28,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,59719.0.html
 #
-# $Id: 48_BlinkCamera.pm $
+# $Id: 48_BlinkCamera.pm 22530 2020-08-03 13:21:58Z viegener $
 #
 ##############################################################################
 #
@@ -60,9 +60,16 @@
 #   Corrected handling of prefered network attribute
 #   Adapt active handling to new format
 #   Add new reading Enabled per camera with doc - showing enabled value
-
 #   Correction for JSON values - true/false 1/0
-# 
+
+#   send deprecation note for attr homescreenv3 (log and doc)
+#   handle new video delete - media delete
+#   
+#   
+#   
+#   
+#   
+#   
 # 
 # 
 ##############################################################################
@@ -70,6 +77,10 @@
 ##############################################################################
 ##############################################################################
 # TASKS 
+#
+#   remove old homescreen functonality
+#
+#
 #
 #   use fuuid of device for 
 #
@@ -92,7 +103,6 @@
 #{"authtoken":{"authtoken":"sjkashajhdjkashd","message":"auth"},"networks":{"<n>":{"name":"<name>","onboarded":true}},"region":{"prde":"Europe"}}
 #{"message":"Unauthorized Access"}
 #
-# { "video_list": [ 1012458 ] }   - POST https://rest.prir.immedia-semi.com/api/v2/videos/delete
 #
 ##############################################################################
 
@@ -159,7 +169,8 @@ my $BlinkCamera_configCamAlertjson = "{ \"camera\" : \"q_id_q\", \"id\" : \"q_id
 
 my $BlinkCamera_configOwljson = "{ \"enabled\" : q_value_q }";
 
-my $BlinkCamera_deleteVideojson = "{ \"video_list\" : [ q_id_q ] }";
+# OLD my $BlinkCamera_deleteVideojson = "{ \"video_list\" : [ q_id_q ] }";
+my $BlinkCamera_deleteVideojson = "{ \"media_list\" : [ q_id_q ] }";
 
 my $BlinkCamera_cameraThumbnailjson = "{ \"id\" : \"q_id_q\", \"network\" : \"q_network_q\" }";
 
@@ -465,6 +476,9 @@ sub BlinkCamera_Attr(@) {
 
     } elsif ($aName eq 'pollingVerbose') {
       return "\"BlinkCamera_Attr: \" Incorrect value given for pollingVerbose" if ( $aVal !~ /^((1_Digest)|(2_Log)|(0_None))$/ );
+
+    } elsif ($aName eq 'homeScreenV3') {
+      Log3 $name, 1, "BlinkCamera_Attr $name: Attribute homeScreenV3 is deprecated and can be removed - old API has been switched off";
 
     }
 
@@ -940,12 +954,32 @@ sub BlinkCamera_DoCmd($$;$$$)
       }
         
       if ( defined( $vid ) ) {
+        ## NEW API
+        # https://rest-prde.immedia-semi.com/api/v1/accounts/<id>/media/delete
+        # request
+          # {
+              # "media_list": [
+                  # 742450103
+              # ]
+          # }
+        # response
+        # {
+            # "code": 711,
+            # "message": "Successfully deleted videos"
+        # } 
+
+        ## OLD
+        # $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken}."\r\n"."Content-Type: application/json";
+
+        # $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v3/videos/delete";
+        # $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_deleteVideojson;
+        # $hash->{HU_DO_PARAMS}->{data} =~ s/q_id_q/$vid/g;
+
         $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."TOKEN_AUTH: ".$hash->{AuthToken}."\r\n"."Content-Type: application/json";
 
-        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v3/videos/delete";
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}."/media/delete";
         $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_deleteVideojson;
         $hash->{HU_DO_PARAMS}->{data} =~ s/q_id_q/$vid/g;
-
         Log3 $name, 4, "BlinkCamera_DoCmd $name:   data :".$hash->{HU_DO_PARAMS}->{data}.":";
 
       } else {
@@ -2163,7 +2197,7 @@ sub BlinkCamera_Setup($) {
   delete( $hash->{alertSkipped} );
   delete( $hash->{alertUpdate} );
   delete( $hash->{alertResults} );
-  
+
   delete( $hash->{URL} );
   
   # remove timer for retry
@@ -2703,11 +2737,6 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
     </li> 
 
 
-    <li><code>homeScreenV3 &lt;1 or 0&gt;</code><br>If set to 1 (default) the new version 3 of the blink API will be used. Unfortunately this includes different readings and settings <br>
-    NOTE: old APIs of Blink have been deactivated so new default 1 has been set in July 2020
-    </li> 
-
-
     <li><code>imgOriginalFile &lt;1 or 0&gt;</code><br>If set to 1 it will keep the original filename of the thumbnail when storing ti. With setting this new thumbnails will not overwrite existing ones. <br>
     NOTE: No cleanup of thumbnails is done, so over time more and more thumbnails will be stored in the proxydir. 
     </li> 
@@ -2717,6 +2746,11 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
 
     <li><code>webname &lt;path to fhem web&gt;</code><br>can be set if fhem is not accessible through the standard url of FHEMWeb <code>/fhem/... </code> (Default value is fhem). 
     </li> 
+
+    <li><code>homeScreenV3 &lt;1 or 0&gt;</code><br>If set to 1 (default) the new version 3 of the blink API will be used. Unfortunately this includes different readings and settings <br>
+    NOTE: This attribute is deprecated and not needed anymore, since the old API has been switched off by Blink (default is on = 1)
+    </li> 
+
 
   </ul>
 

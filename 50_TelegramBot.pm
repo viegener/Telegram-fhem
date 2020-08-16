@@ -171,12 +171,20 @@
 
 #   FIX: correct parsemodesend for inMsg with multiple lines - msg1041326
 #
-#
+#   TelegramBot_Callback add support for channel messages and edit
+#   Add contact support for channels
+#   
+#   
 #   
 ##############################################################################
 # TASKS 
-#   Restructure help in logical blocks
 #   
+#   check command handing for channels
+#   
+#   
+#   
+#   
+#   Restructure help in logical blocks
 #   
 #   queryDialogStart / queryDialogEnd - keep msg id 
 #   
@@ -2285,6 +2293,12 @@ sub TelegramBot_Callback($$$)
         } elsif ( defined( $update->{callback_query} ) ) {
           
           $ret = TelegramBot_ParseCallbackQuery( $hash, $update->{update_id}, $update->{callback_query} );
+        } elsif ( defined( $update->{channel_post} ) ) {
+          
+          $ret = TelegramBot_ParseChannelPost( $hash, $update->{update_id}, $update->{channel_post} );
+        } elsif ( defined( $update->{edited_channel_post} ) ) {
+          
+          $ret = TelegramBot_ParseChannelPost( $hash, $update->{update_id}, $update->{edited_channel_post} );
         } else {
           Log3 $name, 3, "UpdatePoll $name: inline_query  id:".$update->{inline_query}->{id}.
                 ":  query:".$update->{inline_query}->{query}.":" if ( defined( $update->{inline_query} ) );
@@ -2604,6 +2618,209 @@ sub TelegramBot_ParseMsg($$$)
     
     # COMMAND Handling (only if no fileid found
     Telegram_HandleCommandInMessages( $hash, $mpeernorm, $mchatnorm, $mtext, undef, 0 ) if ( ! defined( $mfileid ) );
+   
+  } elsif ( scalar(@contacts) > 0 )  {
+    # will also update reading
+    TelegramBot_ContactUpdate( $hash, @contacts );
+
+    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer without text/media but with contacts";
+
+  } else {
+    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer without text/media";
+  }
+  
+  return $ret;
+}
+
+
+#####################################
+#  INTERNAL: _ParseChannelPost handle a channel message from the update call 
+#   params are the hash, the updateid and the actual channelpost (or edited channelpost)
+sub TelegramBot_ParseChannelPost($$$)
+{
+  my ( $hash, $uid, $message ) = @_;
+  my $name = $hash->{NAME};
+
+  my @contacts;
+  
+  my $ret;
+  
+  my $mid = $message->{message_id};
+
+  # No from in Channels only chat ID infos
+  my $chatId = "";
+  my $chat = $message->{chat};
+  if ( ( ! defined( $chat ) ) || ( $chat->{type} ne "channel" ) ) {
+    Log3 $name, 3, "TelegramBot $name: Channel message without chat blocked";
+    return $ret;
+  }
+  $chatId = $chat->{id};
+
+  my $mpeer = $chatId;
+
+
+  # ignore if unknown contacts shall be accepter
+  if ( ( AttrVal($name,'allowUnknownContacts',1) == 0 ) && ( ! TelegramBot_IsKnownContact( $hash, $chatId ) ) ) {
+    my $mName = $chat->{title};
+    Log3 $name, 3, "TelegramBot $name: Message from unknown Contact (id:$chatId: name:$mName:) blocked";
+    
+    return $ret;
+  }
+
+  push( @contacts, $chat );
+
+
+  # get reply message id
+  my $replyId;
+  my $replyPart = $message->{reply_to_message};
+  if ( defined( $replyPart ) ) {
+    $replyId = $replyPart->{message_id};
+  }
+  
+  # mtext contains the text of the message (if empty no further handling)
+  my ( $mtext, $mfileid );
+
+  if ( defined( $message->{text} ) ) {
+    # handle text message
+    $mtext = $message->{text};
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: Textmessage";
+
+  } elsif ( defined( $message->{audio} ) ) {
+    # handle audio message
+    my $subtype = $message->{audio};
+    $mtext = "received audio ";
+
+    $mfileid = $subtype->{file_id};
+
+    $mtext .= " # Performer: ".$subtype->{performer} if ( defined( $subtype->{performer} ) );
+    $mtext .= " # Title: ".$subtype->{title} if ( defined( $subtype->{title} ) );
+    $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
+    $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: audio fileid: $mfileid";
+
+  } elsif ( defined( $message->{document} ) ) {
+    # handle document message
+    my $subtype = $message->{document};
+    $mtext = "received document ";
+
+    $mfileid = $subtype->{file_id};
+
+    $mtext .= " # Caption: ".$message->{caption} if ( defined( $message->{caption} ) );
+    $mtext .= " # Name: ".$subtype->{file_name} if ( defined( $subtype->{file_name} ) );
+    $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
+    $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: document fileid: $mfileid ";
+
+  } elsif ( defined( $message->{voice} ) ) {
+    # handle voice message
+    my $subtype = $message->{voice};
+    $mtext = "received voice ";
+
+    $mfileid = $subtype->{file_id};
+
+    $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
+    $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: voice fileid: $mfileid";
+
+  } elsif ( defined( $message->{video} ) ) {
+    # handle video message
+    my $subtype = $message->{video};
+    $mtext = "received video ";
+
+    $mfileid = $subtype->{file_id};
+
+    $mtext .= " # Caption: ".$message->{caption} if ( defined( $message->{caption} ) );
+    $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
+    $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: video fileid: $mfileid";
+
+  } elsif ( defined( $message->{photo} ) ) {
+    # handle photo message
+    # photos are always an array with (hopefully) the biggest size last in the array
+    my $photolist = $message->{photo};
+    
+    if ( scalar(@$photolist) > 0 ) {
+      my $subtype = $$photolist[scalar(@$photolist)-1] ;
+      $mtext = "received photo ";
+
+      $mfileid = $subtype->{file_id};
+
+      $mtext .= " # Caption: ".$message->{caption} if ( defined( $message->{caption} ) );
+      $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
+      $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
+      Log3 $name, 4, "TelegramBot_ParseMsg $name: photo fileid: $mfileid";
+    }
+  } elsif ( defined( $message->{venue} ) ) {
+    # handle location type message
+    my $ven = $message->{venue};
+    my $loc = $ven->{location};
+    
+    $mtext = "received venue ";
+
+    $mtext .= " # latitude: ".$loc->{latitude}." # longitude: ".$loc->{longitude};
+    $mtext .= " # title: ".$ven->{title}." # address: ".$ven->{address};
+    
+# urls will be discarded in fhemweb    $mtext .= "\n# url: <a href=\"http://maps.google.com/?q=loc:".$loc->{latitude}.",".$loc->{longitude}."\">maplink</a>";
+    
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: location received: latitude: ".$loc->{latitude}." longitude: ".$loc->{longitude};;
+  } elsif ( defined( $message->{location} ) ) {
+    # handle location type message
+    my $loc = $message->{location};
+    
+    $mtext = "received location ";
+
+    $mtext .= " # latitude: ".$loc->{latitude}." # longitude: ".$loc->{longitude};
+    
+# urls will be discarded in fhemweb    $mtext .= "\n# url: <a href=\"http://maps.google.com/?q=loc:".$loc->{latitude}.",".$loc->{longitude}."\">maplink</a>";
+    
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: location received: latitude: ".$loc->{latitude}." longitude: ".$loc->{longitude};;
+  }
+
+
+  if ( defined( $mtext ) ) {
+    Log3 $name, 4, "TelegramBot_ParseMsg $name: text   :$mtext:";
+
+    my $mpeernorm = $mpeer;
+    $mpeernorm =~ s/^\s+|\s+$//g;
+    $mpeernorm =~ s/ /_/g;
+
+    my $mchatnorm = "";
+    $mchatnorm = $chatId if ( AttrVal($name,'cmdRespondChat',1) == 1 ); 
+
+    #    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer :$mtext:";
+
+    # contacts handled separately since readings are updated in here
+    TelegramBot_ContactUpdate($hash, @contacts) if ( scalar(@contacts) > 0 );
+    
+    readingsBeginUpdate($hash);
+
+    readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});        
+    readingsBulkUpdate($hash, "prevMsgPeer", $hash->{READINGS}{msgPeer}{VAL});        
+    readingsBulkUpdate($hash, "prevMsgPeerId", $hash->{READINGS}{msgPeerId}{VAL});        
+    readingsBulkUpdate($hash, "prevMsgChat", $hash->{READINGS}{msgChat}{VAL});        
+    readingsBulkUpdate($hash, "prevMsgText", $hash->{READINGS}{msgText}{VAL});        
+    readingsBulkUpdate($hash, "prevMsgFileId", $hash->{READINGS}{msgFileId}{VAL});        
+    readingsBulkUpdate($hash, "prevMsgReplyMsgId", $hash->{READINGS}{msgReplyMsgId}{VAL});        
+
+    readingsEndUpdate($hash, 0);
+    
+    readingsBeginUpdate($hash);
+
+    readingsBulkUpdate($hash, "msgId", $mid);        
+    readingsBulkUpdate($hash, "msgPeer", "<channel>");        
+    readingsBulkUpdate($hash, "msgPeerId", $mpeernorm);        
+    readingsBulkUpdate($hash, "msgChat", TelegramBot_GetFullnameForContact( $hash, ((!$chatId)?$mpeernorm:$chatId) ) );        
+    readingsBulkUpdate($hash, "msgChatId", ((!$chatId)?$mpeernorm:$chatId) );        
+    readingsBulkUpdate($hash, "msgText", $mtext);
+    readingsBulkUpdate($hash, "msgReplyMsgId", (defined($replyId)?$replyId:""));        
+
+    readingsBulkUpdate($hash, "msgFileId", ( ( defined( $mfileid ) ) ? $mfileid : "" ) );        
+
+    readingsEndUpdate($hash, 1);
+    
+    ### ??? COMMANDS from channel messages not yet allowed
+    # COMMAND Handling (only if no fileid found
+##???    Telegram_HandleCommandInMessages( $hash, $mpeernorm, $mchatnorm, $mtext, undef, 0 ) if ( ! defined( $mfileid ) );
    
   } elsif ( scalar(@contacts) > 0 )  {
     # will also update reading
@@ -3148,7 +3365,7 @@ sub TelegramBot_userObjectToString($) {
   my $ret = $user->{id}.":";
   
   # user objects do not contain a type field / chat objects need to contain a type but only if type=group or type=supergroup it is really a group
-  if ( ( defined( $user->{type} ) ) && ( ( $user->{type} eq "group" ) || ( $user->{type} eq "supergroup" ) ) ) {
+  if ( ( defined( $user->{type} ) ) && ( ( $user->{type} eq "group" ) || ( $user->{type} eq "supergroup" ) || ( $user->{type} eq "channel" ) ) ) {
     
     $ret .= ":";
 

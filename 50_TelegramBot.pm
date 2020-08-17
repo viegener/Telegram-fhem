@@ -179,13 +179,13 @@ my $repositoryID = '$Id: 50_TelegramBot.pm 19451 2019-05-23 07:51:03Z viegener $
 #   TelegramBot_Callback add support for channel messages and edit
 #   Add contact support for channels
 #   add version id as internal - sourceVersion
-#   
+#   New attr allowChannels for allowing channel messages explicitely
+#   check command handing for channels
 #   
 #   
 ##############################################################################
 # TASKS 
 #   
-#   check command handing for channels
 #   
 #   
 #   
@@ -341,7 +341,7 @@ sub TelegramBot_Initialize($) {
   "allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCommands:textField allowedCommands filenameUrlEscape:1,0 ". 
   "textResponseFavorites:textField textResponseResult:textField textResponseUnauthorized:textField ".
   "parseModeSend:0_None,1_Markdown,2_HTML,3_InMsg webPagePreview:1,0 utf8Special:1,0 favorites2Col:0,1 ".
-  " maxRetries:0,1,2,3,4,5 ".$readingFnAttributes;           
+  " maxRetries:0,1,2,3,4,5 allowChannels:0,1 ".$readingFnAttributes;           
 }
 
 
@@ -2652,6 +2652,11 @@ sub TelegramBot_ParseChannelPost($$$)
   my $ret;
   
   my $mid = $message->{message_id};
+  
+  if ( ! AttrVal($name,'allowChannels',0) ) {
+    Log3 $name, 4, "TelegramBot $name: Channel message ignored";
+    return $ret;
+  }
 
   # No from in Channels only chat ID infos
   my $chatId = "";
@@ -2668,7 +2673,7 @@ sub TelegramBot_ParseChannelPost($$$)
   # ignore if unknown contacts shall be accepter
   if ( ( AttrVal($name,'allowUnknownContacts',1) == 0 ) && ( ! TelegramBot_IsKnownContact( $hash, $chatId ) ) ) {
     my $mName = $chat->{title};
-    Log3 $name, 3, "TelegramBot $name: Message from unknown Contact (id:$chatId: name:$mName:) blocked";
+    Log3 $name, 3, "TelegramBot $name: Channel message from unknown Contact (id:$chatId: name:$mName:) blocked";
     
     return $ret;
   }
@@ -2689,7 +2694,7 @@ sub TelegramBot_ParseChannelPost($$$)
   if ( defined( $message->{text} ) ) {
     # handle text message
     $mtext = $message->{text};
-    Log3 $name, 4, "TelegramBot_ParseMsg $name: Textmessage";
+    Log3 $name, 4, "TelegramBot_ParseChannelPost $name: Textmessage";
 
   } elsif ( defined( $message->{audio} ) ) {
     # handle audio message
@@ -2702,7 +2707,7 @@ sub TelegramBot_ParseChannelPost($$$)
     $mtext .= " # Title: ".$subtype->{title} if ( defined( $subtype->{title} ) );
     $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
     $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
-    Log3 $name, 4, "TelegramBot_ParseMsg $name: audio fileid: $mfileid";
+    Log3 $name, 4, "TelegramBot_ParseChannelPost $name: audio fileid: $mfileid";
 
   } elsif ( defined( $message->{document} ) ) {
     # handle document message
@@ -2715,7 +2720,7 @@ sub TelegramBot_ParseChannelPost($$$)
     $mtext .= " # Name: ".$subtype->{file_name} if ( defined( $subtype->{file_name} ) );
     $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
     $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
-    Log3 $name, 4, "TelegramBot_ParseMsg $name: document fileid: $mfileid ";
+    Log3 $name, 4, "TelegramBot_ParseChannelPost $name: document fileid: $mfileid ";
 
   } elsif ( defined( $message->{voice} ) ) {
     # handle voice message
@@ -2726,7 +2731,7 @@ sub TelegramBot_ParseChannelPost($$$)
 
     $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
     $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
-    Log3 $name, 4, "TelegramBot_ParseMsg $name: voice fileid: $mfileid";
+    Log3 $name, 4, "TelegramBot_ParseChannelPost $name: voice fileid: $mfileid";
 
   } elsif ( defined( $message->{video} ) ) {
     # handle video message
@@ -2738,7 +2743,7 @@ sub TelegramBot_ParseChannelPost($$$)
     $mtext .= " # Caption: ".$message->{caption} if ( defined( $message->{caption} ) );
     $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
     $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
-    Log3 $name, 4, "TelegramBot_ParseMsg $name: video fileid: $mfileid";
+    Log3 $name, 4, "TelegramBot_ParseChannelPost $name: video fileid: $mfileid";
 
   } elsif ( defined( $message->{photo} ) ) {
     # handle photo message
@@ -2754,7 +2759,7 @@ sub TelegramBot_ParseChannelPost($$$)
       $mtext .= " # Caption: ".$message->{caption} if ( defined( $message->{caption} ) );
       $mtext .= " # Mime: ".$subtype->{mime_type} if ( defined( $subtype->{mime_type} ) );
       $mtext .= " # Size: ".$subtype->{file_size} if ( defined( $subtype->{file_size} ) );
-      Log3 $name, 4, "TelegramBot_ParseMsg $name: photo fileid: $mfileid";
+      Log3 $name, 4, "TelegramBot_ParseChannelPost $name: photo fileid: $mfileid";
     }
   } elsif ( defined( $message->{venue} ) ) {
     # handle location type message
@@ -2768,7 +2773,7 @@ sub TelegramBot_ParseChannelPost($$$)
     
 # urls will be discarded in fhemweb    $mtext .= "\n# url: <a href=\"http://maps.google.com/?q=loc:".$loc->{latitude}.",".$loc->{longitude}."\">maplink</a>";
     
-    Log3 $name, 4, "TelegramBot_ParseMsg $name: location received: latitude: ".$loc->{latitude}." longitude: ".$loc->{longitude};;
+    Log3 $name, 4, "TelegramBot_ParseChannelPost $name: location received: latitude: ".$loc->{latitude}." longitude: ".$loc->{longitude};;
   } elsif ( defined( $message->{location} ) ) {
     # handle location type message
     my $loc = $message->{location};
@@ -2779,12 +2784,12 @@ sub TelegramBot_ParseChannelPost($$$)
     
 # urls will be discarded in fhemweb    $mtext .= "\n# url: <a href=\"http://maps.google.com/?q=loc:".$loc->{latitude}.",".$loc->{longitude}."\">maplink</a>";
     
-    Log3 $name, 4, "TelegramBot_ParseMsg $name: location received: latitude: ".$loc->{latitude}." longitude: ".$loc->{longitude};;
+    Log3 $name, 4, "TelegramBot_ParseChannelPost $name: location received: latitude: ".$loc->{latitude}." longitude: ".$loc->{longitude};;
   }
 
 
   if ( defined( $mtext ) ) {
-    Log3 $name, 4, "TelegramBot_ParseMsg $name: text   :$mtext:";
+    Log3 $name, 4, "TelegramBot_ParseChannelPost $name: text   :$mtext:";
 
     my $mpeernorm = $mpeer;
     $mpeernorm =~ s/^\s+|\s+$//g;
@@ -2793,7 +2798,7 @@ sub TelegramBot_ParseChannelPost($$$)
     my $mchatnorm = "";
     $mchatnorm = $chatId if ( AttrVal($name,'cmdRespondChat',1) == 1 ); 
 
-    #    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer :$mtext:";
+    #    Log3 $name, 5, "TelegramBot_ParseChannelPost $name: Found message $mid from $mpeer :$mtext:";
 
     # contacts handled separately since readings are updated in here
     TelegramBot_ContactUpdate($hash, @contacts) if ( scalar(@contacts) > 0 );
@@ -2824,18 +2829,17 @@ sub TelegramBot_ParseChannelPost($$$)
 
     readingsEndUpdate($hash, 1);
     
-    ### ??? COMMANDS from channel messages not yet allowed
     # COMMAND Handling (only if no fileid found
-##???    Telegram_HandleCommandInMessages( $hash, $mpeernorm, $mchatnorm, $mtext, undef, 0 ) if ( ! defined( $mfileid ) );
+    Telegram_HandleCommandInMessages( $hash, $mpeernorm, $mchatnorm, $mtext, undef, 0 ) if ( ! defined( $mfileid ) );
    
   } elsif ( scalar(@contacts) > 0 )  {
     # will also update reading
     TelegramBot_ContactUpdate( $hash, @contacts );
 
-    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer without text/media but with contacts";
+    Log3 $name, 5, "TelegramBot_ParseChannelPost $name: Found channel message $mid from $mpeer without text/media but with contacts";
 
   } else {
-    Log3 $name, 5, "TelegramBot_ParseMsg $name: Found message $mid from $mpeer without text/media";
+    Log3 $name, 5, "TelegramBot_ParseChannelPost $name: Found channel message $mid from $mpeer without text/media";
   }
   
   return $ret;
@@ -3938,6 +3942,9 @@ sub TelegramBot_BinaryFileWrite($$$) {
 
     <li><code>allowedCommands &lt;list of command&gt;</code><br>Restrict the commands that can be executed through favorites and cmdKeyword to the listed commands (separated by space). Similar to the corresponding restriction in FHEMWEB. The allowedCommands will be set on the corresponding instance of an allowed device with the name "allowed_&lt;TelegrambotDeviceName&gt; and not on the telegramBotDevice! This allowed device is created and modified automatically.<br>
     <b>ATTENTION: This is not a hardened secure blocking of command execution, there might be ways to break the restriction!</b>
+    </li> 
+
+    <li><code>allowChannels &lt;0 or 1&gt;</code><br>Support also messages coming from channels to the bot. This must be explicitely activated, since channels contain anonymous messages (without a defined sender of the message)</b>
     </li> 
 
     <li><code>cmdTriggerOnly &lt;0 or 1&gt;</code><br>Restrict the execution of commands only to trigger command. If this attr is set (value 1), then only the name of the trigger even has to be given (i.e. without the preceding statement trigger). 

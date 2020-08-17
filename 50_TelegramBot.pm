@@ -27,7 +27,12 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,38328.0.html
 #
-# $Id: 50_TelegramBot.pm 19451 2019-05-23 07:51:03Z viegener $
+
+ 
+my $repositoryID = '$Id: 50_TelegramBot.pm 19451 2019-05-23 07:51:03Z viegener $'; 
+
+
+# 
 #
 ##############################################################################
 # 0.0 2015-09-16 Started
@@ -173,6 +178,7 @@
 #
 #   TelegramBot_Callback add support for channel messages and edit
 #   Add contact support for channels
+#   add version id as internal - sourceVersion
 #   
 #   
 #   
@@ -3042,6 +3048,8 @@ sub TelegramBot_Setup($) {
   $hash->{me} = "<unknown>";
   $hash->{STATE} = "Undefined";
 
+  $hash->{sourceVersion} = $repositoryID;
+  
   $hash->{POLLING} = -1;
   $hash->{HU_UPD_PARAMS}->{callback} = \&TelegramBot_Callback;
   $hash->{HU_DO_PARAMS}->{callback} = \&TelegramBot_Callback;

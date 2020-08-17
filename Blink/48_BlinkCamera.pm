@@ -20,7 +20,7 @@
 #
 ##############################################################################
 #  
-#  BlinkCamera (c) Johannes Viegener / https://github.com/viegener/Blink
+#  BlinkCamera (c) Johannes Viegener / https://github.com/viegener/Telegram-fhem/tree/master/Blink
 #
 # This module interacts with Blink Home Cameras : https://blinkforhome.com/
 # Some information is based on the work here: https://github.com/MattTW/BlinkMonitorProtocol
@@ -28,7 +28,10 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,59719.0.html
 #
-# $Id: 48_BlinkCamera.pm 22530 2020-08-03 13:21:58Z viegener $
+#
+ 
+my $repositoryID = '$Id: 48_BlinkCamera.pm 22553 2020-08-07 14:46:19Z viegener $'; 
+
 #
 ##############################################################################
 #
@@ -69,6 +72,8 @@
 #   add set option verifyPin for pin verification - not verified
 #   add doc for verifyPin (experimental)
 #   
+
+#   add version id as internal - sourceVersion
 #   
 #   
 # 
@@ -80,9 +85,8 @@
 # TASKS 
 #
 #
-#   remove old homescreen functonality
 #
-#   use fuuid of device for 
+#   remove old homescreen functonality
 #
 #   Analyze more information and settings
 #
@@ -2199,6 +2203,8 @@ sub BlinkCamera_Setup($) {
   $hash->{HU_DO_PARAMS} = \%hu_do_params;
 
   $hash->{POLLING} = -1;
+  
+  $hash->{sourceVersion} = $repositoryID;
   
   # Temp?? SNAME is required for allowed (normally set in TCPServerUtils)
   $hash->{SNAME} = $name;

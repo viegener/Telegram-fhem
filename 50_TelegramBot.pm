@@ -181,6 +181,11 @@ my $repositoryID = '$Id: 50_TelegramBot.pm 19451 2019-05-23 07:51:03Z viegener $
 #   add version id as internal - sourceVersion
 #   New attr allowChannels for allowing channel messages explicitely
 #   check command handing for channels
+
+#   remove keyboard after favorite confirm
+#   replyKeyboardRemove - #msg592808
+#   
+#   
 #   
 #   
 ##############################################################################
@@ -194,11 +199,7 @@ my $repositoryID = '$Id: 50_TelegramBot.pm 19451 2019-05-23 07:51:03Z viegener $
 #   
 #   queryDialogStart / queryDialogEnd - keep msg id 
 #   
-#   remove keyboard after favorite confirm
-#   
 #   cleanup encodings
-#   
-#   replyKeyboardRemove - #msg592808
 #   
 #   
 ##############################################################################
@@ -624,29 +625,38 @@ sub TelegramBot_Set($@)
     } else {
       if ( ! defined( $addPar ) ) {
         # check for Keyboard given (only if not forcing reply) and parse it to keys / jsonkb
+        my $onetime = 1;
+        
         my @keys; 
-        while ( $args[0] =~ /^\s*\(.*$/ ) {
-          my $aKey = "";
-          while ( $aKey !~ /^\s*\((.*)\)\s*$/ ) {
-            $aKey .= " ".$args[0];
-            
-            shift @args;
-            last if ( int(@args) == 0 );
-          }  
-          # trim key
-          $aKey =~ s/^\s+|\s+$//g;
+        if ( $args[0] =~ /^\s*\(\)\s*$/ ) {
+          Log3 $name, 4, "TelegramBot_Set $name: empty keys remove keyboard";
+          shift @args;
+          $onetime = 0;
+        } else {
+          
+          while ( $args[0] =~ /^\s*\(.*$/ ) {
+            my $aKey = "";
+            while ( $aKey !~ /^\s*\((.*)\)\s*$/ ) {
+              $aKey .= " ".$args[0];
+              
+              shift @args;
+              last if ( int(@args) == 0 );
+            }  
+            # trim key
+            $aKey =~ s/^\s+|\s+$//g;
 
-          if ( $aKey =~ /^\((.*)\)$/ ) {
-            my @tmparr = split( /\|/, $1 );  
-            push( @keys, \@tmparr );           
-          } else {
-            # incomplete key handle as message
-            unshift( @args, $aKey ) if ( length( $aKey ) > 0 );
-            last;
+            if ( $aKey =~ /^\((.*)\)$/ ) {
+              my @tmparr = split( /\|/, $1 );  
+              push( @keys, \@tmparr );           
+            } else {
+              # incomplete key handle as message
+              unshift( @args, $aKey ) if ( length( $aKey ) > 0 );
+              last;
+            }
           }
         }
     
-        $addPar = TelegramBot_MakeKeyboard( $hash, 1, $inline, @keys ) if ( scalar( @keys ) );
+        $addPar = TelegramBot_MakeKeyboard( $hash, $onetime, $inline, @keys ) if ( ( scalar( @keys ) ) || ( $onetime == 0) );
       }
     
       return "TelegramBot_Set: Command $cmd, no text for msg specified " if ( int(@args) == 0 );
@@ -1927,6 +1937,8 @@ sub TelegramBot_SendIt($$$$$;$$$)
 #      $hash->{HU_DO_PARAMS}->{data} = encode_utf8($hash->{HU_DO_PARAMS}->{data});
     }
     
+    Log3 $name, 4, "TelegramBot_SendIt $name: Message for sending :".$hash->{HU_DO_PARAMS}->{data}.":";
+
     Log3 $name, 4, "TelegramBot_SendIt $name: timeout for sent :".$hash->{HU_DO_PARAMS}->{timeout}.": ";
     HttpUtils_NonblockingGet( $hash->{HU_DO_PARAMS} );
 
@@ -2049,7 +2061,7 @@ sub TelegramBot_MakeKeyboard($$$@)
     %par = ( "inline_keyboard" => \@parKeys  );
     
   } elsif ( ( defined( $onetime_hide ) ) && ( ! $onetime_hide ) ) {
-    %par = ( "hide_keyboard" => JSON::true );
+    %par = ( "remove_keyboard" => JSON::true );
   } else {
     return $ret if ( ! @keys );
     %par = ( "one_time_keyboard" => (( ( defined( $onetime_hide ) ) && ( $onetime_hide ) )?JSON::true:JSON::true ) );
@@ -3733,10 +3745,11 @@ sub TelegramBot_BinaryFileWrite($$$) {
   <a name="TelegramBotset"></a>
   <b>Set</b>
   <ul>
-    <li><code>message|msg|_msg|send [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] [ (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) ] &lt;text&gt;</code><br>Sends the given message to the given peer or if peer(s) is ommitted currently defined default peer user. Each peer given needs to be always prefixed with a '@'. Peers can be specified as contact ids, full names (with underscore instead of space), usernames (prefixed with another @) or chat names (also known as groups in telegram groups must be prefixed with #). Multiple peers are to be separated by space<br>
+    <li><code>message|msg|_msg|send [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] [ (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) ] &lt;text&gt;</code><br>Sends the given message to the given peer or if peer(s) is ommitted currently defined default peer user. Each peer given needs to be always prefixed with a '@'. Peers can be specified as contact ids, full names (with underscore instead of space), usernames (prefixed with another @) or chat names (also known as groups in telegram groups must be prefixed with #). Multiple peers are to be separated by space.<br><br>
     A reply keyboard can be specified by adding a list of strings enclosed in parentheses "()". Each separate string will make one keyboard row in a reply keyboard. The different keys in the row need to be separated by |. The key strings can contain spaces.<br>
-    Messages do not need to be quoted if containing spaces. If you want to use parentheses at the start of the message than add one extra character before the parentheses (i.e. an underline) to avoid the message being parsed as a keyboard <br>
-    Messages can also contain special characters for the message. These include newline =&#92;n, tab = &#92;t and also a normal space = &#92;s <br>
+    Messages do not need to be quoted if containing spaces. If you want to use parentheses at the start of the message than add one extra character before the parentheses (i.e. an underline) to avoid the message being parsed as a keyboard. <br><br>
+    if an empty keyoard is given "()" an existing keyboard is removed<br><br>
+    Messages can also contain special characters. These include newline = &#92;n, tab = &#92;t and also a normal space = &#92;s <br><br>
 
     Examples:<br>
       <dl>

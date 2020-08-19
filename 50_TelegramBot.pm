@@ -181,10 +181,10 @@ my $repositoryID = '$Id: 50_TelegramBot.pm 19451 2019-05-23 07:51:03Z viegener $
 #   add version id as internal - sourceVersion
 #   New attr allowChannels for allowing channel messages explicitely
 #   check command handing for channels
-
 #   remove keyboard after favorite confirm
 #   replyKeyboardRemove - #msg592808
-#   
+
+#   replace single semicolons in favorites (with double semicolons) - msg1078989
 #   
 #   
 #   
@@ -1216,8 +1216,19 @@ sub TelegramBot_SendFavorites($$$$$;$$) {
     
   } 
   
-  # trim cmd addition if given
-  $cmdAddition =~ s/^\s+|\s+$//g if ( $cmdAddition );
+  
+  if ( $cmdAddition ) {
+    # trim cmd addition if given
+    $cmdAddition =~ s/^\s+|\s+$//g;
+    
+    # first replace double semicolons
+    $cmdAddition =~ s/;;/SeMiCoLoN/g; 
+    
+    # replace single semicolon with double in cmd addition to avoid separate commands in addition
+    $cmdAddition =~ s/;/;;/g;
+
+    $cmdAddition =~ s/SeMiCoLoN/;;/g; # reestablish double ; for inside commands 
+  }
   
   Log3 $name, 5, "TelegramBot_SendFavorites parsed cmdFavId :".(defined($cmdFavId)?$cmdFavId:"<undef>")."   cmdaddition :".(defined($cmdAddition)?$cmdAddition:"<undef>").": ";
 

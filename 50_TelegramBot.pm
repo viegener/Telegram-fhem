@@ -185,7 +185,7 @@ my $repositoryID = '$Id: 50_TelegramBot.pm 19451 2019-05-23 07:51:03Z viegener $
 #   replyKeyboardRemove - #msg592808
 
 #   replace single semicolons in favorites (with double semicolons) - msg1078989
-#   
+#   FIX: answercallback always if querydata is set
 #   
 #   
 ##############################################################################
@@ -2982,8 +2982,9 @@ sub TelegramBot_ParseCallbackQuery($$$)
     }
   } 
   
-  # sent answer if not undef 
-  if ( defined( $answerData ) ) {
+  # sent answer if data was set -- required 
+  if ( defined( $data ) ) {
+#  if ( defined( $answerData ) ) {
     $answerData = "" if ( ! $answerData  );
     if ( length( $answerData ) > 0 ) {
       my %dummy; 

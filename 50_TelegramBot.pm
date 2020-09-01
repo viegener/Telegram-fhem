@@ -27,11 +27,7 @@
 #
 # Discussed in FHEM Forum: https://forum.fhem.de/index.php/topic,38328.0.html
 #
-
- 
-my $repositoryID = '$Id: 50_TelegramBot.pm 19451 2019-05-23 07:51:03Z viegener $'; 
-
-
+# $Id: 50_TelegramBot.pm 19451 2019-05-23 07:51:03Z viegener $
 # 
 #
 ##############################################################################
@@ -223,6 +219,8 @@ use URI::Escape;
 
 use Scalar::Util qw(reftype looks_like_number);
 
+use DevIo;
+
 #########################
 # Forward declaration
 sub TelegramBot_Define($$);
@@ -247,6 +245,8 @@ sub TelegramBot_storeToken($$;$);
 
 #########################
 # Globals
+my $repositoryID = '$Id: 50_TelegramBot.pm 19451 2019-05-23 07:51:03Z viegener $'; 
+
 my %sets = (
   "_msg" => "textField",
   "message" => "textField",
@@ -327,8 +327,6 @@ my $TelegramBot_arg_retrycnt = 6;
 
 sub TelegramBot_Initialize($) {
   my ($hash) = @_;
-
-  require "$attr{global}{modpath}/FHEM/DevIo.pm";
 
   $hash->{DefFn}      = "TelegramBot_Define";
   $hash->{UndefFn}    = "TelegramBot_Undef";
@@ -3969,7 +3967,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     <b>ATTENTION: This is not a hardened secure blocking of command execution, there might be ways to break the restriction!</b>
     </li> 
 
-    <li><code>allowChannels &lt;0 or 1&gt;</code><br>Support also messages coming from channels to the bot. This must be explicitely activated, since channels contain anonymous messages (without a defined sender of the message)</b>
+    <li><code>allowChannels &lt;0 or 1&gt;</code><br>Support also messages coming from channels to the bot. This must be explicitely activated, since channels contain anonymous messages (without a defined sender of the message)
     </li> 
 
     <li><code>cmdTriggerOnly &lt;0 or 1&gt;</code><br>Restrict the execution of commands only to trigger command. If this attr is set (value 1), then only the name of the trigger even has to be given (i.e. without the preceding statement trigger). 

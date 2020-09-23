@@ -82,11 +82,12 @@
 # -   finalPosReading set at the end of a move with final position
 # - change all old log commands to log3
 # - log rolling code and enc key on sending verbose 5
-
 # - document rawdevice
 # - fix for finalposreading also reacting in virtual mode
 # - fix for finalposreading also reacting on stop
-#
+
+# - store roll code on setting of attribute
+# - no update of DEF anymore with rolling code (roll code and enc key will be removed)
 #
 #
 ###############################################################################
@@ -346,6 +347,10 @@ sub SOMFY_Define($$) {
 	$hash->{CODE}{ $ncode++ } = $code;
 	$modules{SOMFY}{defptr}{$code}{$name} = $hash;
 	$hash->{move} = 'stop';
+  
+  # change 23.9.2020 - def will be modified to only include address
+  $hash->{DEF} = $hash->{ADDRESS}." ";  
+  
 	AssignIoPort($hash);
 }
 
@@ -423,6 +428,19 @@ sub SOMFY_Attr(@) {
         readingsEndUpdate($hash,1);  
     }
   
+  } elsif ($aName eq 'autoStoreRollingCode') {
+    if ($cmd eq "set") {
+      # change 23.9.2020 - store roll code on setting of attribute
+      if ( $aVal ) {
+        my $rollcode = SOMFY_getRollCode( $hash );
+        SOMFY_storeRollCode( $hash, $rollcode );
+      } else {
+        SOMFY_storeRollCode( $hash, undef );
+      }
+    } elsif ($cmd eq "del") {
+      SOMFY_storeRollCode( $hash, undef );
+    }
+  
   } elsif ($cmd eq "set") {
 		if($aName eq 'drive-up-time-to-100') {
 			return "SOMFY_attr: value must be >=0 and <= 100" if($aVal < 0 || $aVal > 100);
@@ -449,13 +467,6 @@ sub SOMFY_Attr(@) {
 		}
 
 
-  } elsif ($aName eq 'autoStoreRollingCode') {
-    if ($cmd eq "set") {
-      SOMFY_storeRollCode( $hash, undef ) if ( ! $aVal );
-    } elsif ($cmd eq "del") {
-      SOMFY_storeRollCode( $hash, undef );
-    }
-  
 	}
 
 	return undef;
@@ -1731,7 +1742,8 @@ sub SOMFY_SendCommand($@)
   SOMFY_storeRollCode( $hash, $new_rolling_code ) if ( AttrVal( $name, "autoStoreRollingCode", 0 ) );
   
   # modify definition of device with actual enc/rc
-  SOMFY_updateDef( $hash, $new_enc_key, $new_rolling_code );
+  # change 23.9.2020 - no update def anymore with rolling code (roll code and enc key will be removed)
+  # SOMFY_updateDef( $hash, $new_enc_key, $new_rolling_code );
 
 	# CUL specifics
 	if ($ioType ne "SIGNALduino") {
@@ -1777,7 +1789,8 @@ sub SOMFY_SendCommand($@)
 		$lh->{READINGS}{enc_key}{VAL}       = $new_enc_key;
 		$lh->{READINGS}{rolling_code}{TIME} = $tn;
 		$lh->{READINGS}{rolling_code}{VAL}  = $new_rolling_code;
-    SOMFY_updateDef( $lh, $new_enc_key, $new_rolling_code );
+    # change 23.9.2020 - no update def anymore with rolling code (roll code and enc key will be removed)
+    # SOMFY_updateDef( $lh, $new_enc_key, $new_rolling_code );
 	}
 	
 	return $ret;

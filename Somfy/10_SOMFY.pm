@@ -88,7 +88,7 @@
 
 # - store roll code on setting of attribute
 # - no update of DEF anymore with rolling code (roll code and enc key will be removed)
-#
+# - FIX: corrected of autostore rolling code (esp. restart)
 #
 ###############################################################################
 #
@@ -215,7 +215,7 @@ sub SOMFY_SendCommand($@);
 
 sub SOMFY_readRollCode($);
 sub SOMFY_storeRollCode($$);
-sub SOMFY_getRollCode($);
+sub SOMFY_getRollCode($;$);
 
 sub SOMFY_UpdateState($$$$$$);
 
@@ -432,7 +432,7 @@ sub SOMFY_Attr(@) {
     if ($cmd eq "set") {
       # change 23.9.2020 - store roll code on setting of attribute
       if ( $aVal ) {
-        my $rollcode = SOMFY_getRollCode( $hash );
+        my $rollcode = SOMFY_getRollCode( $hash, 1 );  # ensure rollcode being read first during start specifically
         SOMFY_storeRollCode( $hash, $rollcode );
       } else {
         SOMFY_storeRollCode( $hash, undef );
@@ -1087,23 +1087,28 @@ sub SOMFY_readRollCode($)
 
 #####################################
 # get the rolling code either from Reading or if empty consider stored from uniqueid
-sub SOMFY_getRollCode($)
+sub SOMFY_getRollCode($;$)
 {
-   my ($hash) = @_;
+   my ($hash, $doAutoStore) = @_;
    
    my $name = $hash->{NAME};
    
  	 my $rollingcode = uc(ReadingsVal($name, "rolling_code", "0000"));
-
-   if ( AttrVal( $name, "autoStoreRollingCode", 0 ) ) {
+   
+   $doAutoStore = AttrVal( $name, "autoStoreRollingCode", 0 ) if ( ! defined( $doAutoStore ) );
+   
+   if ( $doAutoStore ) {
       my $storeRC = uc( SOMFY_readRollCode( $hash ) );
-      $storeRC = "0000" if ( $storeRC !~ /[0-9a-f]{4}/ );
+      $storeRC = "0000" if ( $storeRC !~ /[0-9A-F]{4}/ );
       my $storeDec = hex( $storeRC );
       my $rollDec = hex( $rollingcode );
+      Debug "Store  hex: $storeRC    dec: $storeDec";
+      Debug "RollC  hex: $rollingcode    dec: $rollDec";
       
       if ( $storeDec > $rollDec ) {
         $rollingcode = $storeRC;
       }
+      Debug "Result Rolling code: $rollingcode";
    }
 
    return $rollingcode;
@@ -1152,17 +1157,18 @@ sub SOMFY_isRemote($) {
   
 }
   
-#####################################
-sub SOMFY_updateDef($;$$)
-{
-	my ($hash, $ec, $rc) = @_;
-	my $name = $hash->{NAME};
+# 26.9.2020 - not used anymore - rc and ec removed from def on define
+# #####################################
+# sub SOMFY_updateDef($;$$)
+# {
+	# my ($hash, $ec, $rc) = @_;
+	# my $name = $hash->{NAME};
 
-  $ec = ReadingsVal($name, "enc_key", "A0") if ( ! defined( $ec ) );
-  $rc = SOMFY_getRollCode( $hash ) if ( ! defined( $rc ) );
+  # $ec = ReadingsVal($name, "enc_key", "A0") if ( ! defined( $ec ) );
+  # $rc = SOMFY_getRollCode( $hash ) if ( ! defined( $rc ) );
   
-  $hash->{DEF} = $hash->{ADDRESS}." ".uc($ec)." ".uc($rc);
-}
+  # $hash->{DEF} = $hash->{ADDRESS}." ".uc($ec)." ".uc($rc);
+# }
 
 ######################################################
 ######################################################

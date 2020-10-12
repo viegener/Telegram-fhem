@@ -3855,13 +3855,15 @@ sub TelegramBot_BinaryFileWrite($$$) {
     Local paths should be given local to the root directory of fhem (the directory of fhem.pl e.g. /opt/fhem).
     Filenames with special characters (especially spaces) need to be given with url escaping (i.e. spaces need to be replaced by %20). 
     Rules for specifying peers are the same as for messages. Multiple peers are to be separated by space. Captions can also contain multiple words and do not need to be quoted.
+    <li><code>sendVideo [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a video (prefered mp4 format accordingt to Telegram) to the given peer(s) or if ommitted to the default peer. 
+    File is specifying a filename and path to the video file to be send. Further description for sendImage also applies here.
     </li>
     <li><code>sendMedia|sendDocument [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt;</code><br>Sends a media file (video, audio, image or other file type) to the given peer(s) or if ommitted to the default peer. Handling for files and peers is as specified above.
     </li>
     <li><code>sendVoice [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt;</code><br>Sends a voice message for playing directly in the browser to the given peer(s) or if ommitted to the default peer. Handling for files and peers is as specified above.
     </li>
     
-    <li><code>silentImage ...</code><br>Sends the given image silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the sendImage command.
+    <li><code>silentImage|silentVideo ...</code><br>Sends the given image/video silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the send... command.
     </li>
     
 

@@ -64,20 +64,19 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 22553 2020-08-07 14:46:19Z viegener $
 #   Adapt active handling to new format
 #   Add new reading Enabled per camera with doc - showing enabled value
 #   Correction for JSON values - true/false 1/0
-
 #   deprecation note for attr homescreenv3 (log and doc)
 #   handle new video delete - media delete
-
 #   get client id and verification information from login
 #   add set option verifyPin for pin verification - not verified
 #   add doc for verifyPin (experimental)
 #   
-
 #   add version id as internal - sourceVersion
 #   removed old homescreen functonality
-#   
-#   
-# 
+
+#   doc attr maxRetries
+#   attr maxRetries allow up to 9
+#   change retry sequence to 2** wait (instead fo 3**) - 2 4 8 16 ...
+#   change retry for followup on cmd completion to 6 
 # 
 ##############################################################################
 ##############################################################################
@@ -214,7 +213,7 @@ sub BlinkCamera_Initialize($) {
   $hash->{GetFn}      = "BlinkCamera_Get";
   $hash->{SetFn}      = "BlinkCamera_Set";
   $hash->{AttrFn}     = "BlinkCamera_Attr";
-  $hash->{AttrList}   = " maxRetries:0,1,2,3,4,5 ".
+  $hash->{AttrList}   = " maxRetries:0,1,2,3,4,5,6,7,8,9  ".
           "imgTemplate:textField ".
           "imgOriginalFile:0,1 ".
           "videoTemplate:textField ".
@@ -1590,7 +1589,7 @@ sub BlinkCamera_Callback($$$)
         } else {
           $cmdId = $result->{id} if ( defined( $result->{id} ) );
           $ret = "waiting for command to be finished";
-          $maxRetries = 3;
+          $maxRetries = 6;
         }
       }
 
@@ -1659,13 +1658,15 @@ sub BlinkCamera_Callback($$$)
       $maxRetries =  AttrVal($name,'maxRetries',0) if ( ! defined( $maxRetries ) );
       if ( ( defined($wait) ) && ( $wait <= $maxRetries ) ) {
         # calculate wait time 10s / 100s / 1000s ~ 17min / 10000s ~ 3h / 100000s ~ 30h
-        $wait = 3**$wait;
+#        $wait = 3**$wait;
+        # new wait time calc - 2 4 8 16       
+        my $waittime = 2**$wait;
         
-        Log3 $name, 4, "BlinkCamera_Callback $name: do retry ".$param->{args}[3]." timer: $wait (ret: $ret) for cmd ".
+        Log3 $name, 4, "BlinkCamera_Callback $name: do retry ".$param->{args}[3]." timer: $waittime (ret: $ret) for cmd ".
               $param->{args}[0];
 
         # set timer
-        InternalTimer(gettimeofday()+$wait, "BlinkCamera_RetryDo", $param,0); 
+        InternalTimer(gettimeofday()+$waittime, "BlinkCamera_RetryDo", $param,0); 
         
         # finish
         return;
@@ -2500,6 +2501,9 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
   <b>Attributes</b>
   <br><br>
   <ul>
+    <li><code>maxRetries &lt;0|1|2...|9&gt;</code><br>Defines the number of retries that are done in case of a failure of a command. Pauses between retries are done with an increasing delay between calls. 
+    </li> 
+
     <li><code>network &lt;network id&gt;</code><br>This attribute is needed if your blink system contains more than one network. If not specified the first netowrk defined in the account is used
     </li> 
 

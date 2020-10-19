@@ -69,7 +69,6 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 22553 2020-08-07 14:46:19Z viegener $
 #   get client id and verification information from login
 #   add set option verifyPin for pin verification - not verified
 #   add doc for verifyPin (experimental)
-#   
 #   add version id as internal - sourceVersion
 #   removed old homescreen functonality
 
@@ -77,7 +76,15 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 22553 2020-08-07 14:46:19Z viegener $
 #   attr maxRetries allow up to 9
 #   change retry sequence to 2** wait (instead fo 3**) - 2 4 8 16 ...
 #   change retry for followup on cmd completion to 6 
-# 
+
+#   change liveview for new API
+
+#   
+#   
+#   
+#   
+#   
+#   
 ##############################################################################
 ##############################################################################
 ##############################################################################
@@ -177,6 +184,7 @@ my $BlinkCamera_deleteVideojson = "{ \"media_list\" : [ q_id_q ] }";
 
 my $BlinkCamera_cameraThumbnailjson = "{ \"id\" : \"q_id_q\", \"network\" : \"q_network_q\" }";
 
+my $BlinkCamera_liveviewjson = "{ \"intent\" : \"liveview\", \"motion_event_start_time\" : \"\" }";
 
 my $BlinkCamera_imgTemplate="<html><a href=\"#URL#\"><img src=\"#URL#\" height=36 widht=64>#URL#</a></html>";
 my $BlinkCamera_vidTemplate="<html><a href=\"#URL#\">Video Id:#ID#:  #URL#</a></html>";
@@ -962,9 +970,20 @@ sub BlinkCamera_DoCmd($$;$$$)
       
       $hash->{HU_DO_PARAMS}->{method} = "POST";
 
-      if ( defined( $net ) ) {
-        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/camera/".$par1."/liveview";
+      $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_liveviewjson;
 
+
+      if ( defined( $net ) ) {
+      
+        my $ctype =  BlinkCamera_GetCamType( $hash, $par1 );
+        if ( $ctype eq "camera" ) {
+#          $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/camera/".$par1."/liveview";
+          $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v5/accounts/".$hash->{account}."/networks/".$net."/cameras/".$par1."/liveview";
+        } elsif ( $ctype eq "owl" ) {
+          $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}."/networks/".$net."/owls/".$par1."/liveview";
+        } else {
+          $ret = "BlinkCamera_DoCmd $name: $cmd camera type (".$ctype.") unknown !!";
+        }
       } else {
         $ret = "BlinkCamera_DoCmd $name: no network identifier found for $cmd - set attribute";
       }

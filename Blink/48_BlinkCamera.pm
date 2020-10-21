@@ -69,14 +69,14 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 22553 2020-08-07 14:46:19Z viegener $
 #   get client id and verification information from login
 #   add set option verifyPin for pin verification - not verified
 #   add doc for verifyPin (experimental)
+#SVN 7.8.2020
+
 #   add version id as internal - sourceVersion
 #   removed old homescreen functonality
-
 #   doc attr maxRetries
 #   attr maxRetries allow up to 9
 #   change retry sequence to 2** wait (instead fo 3**) - 2 4 8 16 ...
 #   change retry for followup on cmd completion to 6 
-
 #   change liveview for new API
 
 #   

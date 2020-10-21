@@ -3856,6 +3856,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     Local paths should be given local to the root directory of fhem (the directory of fhem.pl e.g. /opt/fhem).
     Filenames with special characters (especially spaces) need to be given with url escaping (i.e. spaces need to be replaced by %20). 
     Rules for specifying peers are the same as for messages. Multiple peers are to be separated by space. Captions can also contain multiple words and do not need to be quoted.
+    </li>
     <li><code>sendVideo [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a video (prefered mp4 format accordingt to Telegram) to the given peer(s) or if ommitted to the default peer. 
     File is specifying a filename and path to the video file to be send. Further description for sendImage also applies here.
     </li>

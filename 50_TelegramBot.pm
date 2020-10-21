@@ -185,7 +185,8 @@
 #   Add new sendformat video to set - cmd sendVideo / silentVideo
 #   Recognize stream of video format (esp. mp4 - needs testing)
 #   recognize stream isMedia with negative numbers
-#   
+#   document video commands
+#SVN 21.10.2020
 #   
 #   
 ##############################################################################

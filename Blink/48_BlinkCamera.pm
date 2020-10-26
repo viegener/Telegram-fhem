@@ -79,7 +79,7 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 22553 2020-08-07 14:46:19Z viegener $
 #   change retry for followup on cmd completion to 6 
 #   change liveview for new API
 
-#   
+#   Thumbnail reading only set after file is received
 #   
 #   
 #   
@@ -91,7 +91,7 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 22553 2020-08-07 14:46:19Z viegener $
 ##############################################################################
 # TASKS 
 #
-#
+#   Set thumbnail Req reading only after thumbnail stored (from internal)
 #
 #
 #   Analyze more information and settings
@@ -1304,7 +1304,8 @@ sub BlinkCamera_ParseHomescreen($$$)
             $readUpdates->{"networkCamera".$device->{id}."Url"} = BlinkCamera_getwebname( $hash ).
                 BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $device->{id}, $name ); 
           }
-          $readUpdates->{"networkCamera".$device->{id}."Thumbnail"} = $device->{thumbnail} ; 
+
+# do this only after storag of thumbnail being completed          $readUpdates->{"networkCamera".$device->{id}."Thumbnail"} = $device->{thumbnail} ; 
         }
         $readUpdates->{"networkCamera".$device->{id}."Batt"} = $device->{battery} if ( defined( $device->{battery} ) );
         $readUpdates->{"networkCamera".$device->{id}."Firmware"} = $device->{fw_version} if ( defined( $device->{fw_version} ) );
@@ -1355,7 +1356,7 @@ sub BlinkCamera_ParseHomescreen($$$)
             $readUpdates->{"networkCamera".$device->{id}."Url"} = BlinkCamera_getwebname( $hash ).
                 BlinkCamera_ReplacePattern( $BlinkCamera_camerathumbnail, $device->{id}, $name ); 
           }
-          $readUpdates->{"networkCamera".$device->{id}."Thumbnail"} = $device->{thumbnail} ; 
+# do this only after storag of thumbnail being completed          $readUpdates->{"networkCamera".$device->{id}."Thumbnail"} = $device->{thumbnail} ; 
         }
         $readUpdates->{"networkCamera".$device->{id}."Firmware"} = $device->{fw_version} if ( defined( $device->{fw_version} ) );
         $readUpdates->{"networkCamera".$device->{id}."Status"} = $device->{status} if ( defined( $device->{status} ) );
@@ -1627,6 +1628,8 @@ sub BlinkCamera_Callback($$$)
         
         # Store which thumbnail file is loaded already
         $hash->{"thumbnail".$par1."Url"} = $hash->{"thumbnail".$par1."Req"};
+        # set the thumbnail reading after receiving the file
+        $readUpdates{"networkCamera".$par1."Thumbnail"} = $hash->{"thumbnail".$par1."Req"} ; 
         delete( $hash->{"thumbnail".$par1."Req"} );
         
 #        $readUpdates{"networkCamera".$par1."Url"} = BlinkCamera_getwebname( $hash ).

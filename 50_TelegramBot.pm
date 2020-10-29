@@ -181,21 +181,28 @@
 #   replyKeyboardRemove - #msg592808
 #   replace single semicolons in favorites (with double semicolons) - msg1078989
 #   FIX: answercallback always if querydata is set
-
 #   Add new sendformat video to set - cmd sendVideo / silentVideo
 #   Recognize stream of video format (esp. mp4 - needs testing)
 #   recognize stream isMedia with negative numbers
 #   document video commands
 #SVN 21.10.2020
+
+#   Also support edited_message updates
+#   check parseMsg if $from not there --> log then 
+#   removed new_chat_participant
+#   
+#   
 #   
 #   
 ##############################################################################
 # TASKS 
 #   
+#   log all new contacts - where coming
+#   
+#   
+#   
+#   
 #   change doc to have "a name" on attributes to allow inline help
-#   
-#   
-#   
 #   Restructure help in logical blocks
 #   
 #   queryDialogStart / queryDialogEnd - keep msg id 
@@ -2349,6 +2356,9 @@ sub TelegramBot_Callback($$$)
         if ( defined( $update->{message} ) ) {
           
           $ret = TelegramBot_ParseMsg( $hash, $update->{update_id}, $update->{message} );
+        } elsif ( defined( $update->{edited_message} ) ) {
+          
+          $ret = TelegramBot_ParseMsg( $hash, $update->{update_id}, $update->{edited_message} );
         } elsif ( defined( $update->{callback_query} ) ) {
           
           $ret = TelegramBot_ParseCallbackQuery( $hash, $update->{update_id}, $update->{callback_query} );
@@ -2501,9 +2511,15 @@ sub TelegramBot_ParseMsg($$$)
   my $mid = $message->{message_id};
   
   my $from = $message->{from};
+  if ( ! defined( $from ) )  {
+    Log3 $name, 3, "TelegramBot $name: No from user in message - blocked";
+    
+    return $ret;
+  }
+  
   my $mpeer = $from->{id};
 
-  # ignore if unknown contacts shall be accepter
+  # ignore if unknown contacts shall be accepted
   if ( ( AttrVal($name,'allowUnknownContacts',1) == 0 ) && ( ! TelegramBot_IsKnownContact( $hash, $mpeer ) ) ) {
     my $mName = $from->{first_name};
     $mName .= " ".$from->{last_name} if ( defined($from->{last_name}) );
@@ -2513,19 +2529,22 @@ sub TelegramBot_ParseMsg($$$)
   }
 
   # check peers beside from only contact (shared contact) and new_chat_participant are checked
+  Log3 $name, 3, "TelegramBot $name: Found from id in message - id : ".$from->{id} if ( TelegramBot_IsKnownContact( $hash, $from->{id} ) );
   push( @contacts, $from );
 
   my $chatId = "";
   my $chat = $message->{chat};
   if ( ( defined( $chat ) ) && ( $chat->{type} ne "private" ) ) {
+    Log3 $name, 3, "TelegramBot $name: Found chat id in message - id : ".$chat->{id} if ( TelegramBot_IsKnownContact( $hash, $chat->{id} ) );
     push( @contacts, $chat );
     $chatId = $chat->{id};
   }
 
-  my $user = $message->{new_chat_participant};
-  if ( defined( $user ) ) {
-    push( @contacts, $user );
-  }
+  # new chat participant has been removed and replaced with new_chat_members
+  # my $user = $message->{new_chat_participant};
+  # if ( defined( $user ) ) {
+    # push( @contacts, $user );
+  # }
 
   # get reply message id
   my $replyId;
@@ -2722,7 +2741,6 @@ sub TelegramBot_ParseChannelPost($$$)
 
   my $mpeer = $chatId;
 
-
   # ignore if unknown contacts shall be accepter
   if ( ( AttrVal($name,'allowUnknownContacts',1) == 0 ) && ( ! TelegramBot_IsKnownContact( $hash, $chatId ) ) ) {
     my $mName = $chat->{title};
@@ -2731,6 +2749,7 @@ sub TelegramBot_ParseChannelPost($$$)
     return $ret;
   }
 
+  Log3 $name, 3, "TelegramBot $name: Found chat id in channel - id : ".$chat->{id} if ( TelegramBot_IsKnownContact( $hash, $chat->{id} ) );
   push( @contacts, $chat );
 
 
@@ -2950,6 +2969,7 @@ sub TelegramBot_ParseCallbackQuery($$$)
   $mpeernorm =~ s/ /_/g;
   
   # check peers beside from only contact (shared contact) and new_chat_participant are checked
+  Log3 $name, 3, "TelegramBot $name: Found from id in callback - id : ".$from->{id} if ( TelegramBot_IsKnownContact( $hash, $from->{id} ) );
   push( @contacts, $from );
 
   my $answerData = "";

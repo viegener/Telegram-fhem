@@ -190,6 +190,7 @@
 #   Also support edited_message updates
 #   check parseMsg if $from not there --> log then 
 #   removed new_chat_participant
+#   log all new contacts - with source
 #   
 #   
 #   
@@ -197,7 +198,6 @@
 ##############################################################################
 # TASKS 
 #   
-#   log all new contacts - where coming
 #   
 #   
 #   

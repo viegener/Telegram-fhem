@@ -87,6 +87,7 @@
 # 0.7 2018-03-11   deleteonly lists / internal changes
   
 #   show entry content in response for add/del 
+#   start list with peerid und chatid als Parameter
 
 #   
 ##############################################################################
@@ -272,8 +273,12 @@ sub TBot_List_Set($@)
       if ( $numberOfArgs == 2 ) {
         $tchat = ReadingsVal( $tbot, "msgChatId", undef );
         $tpeer = ReadingsVal( $tbot, "msgPeerId", "" );
+      } elsif ( $numberOfArgs == 4 ) {
+        $tpeer = AnalyzeCommandChain( $hash, "get $tbot peerId ".$args[1] );
+        $tchat = AnalyzeCommandChain( $hash, "get $tbot peerId ".$args[2] );
       } else {
         $tpeer = AnalyzeCommandChain( $hash, "get $tbot peerId ".$args[1] );
+        $tchat = undef;
       }
       $ret = "No peer found or specified :$tbot: ".(( $numberOfArgs == 2 )?"":$args[1]) if ( ! $tpeer );
     }  
@@ -1350,7 +1355,7 @@ sub TBot_List_Setup($) {
     where &lt;what&gt; / &lt;value&gt; is one of
 
   <br><br>
-    <li><code>start &lt;telegrambot name&gt; [ &lt;peerid&gt; ]</code><br>Initiate a new dialog for the given peer (or the last peer sending a message on the given telegrambot)
+    <li><code>start &lt;telegrambot name&gt; [ &lt;peerid&gt; [ &lt;chatid&gt; ] ]</code><br>Initiate a new dialog for the given peer (or the last peer sending a message on the given telegrambot - if communication should happen in a group then both chatid with the groupid and peerid with the user id need to be specified)
     </li>
     <li><code>end &lt;telegrambot name&gt; &lt;peerid&gt;</code><br>Finalize a new dialog for the given peer  on the given telegrambot
     </li>

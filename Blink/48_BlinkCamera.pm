@@ -79,8 +79,8 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 22553 2020-08-07 14:46:19Z viegener $
 #   change retry for followup on cmd completion to 6 
 #   change liveview for new API
 
-#   Thumbnail reading only set after file is received
-#   
+#   camera...Thumbnail reading only set after file is received
+#   alertupdate - reset after 10 cycles skipped
 #   
 #   
 #   
@@ -1171,6 +1171,10 @@ sub BlinkCamera_ParseHomescreen($$$)
   $hash->{alertSkipped} = 0 if ( ! defined ($hash->{alertSkipped} ) );
   if ( defined ($hash->{alertUpdate} ) ) {
     $hash->{alertSkipped} += 1;
+    if ( $hash->{alertSkipped} > 10 ) {
+      delete( $hash->{alertUpdate} );
+      Log3 $name, 3, "BlinkCamera_Callback $name: alertUpdate reset - too many times skipped".scalar(@$resnet) ;
+    }
   } else {
     BlinkCamera_ParseStartAlerts($hash) 
   }

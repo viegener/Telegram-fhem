@@ -81,7 +81,7 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 22553 2020-08-07 14:46:19Z viegener $
 
 #   camera...Thumbnail reading only set after file is received
 #   alertupdate - reset after 10 cycles skipped
-#   
+#   add more log for alertupdating and remove skipped value
 #   
 #   
 #   
@@ -1173,7 +1173,8 @@ sub BlinkCamera_ParseHomescreen($$$)
     $hash->{alertSkipped} += 1;
     if ( $hash->{alertSkipped} > 10 ) {
       delete( $hash->{alertUpdate} );
-      Log3 $name, 3, "BlinkCamera_Callback $name: alertUpdate reset - too many times skipped".scalar(@$resnet) ;
+      $hash->{alertSkipped} = 0;
+      Log3 $name, 3, "BlinkCamera_Callback $name: alertUpdate reset - too many times skipped" ;
     }
   } else {
     BlinkCamera_ParseStartAlerts($hash) 
@@ -1909,6 +1910,7 @@ sub BlinkCamera_Setup($) {
 
   # remove all readings ebside eventTimestamp to avoid addtl notifications
   my $eventTime =  ReadingsVal($name,"eventTimestamp",undef);
+  Log3 $name, 4, "BlinkCamera_Setup $name: init eventtimestamp with ".$eventTime;
   CommandDeleteReading(undef, "$name .*");
   readingsSingleUpdate($hash, "eventTimestamp", $eventTime, 0 ) if ( defined( $eventTime ) );
 

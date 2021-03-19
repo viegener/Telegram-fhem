@@ -18,6 +18,8 @@
 #     You should have received a copy of the GNU General Public License
 #     along with Fhem.  If not, see <http://www.gnu.org/licenses/>.
 #
+#     $Id: 48_BlinkCamera.pm 24014 2021-03-19 20:58:30Z viegener $
+#
 ##############################################################################
 #  
 #  BlinkCamera (c) Johannes Viegener / https://github.com/viegener/Telegram-fhem/tree/master/Blink
@@ -30,7 +32,7 @@
 #
 #
  
-my $repositoryID = '$Id: 48_BlinkCamera.pm 22553 2020-08-07 14:46:19Z viegener B $'; 
+my $repositoryID = '$Id: 48_BlinkCamera.pm 24014 2021-03-19 20:58:30Z viegener $'; 
 
 #
 ##############################################################################

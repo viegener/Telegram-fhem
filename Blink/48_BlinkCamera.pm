@@ -30,7 +30,7 @@
 #
 #
  
-my $repositoryID = '$Id: 48_BlinkCamera.pm 22553 2020-08-07 14:46:19Z viegener $'; 
+my $repositoryID = '$Id: 48_BlinkCamera.pm 22553 2020-08-07 14:46:19Z viegener B $'; 
 
 #
 ##############################################################################
@@ -78,11 +78,13 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 22553 2020-08-07 14:46:19Z viegener $
 #   change retry sequence to 2** wait (instead fo 3**) - 2 4 8 16 ...
 #   change retry for followup on cmd completion to 6 
 #   change liveview for new API
-
 #   camera...Thumbnail reading only set after file is received
 #   alertupdate - reset after 10 cycles skipped
 #   add more log for alertupdating and remove skipped value
-#   
+
+#   login changed to V5 api and also new format of response  #msg1141218
+#
+
 #   
 #   
 ##############################################################################
@@ -171,7 +173,11 @@ my $BlinkCamera_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0"
 # my $BlinkCamera_header = "agent: TelegramBot/1.0\r\nUser-Agent: TelegramBot/1.0\r\nAccept-Charset: utf-8";
 
 my $BlinkCamera_loginjson = "{ \"password\" : \"q_password_q\", \"client_specifier\" : \"FHEM blinkCameraModule 1 - q_name_q\", \"email\" : \"q_email_q\" }";
-my $BlinkCamera_loginjsonV4 = "{ \"app_version\": \"6.0.10 (8280) #881c8812\", \"client_name\": \"fhem q_name_q\",  \"client_type\": \"ios\", \"device_identifier\": \"fhem q_fuuid_q\", \"email\": \"q_email_q\", \"os_version\": \"13\", \"password\": \"q_password_q\", \"reauth\": q_reauth_q, \"unique_id\": \"q_uniqueid_q\" }";
+#my $BlinkCamera_loginjsonV4 = "{ \"app_version\": \"6.0.10 (8280) #881c8812\", \"client_name\": \"fhem q_name_q\",  \"client_type\": \"ios\", \"device_identifier\": \"fhem #q_fuuid_q\", \"email\": \"q_email_q\", \"os_version\": \"13\", \"password\": \"q_password_q\", \"reauth\": q_reauth_q, \"unique_id\": \"q_uniqueid_q\" }";
+
+
+my $BlinkCamera_loginjsonV5 = "{ \"app_version\": \"6.2.7 (10212) \", \"client_name\": \"fhem q_name_q\",  \"client_type\": \"ios\", \"device_identifier\": \"fhem q_fuuid_q\", \"email\": \"q_email_q\", \"os_version\": \"14.4\", \"password\": \"q_password_q\", \"reauth\": q_reauth_q, \"unique_id\": \"q_uniqueid_q\" }";
+
 
 my $BlinkCamera_verifyPinjson = "{ \"pin\" : q_pin_q }";
 
@@ -678,9 +684,10 @@ sub BlinkCamera_DoCmd($$;$$$)
           $isReauth = "false";            
         }
 
-        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v4/account/login";
+        $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v5/account/login";
 
-        $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_loginjsonV4;
+#        $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_loginjsonV4;
+        $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_loginjsonV5;
 
         $hash->{HU_DO_PARAMS}->{data} =~ s/q_password_q/$password/g;
         $hash->{HU_DO_PARAMS}->{data} =~ s/q_email_q/$email/g;
@@ -691,8 +698,7 @@ sub BlinkCamera_DoCmd($$;$$$)
         $hash->{HU_DO_PARAMS}->{data} =~ s/q_fuuid_q/$fuuid/g;
 
 
-
-        Log3 $name, 4, "BlinkCamera_DoCmd $name: loginV4  data :".$hash->{HU_DO_PARAMS}->{data}.":";
+        Log3 $name, 4, "BlinkCamera_DoCmd $name: loginV5  data :".$hash->{HU_DO_PARAMS}->{data}.":";
 
       }
         
@@ -1085,25 +1091,45 @@ sub BlinkCamera_ParseLogin($$$)
 
   if ( defined( $result->{account} ) ) {
     my $acc = $result->{account};
-    if ( defined( $acc->{id} ) ) {
-        $hash->{account} = $acc->{id};
+    if ( defined( $acc->{account_id} ) ) {
+        $hash->{account} = $acc->{account_id};
+    }
+    # V5
+    if ( defined( $acc->{client_id} ) ) {
+      $hash->{clientid} = $acc->{client_id};
+    }
+    if ( defined( $acc->{client_verification_required} ) ) {
+      $hash->{clientverreq} = $acc->{client_verification_required};
+    }
+    if ( defined( $acc->{phone_verification_required} ) ) {
+      $hash->{phoneverreq} = $acc->{phone_verification_required};
     }
   }
 
-  if ( defined( $result->{authtoken} ) ) {
-    my $at = $result->{authtoken};
-    if ( defined( $at->{authtoken} ) ) {
-      $hash->{AuthToken} = $at->{authtoken};
+# V4
+#  if ( defined( $result->{authtoken} ) ) {
+#    my $at = $result->{authtoken};
+#    if ( defined( $at->{authtoken} ) ) {
+#      $hash->{AuthToken} = $at->{authtoken};
+#    }
+#  }
+
+# V5
+  if ( defined( $result->{auth} ) ) {
+    my $au = $result->{auth};
+    if ( defined( $au->{token} ) ) {
+      $hash->{AuthToken} = $au->{token};
     }
   }
 
-  if ( defined( $result->{client} ) ) {
-    my $clt = $result->{client};
-    if ( defined( $clt->{id} ) ) {
-      $hash->{clientid} = $clt->{id};
-      $hash->{clientverreq} = $clt->{verification_required};
-    }
-  }
+# V4
+#  if ( defined( $result->{client} ) ) {
+#    my $clt = $result->{client};
+#    if ( defined( $clt->{id} ) ) {
+#      $hash->{clientid} = $clt->{id};
+#      $hash->{clientverreq} = $clt->{verification_required};
+#    }
+#  }
     
   my $resreg = $result->{region};
   if ( defined( $resreg ) ) {
@@ -2000,6 +2026,7 @@ sub BlinkCamera_Setup($) {
 
   delete( $hash->{clientid} );
   delete( $hash->{clientverreq} );
+  delete( $hash->{phoneverreq} );
 
   delete( $hash->{URL} );
   
@@ -2022,6 +2049,10 @@ sub BlinkCamera_Setup($) {
   $hash->{URL} = "";
 
   $hash->{STATE} = "Defined";
+
+# temp fix - JVI
+#$BlinkCamera_loginjsonV4 = "{ \"app_version\": \"6.2.7 (10212) \", \"client_name\": \"fhem q_name_q\",  \"client_type\": \"ios\", \"device_identifier\": \"fhem q_fuuid_q\", #\"email\": \"q_email_q\", \"os_version\": \"13\", \"password\": \"q_password_q\", \"reauth\": q_reauth_q, \"unique_id\": \"q_uniqueid_q\" }";#
+#Debug "BlinkCamera_loginjsonV4 :".$BlinkCamera_loginjsonV4.":";
 
   BlinkCamera_ResetPollInfo($hash);
   

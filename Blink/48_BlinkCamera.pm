@@ -83,7 +83,7 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 22553 2020-08-07 14:46:19Z viegener B
 #   add more log for alertupdating and remove skipped value
 
 #   login changed to V5 api and also new format of response  #msg1141218
-#
+#   reset unique id as additional reset option
 
 #   
 #   
@@ -383,6 +383,12 @@ sub BlinkCamera_Set($@)
 
   } elsif($cmd eq 'reset') {
     Log3 $name, 3, "BlinkCamera_Set $name: reset requested ";
+    BlinkCamera_Setup( $hash );
+    
+  } elsif($cmd eq 'resetUniqueID') {
+    Log3 $name, 3, "BlinkCamera_Set $name: resetUniqueID requested ";
+    my $fuuid = $hash->{FUUID}; 
+    setKeyValue(  "BlinkCamera_BLINKUID_".$fuuid, undef );  
     BlinkCamera_Setup( $hash );
 
   } elsif($cmd eq 'videoDelete') {
@@ -1957,6 +1963,8 @@ sub BlinkCamera_Setup($) {
     
     "reset" => undef,
     
+    "resetUniqueID" => undef,
+    
     "videoDelete" => undef,
     
     "zDebug" => undef
@@ -2049,10 +2057,6 @@ sub BlinkCamera_Setup($) {
   $hash->{URL} = "";
 
   $hash->{STATE} = "Defined";
-
-# temp fix - JVI
-#$BlinkCamera_loginjsonV4 = "{ \"app_version\": \"6.2.7 (10212) \", \"client_name\": \"fhem q_name_q\",  \"client_type\": \"ios\", \"device_identifier\": \"fhem q_fuuid_q\", #\"email\": \"q_email_q\", \"os_version\": \"13\", \"password\": \"q_password_q\", \"reauth\": q_reauth_q, \"unique_id\": \"q_uniqueid_q\" }";#
-#Debug "BlinkCamera_loginjsonV4 :".$BlinkCamera_loginjsonV4.":";
 
   BlinkCamera_ResetPollInfo($hash);
   
@@ -2517,6 +2521,9 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
     </li>
     
     <li><code>reset</code><br>Reset the FHEM device (only used in case of something gets into an unknown or strange state)
+    </li>
+    
+    <li><code>resetUniqueID</code><br>Reset the FHEM device (only used in case of something gets into an unknown or strange state). Additionally the uniqueID that is used in the device loing will be reset in this option.
     </li>
     
     <li><code>videoDelete &lt;video id&gt;</code><br>The video with the given id will be removed (both from the local filesystem and from the blink servers)

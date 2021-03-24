@@ -18,7 +18,7 @@
 #     You should have received a copy of the GNU General Public License
 #     along with Fhem.  If not, see <http://www.gnu.org/licenses/>.
 #
-#     $Id: 48_BlinkCamera.pm 24014 2021-03-19 20:58:30Z viegener $
+#     $Id: 48_BlinkCamera.pm 24047 2021-03-21 20:57:48Z viegener $
 #
 ##############################################################################
 #  
@@ -32,7 +32,7 @@
 #
 #
  
-my $repositoryID = '$Id: 48_BlinkCamera.pm 24014 2021-03-19 20:58:30Z viegener $'; 
+my $repositoryID = '$Id: 48_BlinkCamera.pm 24047 2021-03-21 20:57:48Z viegener $'; 
 
 #
 ##############################################################################
@@ -86,10 +86,13 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 24014 2021-03-19 20:58:30Z viegener $
 
 #   login changed to V5 api and also new format of response  #msg1141218
 #   reset unique id as additional reset option
-
 #   change header for auth to new value token-auth
 #   adapter also region from login to new tier
 #   changed alert handing only when network is identified
+
+#   Correct perl warning on setup call with empty event timestamp #msg1142674
+#   
+#   
 #   
 ##############################################################################
 ##############################################################################
@@ -1967,10 +1970,12 @@ sub BlinkCamera_Setup($) {
 
   # remove all readings ebside eventTimestamp to avoid addtl notifications
   my $eventTime =  ReadingsVal($name,"eventTimestamp",undef);
-  Log3 $name, 4, "BlinkCamera_Setup $name: init eventtimestamp with ".$eventTime;
   CommandDeleteReading(undef, "$name .*");
-  readingsSingleUpdate($hash, "eventTimestamp", $eventTime, 0 ) if ( defined( $eventTime ) );
-
+  if ( defined( $eventTime ) ) {
+    Log3 $name, 4, "BlinkCamera_Setup $name: init eventtimestamp with ".$eventTime;
+    readingsSingleUpdate($hash, "eventTimestamp", $eventTime, 0 );
+  }
+  
   foreach my $aKey ( keys  %{$hash} ) {
     # "thumbnail".$device->{device_id}."Req"
     delete( $hash->{$aKey} ) if ( $aKey =~ /^thumbnail/ );

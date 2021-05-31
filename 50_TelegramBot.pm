@@ -2670,7 +2670,7 @@ sub TelegramBot_ParseMsg($$$)
     
     readingsBeginUpdate($hash);
 
-    readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});
+    readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});        
     readingsBulkUpdate($hash, "prevMsgDate", $hash->{READINGS}{msgDate}{VAL});
     readingsBulkUpdate($hash, "prevMsgPeer", $hash->{READINGS}{msgPeer}{VAL});        
     readingsBulkUpdate($hash, "prevMsgPeerId", $hash->{READINGS}{msgPeerId}{VAL});        
@@ -2683,7 +2683,7 @@ sub TelegramBot_ParseMsg($$$)
     
     readingsBeginUpdate($hash);
 
-    readingsBulkUpdate($hash, "msgId", $mid);   
+    readingsBulkUpdate($hash, "msgId", $mid);        
     readingsBulkUpdate($hash, "msgDate", $date);
     readingsBulkUpdate($hash, "msgPeer", TelegramBot_GetFullnameForContact( $hash, $mpeernorm ));        
     readingsBulkUpdate($hash, "msgPeerId", $mpeernorm);        

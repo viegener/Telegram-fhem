@@ -191,10 +191,10 @@
 #   check parseMsg if $from not there --> log then 
 #   removed new_chat_participant
 #   log all new contacts - with source
-
 #   #msg1168649: Corrected logging verbose to make 0_None work
 #   caption parseMode / formatting also available for photo and video sends
-#   
+
+#   avoid warning for incomplete msgDelete commands
 #   
 ##############################################################################
 # TASKS 
@@ -766,17 +766,19 @@ sub TelegramBot_Set($@)
     return "TelegramBot_Set: Command $cmd, msgId must be given as first parameter before peer" if ( $msgid =~ /^@/ );
     $numberOfArgs--;
       
-    while ( $args[0] =~ /^@(..+)$/ ) {
-      my $ppart = $1;
-      return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( defined( $peers ) );
-      $peers .= " " if ( defined( $peers ) );
-      $peers = "" if ( ! defined( $peers ) );
-      $peers .= $ppart;
-      
-      shift @args;
-      last if ( int(@args) == 0 );
+    if ( int(@args) > 0 ) {
+      while ( $args[0] =~ /^@(..+)$/ ) {
+        my $ppart = $1;
+        return "TelegramBot_Set: Command $cmd, need exactly one peer" if ( defined( $peers ) );
+        $peers .= " " if ( defined( $peers ) );
+        $peers = "" if ( ! defined( $peers ) );
+        $peers .= $ppart;
+        
+        shift @args;
+        last if ( int(@args) == 0 );
+      }
     }
-
+    
     if ( ! defined( $peers ) ) {
       $peers = AttrVal($name,'defaultPeer',undef);
       return "TelegramBot_Set: Command $cmd, without explicit peer requires defaultPeer being set" if ( ! defined($peers) );

@@ -85,10 +85,13 @@
 #   new attribute deleteOnly to have deleteonly lists / no changes or adds
 #   document deleteOnly
 # 0.7 2018-03-11   deleteonly lists / internal changes
-  
 #   show entry content in response for add/del 
 #   start list with peerid und chatid als Parameter
 #   add silentstart as additional set option to start the chat silent
+#   
+
+#   list allows optiona parameter specifying limits of content
+#   
 #   
 ##############################################################################
 # TASKS 
@@ -304,7 +307,7 @@ sub TBot_List_Set($@)
 
   } elsif($cmd eq 'end') {
     Log3 $name, 4, "TBot_List_Set $name: end of dialog requested ";
-    $ret = "end requires a telegrambot and optionally a peer" if ( $numberOfArgs != 3 );
+    $ret = "end requires a telegrambot" if ( $numberOfArgs != 3 );
     
     my $tbot;
     my $tpeer;
@@ -357,8 +360,13 @@ sub TBot_List_Get($@)
     
   } elsif($cmd eq "list") {
     my @list = TBot_List_getList( $hash );
+    
     $ret = "";
-    $ret = join("\n", @list ) if ( scalar( @list ) != 0 );
+    if ( scalar( @list ) != 0 ) {
+      splice @list, 10 if ( $numberOfArgs == 2 );
+      $ret = join("\n", @list ) if ( scalar( @list ) != 0 );
+    }
+    
     
   } elsif($cmd eq "count") {
     my @list = TBot_List_getList( $hash );

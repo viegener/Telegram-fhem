@@ -195,6 +195,11 @@
 #   caption parseMode / formatting also available for photo and video sends
 
 #   avoid warning for incomplete msgDelete commands
+#   replaceSetMagic on favorites not done before execution
+#   
+
+
+
 #   
 ##############################################################################
 # TASKS 
@@ -1471,14 +1476,14 @@ sub TelegramBot_ExecuteCommand($$$$;$$) {
   if ( ! defined( $ret ) ) {
     # run replace set magic on command - first
     my %dummy; 
-    my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $cmd ) );
+    # my ($err, @a) = ReplaceSetMagic(\%dummy, 0, ( $cmd ) );
       
-    if ( $err ) {
-      Log3 $name, 1, "TelegramBot_ExecuteCommand $name: parse cmd failed on ReplaceSetmagic with :$err: on  :$cmd:";
-    } else {
-      $cmd = join(" ", @a);
-      Log3 $name, 4, "TelegramBot_ExecuteCommand $name: parse cmd returned :$cmd:";
-    } 
+    # if ( $err ) {
+      # Log3 $name, 1, "TelegramBot_ExecuteCommand $name: parse cmd failed on ReplaceSetmagic with :$err: on  :$cmd:";
+    # } else {
+      # $cmd = join(" ", @a);
+      # Log3 $name, 4, "TelegramBot_ExecuteCommand $name: parse cmd returned :$cmd:";
+    # } 
 
     $ret = AnalyzeCommandChain( $hash, $cmd );
 

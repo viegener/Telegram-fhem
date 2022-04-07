@@ -98,11 +98,18 @@
 #   no ack for done entries
 #   doc for acknowledge - categories
 #   change sequence on kat entries
+
+#   setter to remove entries in a category - removeCat
+#   setter to remove acknowledged entries - removeAck
+#   
+#   
 #   
 #   
 #   
 ##############################################################################
 # TASKS 
+#   
+#   
 #   
 #   Make texts and addtl buttons configurable
 #   
@@ -141,6 +148,8 @@ sub TBot_List_Undef($$);
 sub TBot_List_Set($@);
 sub TBot_List_Get($@);
 
+sub TBot_List_removeEntriesFromCat($$);
+  
 sub TBot_List_handler( $$$$;$ );
 
 #########################
@@ -338,6 +347,39 @@ sub TBot_List_Set($@)
     # start uses a botname and an optional peer
     $ret = TBot_List_handler( $hash, "end", $tbot, $tpeer ) if ( ! $ret );
 
+
+  } elsif($cmd eq 'removeCat') {
+    Log3 $name, 4, "TBot_List_Set $name: remove category requested ";
+
+    $ret = "removeCat requires a categry to be given" if ( $numberOfArgs < 2 ) ;
+    if ( ! $ret ) {
+      my $cat = $args[0];
+      my $cnt = TBot_List_removeEntriesFromCat( $hash, $cat );
+
+      if ( $cnt > 0 ) {
+        $ret = "Es wurden ".$cnt." Einträge der Kategorie ".$cat." gelöscht ";
+      } else {
+        $ret = "Keine Einträge der Kategorie ".$cat." gelöscht ";
+      }
+    }
+    
+  } elsif($cmd eq 'removeAck') {
+    Log3 $name, 4, "TBot_List_Set $name: remove category requested ";
+
+    my $ack = AttrVal($name,'acknowledge',undef);
+
+    $ret = "removeAck requires a acknowledge attribute being set" if ( ! defined($ack)  ) ;
+
+    if ( ! $ret ) {
+      my $cnt = TBot_List_removeEntriesFromCat( $hash, $ack );
+
+      if ( $cnt > 0 ) {
+        $ret = "Es wurden ".$cnt." erledigte Einträge gelöscht ";
+      } else {
+        $ret = "Keine erledigten Einträge gelöscht ";
+      }
+    }
+    
   } elsif($cmd eq 'reset') {
     Log3 $name, 4, "TBot_List_Set $name: reset requested ";
     TBot_List_Setup( $hash );
@@ -654,6 +696,43 @@ sub TBot_List_changeMultiLine($) {
   $text =~ s/[\n\t\r\f]+/,/sg;
 
   return $text;
+}
+
+
+
+##############################################
+# remove entries with a given category
+#
+sub TBot_List_removeEntriesFromCat($$) {
+  my ($hash, $cat) = @_;
+
+  my @list = TBot_List_getList( $hash );
+  
+  my $text;
+
+  my $ismodif = 0;
+
+  foreach my $entry (  @list ) {
+    if ( ( $entry !~ /^($categorymatch+) -> / ) || ( $1 ne $cat ) ) {
+        if ( defined( $text ) ) {
+          $text .= ",".$entry;
+        } else {
+          $text = $entry;
+        }
+    } else {
+      $ismodif += 1;
+    }
+  }
+
+  if ( $ismodif > 0 ) {
+    my $lname = TBot_List_getConfigListname($hash);
+    
+    AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." clear $lname " );
+    AnalyzeCommandChain( $hash, "set ".TBot_List_getConfigPostMe($hash)." add $lname $text" );
+  }
+  
+  return $ismodif;
+  
 }
 
 
@@ -1398,7 +1477,6 @@ sub TBot_List_calcListNo($)
 
 
 #####################################
-#  INTERNAL: Get Id for a camera or list of all cameras if no name or id was given or undef if not found
 sub TBot_List_CheckSetGet( $$$ ) {
   my ( $hash, $cmd, $options ) = @_;
 
@@ -1447,6 +1525,8 @@ sub TBot_List_Setup($) {
     "silentStart" => undef,
     "end" => undef,
     "reset" => undef,
+    "removeCat" => undef,
+    "removeAck" => undef,
 
   );
 
@@ -1524,6 +1604,10 @@ sub TBot_List_Setup($) {
     <li><code>silentStart ...</code><br>Similar to start with same parameters to start the dialog silently (no notification)
     </li>
     <li><code>end &lt;telegrambot name&gt; &lt;peerid&gt;</code><br>Finalize a new dialog for the given peer  on the given telegrambot
+    </li>
+    <li><code>removeAck</code><br>Remove all entries that are acknowledged in the list 
+    </li>
+    <li><code>removeCat &lt;category&gt; </code><br>Remove all entries from the list for a given category 
     </li>
     
   </ul>

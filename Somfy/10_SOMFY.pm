@@ -92,7 +92,7 @@
 # - FIX: DEBUG commands removed
 
 # - BO code used for "lamellen" of blinds - considered stop fro remotes
-
+# - Correct match for long commands according to #msg1224029
 # 
 #
 ###############################################################################
@@ -252,7 +252,11 @@ sub SOMFY_Initialize($) {
 
 	#                       YsKKC0RRRRAAAAAA
 #	$hash->{Match}	= "^Ys...0..........\$";
-	$hash->{Match}	= "^Ys..............\$";
+#	$hash->{Match}	= "^Ys..............\$";
+
+# allow also matches for longer commands of newer devices -->   
+	$hash->{Match}	= "^Ys..............";    #msg1224029
+
 	$hash->{SetFn}		= "SOMFY_Set";
 	#$hash->{StateFn} 	= "SOMFY_SetState";
 	$hash->{DefFn}   	= "SOMFY_Define";

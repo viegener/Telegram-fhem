@@ -19,7 +19,7 @@
 #
 ##############################################################################
 #
-# $Id: 10_SOMFY.pm 12918 2016-12-31 10:10:47Z viegener $
+# $Id: 10_SOMFY.pm 26135 2022-06-07 22:07:34Z viegener $
 #  
 # SOMFY RTS / Simu Hz protocol module for FHEM
 # (c) Thomas Dankert <post@thomyd.de>
@@ -96,6 +96,9 @@
 
 # - fix manual command also for timed blinds
 #
+# 2.1 2022-08-07 uwekaditz
+# - NEW: Reading move_state (on, off, stop, done)
+# - CHG: suppress starting state (position is already known!)
 ###############################################################################
 #
 #
@@ -995,6 +998,10 @@ sub SOMFY_InternalSet($@) {
 		Log3($name,5,"SOMFY_set: handled for drive/udpate:  updateState ::  drivet :$drivetime: updatet :$updatetime: ");
 	}
   
+  readingsBeginUpdate($hash);
+  readingsBulkUpdate($hash,"move_state",$move);
+  readingsEndUpdate($hash,1); 
+
   # check if finalPos or will be updated after time
   my $isFinal = 0;
   $isFinal = 1 if ( ( $updatetime != 0 ) || ( $drivetime != 0 ) || ( $move eq 'stop' ) );  
@@ -1488,7 +1495,7 @@ sub SOMFY_UpdateState($$$$$$) {
 	readingsBeginUpdate($hash);
 
 	if(exists($positions{$newState})) {
-		readingsBulkUpdate($hash,"state",$newState);
+		readingsBulkUpdate($hash,"state",$newState) if ( !( ( $move eq 'on' ) || ( $move eq 'off' ) )  || !( $isFinal ) );	# supress starting state
 		$hash->{STATE} = $newState;
     
     $newExact = $positions{$newState};
@@ -1517,9 +1524,9 @@ sub SOMFY_UpdateState($$$$$$) {
       $stateTrans = SOMFY_Translate( $rounded );
     }
   
-    Log3($name,4,"SOMFY_UpdateState: $name after conversions  newState:$newState:  rounded:$rounded:  stateTrans:$stateTrans:");
+    Log3($name,4,"SOMFY_UpdateState: $name after conversions  newState:$newState:  rounded:$rounded:  stateTrans:$stateTrans:  isFinal:$isFinal:");
 
-		readingsBulkUpdate($hash,"state",$stateTrans);
+		readingsBulkUpdate($hash,"state",$stateTrans) if ( !( ( $move eq 'on' ) || ( $move eq 'off' ) )  || !( $isFinal ) );	# supress starting state
 		$hash->{STATE} = $stateTrans;
 
 		readingsBulkUpdate($hash,"position",$rounded);
@@ -1529,6 +1536,7 @@ sub SOMFY_UpdateState($$$$$$) {
   readingsBulkUpdate($hash,"exact",$newExact);
 
   readingsBulkUpdate($hash,$finalPosReading,$newExact) if ( ( defined($finalPosReading) ) && ( $isFinal ) );
+  readingsBulkUpdate($hash,"move_state","done") if ( ( $move ne 'on' ) && ( $move ne 'off' )  && ( $isFinal ) );
   
 	if ( defined( $updateState ) ) {
 		$hash->{updateState} = $updateState;

@@ -44,6 +44,7 @@ my $repositoryID = '$Id$';
 #     - additional value - executable
 #     - documentation
 #   8.11. --> Checkin
+#     - additional status readings: mileage, details on windows/lids
 #
 #
 #
@@ -198,6 +199,13 @@ bmw_BC_Set($$@)
   return "Unknown argument $cmd, choose one of $list";
 }
 
+##############################################################################
+##############################################################################
+##
+## Handle update
+##
+##############################################################################
+##############################################################################
 
 
 sub
@@ -284,6 +292,32 @@ sub bmw_BC_DoBC($)
   $returnstr = $name.'|'.$jsonout.'|'.$returnstr;
   Log3 $name, 5, "bimmerconnected complete  : $returnstr";
   return $returnstr;
+}
+
+
+##############################################################################
+##############################################################################
+##
+## Parse JSON update
+##
+##############################################################################
+##############################################################################
+
+sub bmw_concatJSONArray( $$ ) 
+{
+  my ($refarray, $add) = @_;
+
+  if ( ref( $refarray ) ne "ARRAY" ) {
+    return "";
+  }
+
+  my $cstr = "";
+  foreach my $el ( @{ $refarray } ) {
+    $cstr .= $add if ( length($cstr) > 0 );
+    $cstr .= $el;
+  }
+
+  return $cstr;
 }
 
 
@@ -420,11 +454,34 @@ bmw_BC_BCDone($)
       readingsBulkUpdate($hash,"dw_doors_closed", defined($fb->{all_lids_closed})?$fb->{all_lids_closed}:"??" );
       readingsBulkUpdate($hash,"dw_windows_closed", defined($fb->{all_windows_closed})?$fb->{all_windows_closed}:"??" );
       readingsBulkUpdate($hash,"dw_door_state", defined($fb->{door_lock_state})?$fb->{door_lock_state}:"??" );
+      readingsBulkUpdate($hash,"dw_open_windows", ( ref( $fb->{open_windows} ) eq "ARRAY" )?bmw_concatJSONArray($fb->{open_windows}," "):"??" );
+      readingsBulkUpdate($hash,"dw_open_lids", ( ref( $fb->{open_lids} ) eq "ARRAY" )?bmw_concatJSONArray($fb->{open_lids}," "):"??" );
     } else {
       readingsBulkUpdate($hash,"dw_doors_closed", "<invalid>" );
       readingsBulkUpdate($hash,"dw_windows_closed", "<invalid>" );
       readingsBulkUpdate($hash,"dw_door_state", "<invalid>" );
+      readingsBulkUpdate($hash,"dw_open_windows", "<invalid>" );
+      readingsBulkUpdate($hash,"dw_open_lids", "<invalid>" );
     }
+  
+  
+    # general data - state
+    my $state = $decoded->{'data'};
+    $state = $state->{'state'} if ( defined( $state ) );
+    if ( defined($state) ) {
+      readingsBulkUpdate($hash,"ds_timestamp", defined($state->{lastFetched})?$state->{lastFetched}:"??" );
+      readingsBulkUpdate($hash,"ds_mileage", defined($state->{currentMileage})?$state->{currentMileage}:"??" );
+      if ( ( defined( $state->{climateControlState} ) ) && ( ref( $fb ) eq "HASH" ) ) {
+        readingsBulkUpdate($hash,"ds_climate", defined($state->{climateControlState}->{activity})?$state->{climateControlState}->{activity}:"??" );
+      } else {
+        readingsBulkUpdate($hash,"ds_climate", "<undefined>" );
+      }
+    } else {
+      readingsBulkUpdate($hash,"ds_timestamp", "<invalid>" );
+      readingsBulkUpdate($hash,"ds_mileage", "<invalid>" );
+      readingsBulkUpdate($hash,"ds_climate", "<invalid>" );
+    }
+    
   
     readingsBulkUpdate($hash,"state","ok");
   } else {
@@ -443,6 +500,9 @@ bmw_BC_BCAborted($)
   $hash->{errormsg} = "bmw_BC_BCAborted";
   delete($hash->{helper}{RUNNING_PID});
 }
+
+##############################################################################
+##############################################################################
 
 1;
 

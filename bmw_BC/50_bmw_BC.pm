@@ -45,16 +45,21 @@ my $repositoryID = '$Id$';
 #     - documentation
 #   8.11. --> Checkin
 #     - additional status readings: mileage, details on windows/lids
-#
-#
-#
+#     - new internal value polling represents polling state
+#     - state not be running to reduce events (just ok and failed)
+#   9.11.
+#     - corrected some values on status --> batt_range
+#     - change polling status from state to _statusResult
+#     - corrected some retur statements after errors in statusrequest
+#     - Store password encoded in keyvalue
+#     - define shared secret for actions
 #
 #
 #############################################################################
 # TOOO:
-#     - define shared secret for actions
+#     - interval 0 --> no automatic polling
+#     - interval as attribute not define
 #     - add actions for ac,doors,etc
-#
 #
 #
 #
@@ -78,6 +83,19 @@ my $bmw_BC_hasJSON = 1;
 
 my $bmw_BC_newline_replacement = "xxEND-OF-LINExx";
 
+my %bmw_BC_cli_translation = (
+  "doorLock" => "lock",
+  "doorUnlock" => "unlock",
+  
+  "acOn" => "acon",
+  "acOff" => "acoff",
+
+  "lights" => "lightflash",
+  
+  "charge" => "charge"
+);
+
+
 
 #####################################################################
 #####################################################################
@@ -92,7 +110,9 @@ bmw_BC_Initialize($)
   $hash->{DefFn}    = "bmw_BC_Define";
   $hash->{UndefFn}  = "bmw_BC_Undefine";
   $hash->{SetFn}    = "bmw_BC_Set";
+  $hash->{GetFn}    = "bmw_BC_Get";
   $hash->{AttrList} = "disable:0,1 ".
+                      "executable ".
                       "executable ".
                        $readingFnAttributes;
 
@@ -155,7 +175,7 @@ bmw_BC_Define($$)
       return $errmsg;
     }
   } else {
-    setKeyValue(  "bmw_BC_".$hash->{Email}, $a[4] ); 
+    setKeyValue(  "bmw_BC_".$hash->{Email}, encode_base64($a[4]) ); 
     # remove password from def
     $hash->{DEF} = $hash->{INTERVAL}." ".$hash->{Email};
   }
@@ -164,6 +184,7 @@ bmw_BC_Define($$)
   $hash->{NAME} = $name;
 
   $hash->{STATE} = "Initialized";
+  $hash->{polling} = "defined";
 
   RemoveInternalTimer($hash);
   InternalTimer(gettimeofday()+$hash->{INTERVAL}, "bmw_BC_GetUpdate", $hash, 0);
@@ -180,38 +201,98 @@ bmw_BC_Undefine($$)
 
   BlockingKill($hash->{helper}{RUNNING_PID}) if(defined($hash->{helper}{RUNNING_PID}));
 
+  setKeyValue(  "bmw_BC_".$hash->{Email}, undef ); 
+
   return undef;
 }
 
 sub
 bmw_BC_Set($$@)
 {
-  my ($hash, $name, $cmd) = @_;
+  my ($hash, $name, $cmd, @args) = @_;
 
-  if($cmd eq 'status') {
-    $hash->{LOCAL} = 1;
-    my $ret = bmw_BC_GetUpdate($hash);
-    $hash->{LOCAL} = 0;
+  my $ret;
+  if ($cmd eq 'status') {
+    $ret = bmw_BC_Invoke($hash, $cmd);
     return $ret;
+    
+  } elsif($cmd eq 'shared') {
+    my $shared = shift @args;
+    if ( defined($shared) ) {
+      setKeyValue('bmw_BC_@SHARED@_'.$hash->{Email}, encode_base64($shared)); 
+    } else {
+      setKeyValue('bmw_BC_@SHARED@_'.$hash->{Email}, undef); 
+    }
+    return $ret;
+  } else {
+    my $verb = $bmw_BC_cli_translation{ $cmd };
+    
+    if ( defined( $verb ) ) {
+      my $secret = shift @args;
+      my ($err, $shared) = getKeyValue('bmw_BC_@SHARED@_'.$hash->{Email} ); 
+       
+      if ( defined( $err ) ) {
+          $ret = "bmw_BC: Set failed reading shared secret: ".$err;
+      } elsif ( ! defined( $shared ) ) {
+          $ret = "bmw_BC: Set failed - no shared secret found";
+      } elsif ( ! defined( $secret ) ) {
+          $ret = "bmw_BC: Set failed - no shared secret specified";
+      } else {
+          $shared = decode_base64( $shared );
+          if ( $shared ne $secret ) {
+            $ret = "bmw_BC: Set failed - shared secret does not match";
+          } else {
+            Log3 $name, 5, "set : ".$cmd;
+            $ret = bmw_BC_Invoke($hash, $verb);
+          }
+      }
+      return $ret;
+    }
+    
+    
   }
 
-  my $list = "status:noArg";
+
+  my $list = "status:noArg shared:textField";
+  
+  my ($err, $secret) = getKeyValue('bmw_BC_@SHARED@_'.$hash->{Email});
+  if ( ( ! defined($err) ) && ( defined($secret ) ) ) {
+    $list .= join( ":textField ", keys( %bmw_BC_cli_translation ) ).":textField ";
+#    $list .=  " doorLock:textField doorUnlock:textField lights:textField acOn:textField acOff:textField";
+  }
+  return "Unknown argument $cmd, choose one of $list";
+}
+
+sub
+bmw_BC_Get($$@)
+{
+  my ($hash, $name, $cmd, @args) = @_;
+
+  my $ret;
+  if ($cmd eq 'status') {
+    $ret = bmw_BC_Invoke($hash, $cmd);
+    return $ret;
+    
+  }
+
+  my $list = "status:noArg ";
+  
   return "Unknown argument $cmd, choose one of $list";
 }
 
 ##############################################################################
 ##############################################################################
 ##
-## Handle update
+## Handle cli invocation
 ##
 ##############################################################################
 ##############################################################################
 
 
 sub
-bmw_BC_GetUpdate($)
+bmw_BC_Invoke($$)
 {
-  my ($hash) = @_;
+  my ($hash, $cmd) = @_;
   my $name = $hash->{NAME};
 
   if(!$hash->{LOCAL}) {
@@ -243,6 +324,7 @@ bmw_BC_GetUpdate($)
   } elsif ( ! defined($password ) ) {
     return "ERROR: password not found for email : ".$hash->{Email};
   }
+  $password = decode_base64( $password );
   my $encup = encode_base64( $hash->{Email}." ".$password );
   
   # executable
@@ -254,11 +336,11 @@ bmw_BC_GetUpdate($)
   # jsonout - filename
   my $jsonout = AttrVal( "global", "modpath", "/opt/fhem" )."/FHEM/FhemUtils/bmw_bc_".$name.".json";
 
-  my $pars = $name."|".$encup."|".$exe."|".$jsonout;
+  my $pars = $name."|".$encup."|".$exe."|".$cmd."|".$jsonout;
 
   # start the background job
-  readingsSingleUpdate($hash,"state", "running", 1);
   $hash->{errormsg} = "<none>";
+  $hash->{polling} = "running";
   
   $hash->{helper}{RUNNING_PID} = BlockingCall("bmw_BC_DoBC", $pars, "bmw_BC_BCDone", 300, "bmw_BC_BCAborted", $hash) unless(exists($hash->{helper}{RUNNING_PID}));
 
@@ -269,7 +351,7 @@ bmw_BC_GetUpdate($)
 sub bmw_BC_DoBC($)
 {
   my ($string) = @_;
-  my ($name, $encup, $exe, $jsonout) = split("\\|", $string);
+  my ($name, $encup, $exe, $cmd, $jsonout) = split("\\|", $string);
 
   eval { unlink $jsonout; } if ( -e  $jsonout );
 
@@ -279,7 +361,7 @@ sub bmw_BC_DoBC($)
 
   my $userpw = decode_base64( $encup );
 
-  my $cmd = $exe.' status '.$userpw.' rest_of_world 2>&1 > '.$jsonout;
+  my $cmd = $exe.' '.$cmd.' '.$userpw.' rest_of_world 2>&1 > '.$jsonout;
 
   Log3 $name, 5, "starting bimmerconnected: ".$exe;
   my $returnstr = qx($cmd);
@@ -333,6 +415,7 @@ bmw_BC_BCDone($)
   my $hash = $defs{$name};
 
   delete($hash->{helper}{RUNNING_PID});
+  $hash->{polling} = "done";
 
   return if($hash->{helper}{DISABLED});
 
@@ -379,6 +462,7 @@ bmw_BC_BCDone($)
   } else {
     $hash->{errormsg} = "bmw_BC: Could not open jsonfile";
     Log3 $name, 1, $hash->{errormsg};
+    return;
   }
   
   my $decoded = eval { decode_json($jsontext) };
@@ -396,26 +480,30 @@ bmw_BC_BCDone($)
   } else {
     $hash->{errormsg} = "bmw_BC: no JSON found: ";
     Log3 $name, 1, $hash->{errormsg};
+    return;
   }
 
   if ( ( defined($decoded) ) && ( ref( $decoded ) ne "HASH" ) ) {  
     $decoded = undef;
     $hash->{errormsg} = "bmw_BC: Hash with data not found";
     Log3 $name, 1, $hash->{errormsg};
+    return;
   }
+
 
   readingsBeginUpdate($hash);
   
+
   if ( defined($decoded) ) {  
     # handle high level - attributes 
     readingsBulkUpdate($hash,"bmw_drive_train", defined($decoded->{drive_train})?$decoded->{drive_train}:"drive_train not found" );
     readingsBulkUpdate($hash,"bmw_name", defined($decoded->{name})?$decoded->{name}:"name not found" );
     readingsBulkUpdate($hash,"bmw_vin", defined($decoded->{vin})?$decoded->{vin}:"vin not found" );
-    readingsBulkUpdate($hash,"bmw_timestamp", defined($decoded->{timestamp})?$decoded->{timestamp}:"no timestamp");
+    readingsBulkUpdate($hash,"bmw___timestamp", defined($decoded->{timestamp})?$decoded->{timestamp}:"no timestamp");
   
     my $vloc = $decoded->{'vehicle_location'};
     if ( defined($vloc) ) {
-      readingsBulkUpdate($hash,"loc_timestamp", defined($vloc->{vehicle_update_timestamp})?$vloc->{vehicle_update_timestamp}:"vehicle_update_timestamp not found" );
+      readingsBulkUpdate($hash,"loc___timestamp", defined($vloc->{vehicle_update_timestamp})?$vloc->{vehicle_update_timestamp}:"vehicle_update_timestamp not found" );
       if ( defined($vloc->{location} ) ) {
         readingsBulkUpdate($hash,"loc_location", 
               "N".(defined($vloc->{location}->{latitude})?$vloc->{location}->{latitude}:"??" )." ".
@@ -425,16 +513,16 @@ bmw_BC_BCDone($)
       }
       readingsBulkUpdate($hash,"loc_heading", defined($vloc->{heading})?$vloc->{heading}:"??" );
     } else {
-      readingsBulkUpdate($hash,"loc_timestamp", "<invalid>" );
+      readingsBulkUpdate($hash,"loc___timestamp", "<invalid>" );
       readingsBulkUpdate($hash,"loc_location", "<invalid>" );
       readingsBulkUpdate($hash,"loc_heading", "<invalid>" );
     }
 
     my $fb = $decoded->{'fuel_and_battery'};
     if ( defined($fb) ) {
-      readingsBulkUpdate($hash,"fb_fuel_range", defined($fb->{remaining_range_fuel})?$fb->{remaining_range_fuel}->[0]:"??" );
-      readingsBulkUpdate($hash,"fb_batt_range", defined($fb->{remaining_range_electric})?$$b->{remaining_range_electric}->[0]:"??" );
-      readingsBulkUpdate($hash,"fb_fuel_liter", defined($fb->{remaining_fuel})?$fb->{remaining_fuel}->[0]:"??" );
+      readingsBulkUpdate($hash,"fb_fuel_range", defined($fb->{remaining_range_fuel})?($fb->{remaining_range_fuel}[0]):"??" );
+      readingsBulkUpdate($hash,"fb_fuel_liter", defined($fb->{remaining_fuel})?($fb->{remaining_fuel}[0]):"??" );
+      readingsBulkUpdate($hash,"fb_batt_range", defined($fb->{remaining_range_electric})?($fb->{remaining_range_electric}[0]):"??" );
       readingsBulkUpdate($hash,"fb_batt_percent", defined($fb->{remaining_battery_percent})?$fb->{remaining_battery_percent}:"??" );
       readingsBulkUpdate($hash,"fb_charging", defined($fb->{charging_status})?$fb->{charging_status}:"??" );
       readingsBulkUpdate($hash,"fb_charging_connected", defined($fb->{is_charger_connected})?$fb->{is_charger_connected}:"??" );
@@ -469,7 +557,7 @@ bmw_BC_BCDone($)
     my $state = $decoded->{'data'};
     $state = $state->{'state'} if ( defined( $state ) );
     if ( defined($state) ) {
-      readingsBulkUpdate($hash,"ds_timestamp", defined($state->{lastFetched})?$state->{lastFetched}:"??" );
+      readingsBulkUpdate($hash,"ds___timestamp", defined($state->{lastFetched})?$state->{lastFetched}:"??" );
       readingsBulkUpdate($hash,"ds_mileage", defined($state->{currentMileage})?$state->{currentMileage}:"??" );
       if ( ( defined( $state->{climateControlState} ) ) && ( ref( $fb ) eq "HASH" ) ) {
         readingsBulkUpdate($hash,"ds_climate", defined($state->{climateControlState}->{activity})?$state->{climateControlState}->{activity}:"??" );
@@ -477,18 +565,22 @@ bmw_BC_BCDone($)
         readingsBulkUpdate($hash,"ds_climate", "<undefined>" );
       }
     } else {
-      readingsBulkUpdate($hash,"ds_timestamp", "<invalid>" );
+      readingsBulkUpdate($hash,"ds___timestamp", "<invalid>" );
       readingsBulkUpdate($hash,"ds_mileage", "<invalid>" );
       readingsBulkUpdate($hash,"ds_climate", "<invalid>" );
     }
     
   
+    readingsBulkUpdate($hash,"_statusResult","ok");
     readingsBulkUpdate($hash,"state","ok");
   } else {
+    readingsBulkUpdate($hash,"_statusResult","failed");
     readingsBulkUpdate($hash,"state","failed");
   }
   
   readingsEndUpdate($hash,1);
+  
+  $hash->{polling} = "ok";
 }
 
 
@@ -498,6 +590,7 @@ bmw_BC_BCAborted($)
   my ($hash) = @_;
 
   $hash->{errormsg} = "bmw_BC_BCAborted";
+  $hash->{polling} = "aborted";
   delete($hash->{helper}{RUNNING_PID});
 }
 

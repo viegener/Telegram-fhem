@@ -99,7 +99,7 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 24047 2021-03-21 20:57:48Z viegener $
 #   Get thumbnail working for doorbells/lotus
 #   Add alerts only for known cameras
 #   video alert working for doorbells 
-#   
+#   camdisable/camenable not working for Lotus --> now with return message
 #   
 #   
 ##############################################################################
@@ -776,13 +776,14 @@ sub BlinkCamera_DoCmd($$;$$$)
           $hash->{HU_DO_PARAMS}->{data} =~ s/q_value_q/$alert/g;
           Log3 $name, 4, "BlinkCamera_DoCmd $name:   cam type: ".$ctype.":  - data :".$hash->{HU_DO_PARAMS}->{data}.":";
         } elsif ( $ctype eq "lotus" ) {
+          $ret = "BlinkCamera_DoCmd $name: camera type (".$ctype.") unsupported !!";
         
-#### not yet tested ????
-          $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}."/networks/".$net."/owls/".$par1."/config";
+### not working
+          # $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}."/networks/".$net."/lotus/".$par1."/config";
           
-          $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_configLotusjson;
-          $hash->{HU_DO_PARAMS}->{data} =~ s/q_value_q/$alert/g;
-          Log3 $name, 4, "BlinkCamera_DoCmd $name:   cam type: ".$ctype.":  - data :".$hash->{HU_DO_PARAMS}->{data}.":";
+          # $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_configLotusjson;
+          # $hash->{HU_DO_PARAMS}->{data} =~ s/q_value_q/$alert/g;
+          # Log3 $name, 4, "BlinkCamera_DoCmd $name:   cam type: ".$ctype.":  - data :".$hash->{HU_DO_PARAMS}->{data}.":";
         } else {
           $ret = "BlinkCamera_DoCmd $name: camera type (".$ctype.") unknown !!";
         }

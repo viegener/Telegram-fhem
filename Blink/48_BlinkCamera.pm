@@ -72,7 +72,6 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 24047 2021-03-21 20:57:48Z viegener $
 #   add set option verifyPin for pin verification - not verified
 #   add doc for verifyPin (experimental)
 #SVN 7.8.2020
-
 #   add version id as internal - sourceVersion
 #   removed old homescreen functonality
 #   doc attr maxRetries
@@ -83,16 +82,13 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 24047 2021-03-21 20:57:48Z viegener $
 #   camera...Thumbnail reading only set after file is received
 #   alertupdate - reset after 10 cycles skipped
 #   add more log for alertupdating and remove skipped value
-
 #   login changed to V5 api and also new format of response  #msg1141218
 #   reset unique id as additional reset option
 #   change header for auth to new value token-auth
 #   adapter also region from login to new tier
 #   changed alert handing only when network is identified
-
 #   Correct perl warning on setup call with empty event timestamp #msg1142674
 #   Add description for allert readings
-
 # 5.2.2023
 #   #msg1228374 - könnte man in der commandref mal aktualisieren, dass man den code auch per sms bekommen kann statt nur email
 #   Added doorbells (lotus) cameras - basic function
@@ -100,6 +96,15 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 24047 2021-03-21 20:57:48Z viegener $
 #   Add alerts only for known cameras
 #   video alert working for doorbells 
 #   camdisable/camenable not working for Lotus --> now with return message
+
+# 6.2.2023
+#   added type for syncmodule 
+#   added message for lveview being unsupported
+#   camEnable/camDisable working now for doorbells/lotus
+#   liveview cmd will also set liveCam reading to identify stream
+#   getThumbnail for doorbells working
+
+#   
 #   
 #   
 ##############################################################################
@@ -107,6 +112,17 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 24047 2021-03-21 20:57:48Z viegener $
 ##############################################################################
 ##############################################################################
 # TASKS 
+#   
+#   
+#   
+#   
+#   
+#   
+#   
+#   subtype for syncmodule needed?
+#   Button press?
+#   schlummermodus
+#
 #
 #   Set thumbnail Req reading only after thumbnail stored (from internal)
 #
@@ -776,14 +792,19 @@ sub BlinkCamera_DoCmd($$;$$$)
           $hash->{HU_DO_PARAMS}->{data} =~ s/q_value_q/$alert/g;
           Log3 $name, 4, "BlinkCamera_DoCmd $name:   cam type: ".$ctype.":  - data :".$hash->{HU_DO_PARAMS}->{data}.":";
         } elsif ( $ctype eq "lotus" ) {
-          $ret = "BlinkCamera_DoCmd $name: camera type (".$ctype.") unsupported !!";
+#          $ret = "BlinkCamera_DoCmd $name: camera type (".$ctype.") unsupported !!";
         
-### not working
-          # $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}."/networks/".$net."/lotus/".$par1."/config";
-          
-          # $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_configLotusjson;
-          # $hash->{HU_DO_PARAMS}->{data} =~ s/q_value_q/$alert/g;
-          # Log3 $name, 4, "BlinkCamera_DoCmd $name:   cam type: ".$ctype.":  - data :".$hash->{HU_DO_PARAMS}->{data}.":";
+          if ($cmd eq "camEnable") {
+            $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}.
+                    "/networks/".$net."/doorbells/".$par1."/config";
+            $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_configLotusjson;
+            $hash->{HU_DO_PARAMS}->{data} =~ s/q_value_q/$alert/g;
+          } else {
+            $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}.
+                    "/networks/".$net."/doorbells/".$par1."/disable";
+            $hash->{HU_DO_PARAMS}->{data} = "";
+          }
+          Log3 $name, 4, "BlinkCamera_DoCmd $name:   cam type: ".$ctype.":  - data :".$hash->{HU_DO_PARAMS}->{data}.":";
         } else {
           $ret = "BlinkCamera_DoCmd $name: camera type (".$ctype.") unknown !!";
         }
@@ -895,7 +916,7 @@ sub BlinkCamera_DoCmd($$;$$$)
           $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}."/networks/".$net."/owls/".$par1."/thumbnail";
           Log3 $name, 4, "BlinkCamera_DoCmd $name:  $cmd cam type: ".$ctype.":  ";
         } elsif ( $ctype eq "lotus" ) {
-          $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}."/networks/".$net."/lotus/".$par1."/thumbnail";
+          $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}."/networks/".$net."/doorbells/".$par1."/thumbnail";
           Log3 $name, 4, "BlinkCamera_DoCmd $name:  $cmd cam type: ".$ctype.":  ";
         } else {
           $ret = "BlinkCamera_DoCmd $name: $cmd camera type (".$ctype.") unknown !!";
@@ -1027,6 +1048,10 @@ sub BlinkCamera_DoCmd($$;$$$)
           $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v5/accounts/".$hash->{account}."/networks/".$net."/cameras/".$par1."/liveview";
         } elsif ( $ctype eq "owl" ) {
           $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$hash->{account}."/networks/".$net."/owls/".$par1."/liveview";
+        } elsif ( $ctype eq "lotus" ) {
+          $hash->{HU_DO_PARAMS}->{url} = 
+              $hash->{URL}."/api/v1/accounts/".$hash->{account}."/networks/".$net."/doorbells/".$par1."/liveview";
+#          $ret = "BlinkCamera_DoCmd $name: $cmd camera type (".$ctype.") unsupported !!";
         } else {
           $ret = "BlinkCamera_DoCmd $name: $cmd camera type (".$ctype.") unknown !!";
         }
@@ -1327,6 +1352,7 @@ sub BlinkCamera_ParseHomescreen($$$)
   $readUpdates->{networkSyncSerial} = "";
   $readUpdates->{networkSyncFirmware} = "";
   $readUpdates->{networkSyncWifi} = "";
+  $readUpdates->{networkSyncType} = "";
   if ( defined( $syncList ) ) {
     foreach my $module ( @$syncList ) {
       if ( $module->{network_id} eq $network ) {
@@ -1336,6 +1362,7 @@ sub BlinkCamera_ParseHomescreen($$$)
         $readUpdates->{networkSyncSerial} = $module->{serial} if ( defined( $module->{serial} ) );
         $readUpdates->{networkSyncFirmware} = $module->{fw_version} if ( defined( $module->{fw_version} ) );
         $readUpdates->{networkSyncWifi} = $module->{wifi_strength} if ( defined( $module->{wifi_strength} ) );
+        $readUpdates->{networkSyncType} = $module->{type} if ( defined( $module->{type} ) );
         Log3 $name, 4, "BlinkCamera_ParseHomescreen $name:  found sync module info for network ";
         last;
       }
@@ -1793,6 +1820,7 @@ sub BlinkCamera_Callback($$$)
     
     } elsif ($cmd eq "liveview" ) {
       $readUpdates{liveVideo} = $result->{server};
+      $readUpdates{liveCam} = $par1;
 
     } else {
       
@@ -2668,7 +2696,7 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
     <li><code>getVideoAlert [ &lt;video id&gt; ]</code><br>Retrieve the video for the corresponding id (or if ommitted as specified in the reading <code>alertID</code>) and store the video in a local file in the directory given in the attribute <code>proxyDir</code>
     </li>
     
-    <li><code>liveview &lt;camera name or number or "all"&gt;</code><br>Request a link to the live video stream. The live video stream access (URL) will be stored in the reading liveVideo. The link to the video is an rtsp - which can be shown in video players like VLC.
+    <li><code>liveview &lt;camera name or number or "all"&gt;</code><br>Request a link to the live video stream. The live video stream access (URL) will be stored in the reading liveVideo (the associated cam id in liveCam). The link to the video is an rtsp - which can be shown in video players like VLC.
     <br>
     Note: Live video streaming might have a substantially negative effect on battery life<br>
     </li>

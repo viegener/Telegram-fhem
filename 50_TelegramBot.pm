@@ -193,10 +193,10 @@
 #   log all new contacts - with source
 #   #msg1168649: Corrected logging verbose to make 0_None work
 #   caption parseMode / formatting also available for photo and video sends
-
 #   avoid warning for incomplete msgDelete commands
 #   replaceSetMagic on favorites not done before execution
-#   
+
+#   add reading msgDate 
 
 
 
@@ -206,7 +206,6 @@
 #   
 #   Customize Favoriten beendet --> msg1133794
 #   Option to delete message at the end insteda of sending "-"
-#   
 #   
 #   change doc to have "a name" on attributes to allow inline help
 #   Restructure help in logical blocks
@@ -2513,6 +2512,8 @@ sub TelegramBot_ParseMsg($$$)
   
   my $mid = $message->{message_id};
   
+  my $mdate = FmtDateTime( $message->{date} );
+  
   my $from = $message->{from};
   if ( ! defined( $from ) )  {
     Log3 $name, 3, "TelegramBot $name: No from user in message - blocked";
@@ -2674,6 +2675,7 @@ sub TelegramBot_ParseMsg($$$)
     readingsBeginUpdate($hash);
 
     readingsBulkUpdate($hash, "prevMsgId", $hash->{READINGS}{msgId}{VAL});        
+    readingsBulkUpdate($hash, "prevMsgDate", $hash->{READINGS}{msgDate}{VAL});        
     readingsBulkUpdate($hash, "prevMsgPeer", $hash->{READINGS}{msgPeer}{VAL});        
     readingsBulkUpdate($hash, "prevMsgPeerId", $hash->{READINGS}{msgPeerId}{VAL});        
     readingsBulkUpdate($hash, "prevMsgChat", $hash->{READINGS}{msgChat}{VAL});        
@@ -2686,6 +2688,7 @@ sub TelegramBot_ParseMsg($$$)
     readingsBeginUpdate($hash);
 
     readingsBulkUpdate($hash, "msgId", $mid);        
+    readingsBulkUpdate($hash, "msgDate", $mdate);        
     readingsBulkUpdate($hash, "msgPeer", TelegramBot_GetFullnameForContact( $hash, $mpeernorm ));        
     readingsBulkUpdate($hash, "msgPeerId", $mpeernorm);        
     readingsBulkUpdate($hash, "msgChat", TelegramBot_GetFullnameForContact( $hash, ((!$chatId)?$mpeernorm:$chatId) ) );        
@@ -4144,6 +4147,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
   <br>
     <li>msgId &lt;text&gt;<br>The id of the last received message is stored in this reading. 
     For secret chats a value of -1 will be given, since the msgIds of secret messages are not part of the consecutive numbering</li> 
+    <li>msgDate &lt;timestamp&gt;<br>The timestamp of the last message receied representing the time when it was sent to telegram</li>
     <li>msgPeer &lt;text&gt;<br>The sender name of the last received message (either full name or if not available @username)</li> 
     <li>msgPeerId &lt;text&gt;<br>The sender id of the last received message</li> 
     <li>msgChat &lt;text&gt;<br>The name of the Chat in which the last message was received (might be the peer if no group involved)</li> 
@@ -4154,6 +4158,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
     
   <br>
     <li>prevMsgId &lt;text&gt;<br>The id of the SECOND last received message is stored in this reading</li> 
+    <li>prevMsgDate &lt;timestamp&gt;<br>The timestamp of the SECOND last received message . g</li> 
     <li>prevMsgPeer &lt;text&gt;<br>The sender name of the SECOND last received message (either full name or if not available @username)</li> 
     <li>prevMsgPeerId &lt;text&gt;<br>The sender id of the SECOND last received message</li> 
     <li>prevMsgText &lt;text&gt;<br>The SECOND last received message text is stored in this reading</li> 

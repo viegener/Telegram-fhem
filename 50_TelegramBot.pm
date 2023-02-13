@@ -193,12 +193,11 @@
 #   log all new contacts - with source
 #   #msg1168649: Corrected logging verbose to make 0_None work
 #   caption parseMode / formatting also available for photo and video sends
+
 #   avoid warning for incomplete msgDelete commands
 #   replaceSetMagic on favorites not done before execution
-
 #   add reading msgDate 
-
-
+#   update documentation
 
 #   
 ##############################################################################

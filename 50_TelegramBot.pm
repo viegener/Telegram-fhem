@@ -199,12 +199,15 @@
 #   add reading msgDate 
 #   update documentation
 
+#   Fix: error msg on empty favoritedef
+#   Attribute deleteResponseMessage to delete message at the end insteda of sending "-" / "Favoriten beendet" --> msg1133794
+#   
+#   
+#   
 #   
 ##############################################################################
 # TASKS 
 #   
-#   Customize Favoriten beendet --> msg1133794
-#   Option to delete message at the end insteda of sending "-"
 #   
 #   change doc to have "a name" on attributes to allow inline help
 #   Restructure help in logical blocks
@@ -358,6 +361,7 @@ sub TelegramBot_Initialize($) {
   "cmdTimeout pollingTimeout disable:1,0 queryAnswerText:textField cmdRespondChat:0,1 ".
   "allowUnknownContacts:1,0 textResponseConfirm:textField textResponseCommands:textField allowedCommands filenameUrlEscape:1,0 ". 
   "textResponseFavorites:textField textResponseResult:textField textResponseUnauthorized:textField ".
+  "deleteResponseMessage:0,1 ".
   "parseModeSend:0_None,1_Markdown,2_HTML,3_InMsg webPagePreview:1,0 utf8Special:1,0 favorites2Col:0,1 ".
   " maxRetries:0,1,2,3,4,5 allowChannels:0,1 ".$readingFnAttributes;           
 }
@@ -958,6 +962,7 @@ sub TelegramBot_Attr(@) {
         my ( $alias, $desc, $minusdesc, $parsecmd, $needsConfirm, $needsResult, $hidden ) = TelegramBot_SplitFavoriteDef( $hash, $cs );
         
         # Debug "parsecmd :".$parsecmd.":  ".length($parsecmd);
+        next if ( ! $parsecmd ); # skip emtpy commands
         next if ( length($parsecmd) == 0 ); # skip emtpy commands
 
         $cnt += 1;
@@ -1194,8 +1199,13 @@ sub TelegramBot_SendFavorites($$$$$;$$) {
   
   if ( $cmd =~ /^\s*cancel\s*$/ ) {
     if ( $storedMgsId ) {
-      # 10 for edit inline
-      $ret = TelegramBot_SendIt( $hash, (($mchatnorm)?$mchatnorm:$mpeernorm), "Favoriten beendet", undef, 10, $storedMgsId );
+      if ( AttrVal($name, "deleteResponseMessage", 0 ) ) {
+        # 20 - delete msg
+        $ret = TelegramBot_SendIt( $hash, (($mchatnorm)?$mchatnorm:$mpeernorm), "", undef, 20, $storedMgsId );
+      } else {
+        # 10 for edit inline
+        $ret = TelegramBot_SendIt( $hash, (($mchatnorm)?$mchatnorm:$mpeernorm), "Favoriten beendet", undef, 10, $storedMgsId );
+      }
     }
     return $ret;
   }
@@ -1311,8 +1321,13 @@ sub TelegramBot_SendFavorites($$$$$;$$) {
 #        $ecmd = $1 if ( $ecmd =~ /^\s*\?(.*)$/ );
 
         if ( $storedMgsId ) {
-          # 10 for edit inline
-          $ret = TelegramBot_SendIt( $hash, (($mchatnorm)?$mchatnorm:$mpeernorm), "-", undef, 10, $storedMgsId );
+          if ( AttrVal($name, "deleteResponseMessage", 0 ) ) {
+            # 20 - delete msg
+            $ret = TelegramBot_SendIt( $hash, (($mchatnorm)?$mchatnorm:$mpeernorm), "-", undef, 20, $storedMgsId );
+          } else {
+            # 10 for edit inline
+            $ret = TelegramBot_SendIt( $hash, (($mchatnorm)?$mchatnorm:$mpeernorm), "-", undef, 10, $storedMgsId );
+          }
         }
 
         $ecmd .= " ".$cmdAddition if ( $cmdAddition );
@@ -4130,6 +4145,12 @@ sub TelegramBot_BinaryFileWrite($$$) {
     </li> 
     <li><code>textResponseUnauthorized &lt;UNAUTHORIZED: TelegramBot FHEM request from user :$peer\n  Msg: $msg&gt;</code><br>Text to be sent as warning for unauthorized command requests. Default is shown here and $peer will be replaced with the actual contact full name and id if added. $msg will be replaced with the sent message.
     </li> 
+
+    <li><code>deleteResponseMessage &lt;0 or 1&gt;</code><br>Delete final message on Favorites Dialog or cmd confirmation instead of sending static response text(default is off).
+    </li> 
+    
+
+
 
     <li><code>utf8Special &lt;0 or 1&gt;</code><br>Specify if utf8 encodings will be resolved before sending to avoid issues with timeout on HTTP send (experimental ! / default is off).
     </li> 

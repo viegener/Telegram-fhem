@@ -193,14 +193,14 @@
 #   log all new contacts - with source
 #   #msg1168649: Corrected logging verbose to make 0_None work
 #   caption parseMode / formatting also available for photo and video sends
-
 #   avoid warning for incomplete msgDelete commands
 #   replaceSetMagic on favorites not done before execution
 #   add reading msgDate 
 #   update documentation
-
 #   Fix: error msg on empty favoritedef
 #   Attribute deleteResponseMessage to delete message at the end insteda of sending "-" / "Favoriten beendet" --> msg1133794
+
+#   change doc to allow inline help for set/attr
 #   
 #   
 #   
@@ -209,7 +209,6 @@
 # TASKS 
 #   
 #   
-#   change doc to have "a name" on attributes to allow inline help
 #   Restructure help in logical blocks
 #   
 #   queryDialogStart / queryDialogEnd - keep msg id 
@@ -3818,7 +3817,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
 =item summary_DE senden und empfangen von Nachrichten durch telegram IM
 =begin html
 
-<a name="TelegramBot"></a>
+<a id="TelegramBot"></a>
 <h3>TelegramBot</h3>
 <ul>
   The TelegramBot module allows the usage of the instant messaging service <a href="https://telegram.org/">Telegram</a> from FHEM in both directions (sending and receiving). 
@@ -3861,7 +3860,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
   <br>
   Beside pure text messages also media messages can be sent and received. This includes audio, video, images, documents, locations and venues.
   <br><br>
-  <a name="TelegramBotdefine"></a>
+  <a id="TelegramBot-define"></a>
   <b>Define</b>
   <ul>
     <code>define &lt;name&gt; TelegramBot  &lt;token&gt; </code>
@@ -3877,10 +3876,12 @@ sub TelegramBot_BinaryFileWrite($$$) {
   </ul>
   <br><br>
 
-  <a name="TelegramBotset"></a>
+  <a id="TelegramBot-set"></a>
   <b>Set</b>
   <ul>
-    <li><code>message|msg|_msg|send [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] [ (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) ] &lt;text&gt;</code><br>Sends the given message to the given peer or if peer(s) is ommitted currently defined default peer user. Each peer given needs to be always prefixed with a '@'. Peers can be specified as contact ids, full names (with underscore instead of space), usernames (prefixed with another @) or chat names (also known as groups in telegram groups must be prefixed with #). Multiple peers are to be separated by space.<br><br>
+    <li>
+    <a id="TelegramBot-set-message"><a id="TelegramBot-set-msg"><a id="TelegramBot-set-_msg"><a id="TelegramBot-set-send">
+    <code>message|msg|_msg|send [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] [ (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) ] &lt;text&gt;</code><br>Sends the given message to the given peer or if peer(s) is ommitted currently defined default peer user. Each peer given needs to be always prefixed with a '@'. Peers can be specified as contact ids, full names (with underscore instead of space), usernames (prefixed with another @) or chat names (also known as groups in telegram groups must be prefixed with #). Multiple peers are to be separated by space.<br><br>
     A reply keyboard can be specified by adding a list of strings enclosed in parentheses "()". Each separate string will make one keyboard row in a reply keyboard. The different keys in the row need to be separated by |. The key strings can contain spaces.<br>
     Messages do not need to be quoted if containing spaces. If you want to use parentheses at the start of the message than add one extra character before the parentheses (i.e. an underline) to avoid the message being parsed as a keyboard. <br><br>
     if an empty keyoard is given "()" an existing keyboard is removed<br><br>
@@ -3905,82 +3906,85 @@ sub TelegramBot_BinaryFileWrite($$$) {
         <dt><code>set aTelegramBotDevice message @1234567 Bye</code></dt>
           <dd> to send the message "Bye" to a contact or chat with the id "1234567". Chat ids might be negative and need to be specified with a leading hyphen (-). <br></dd>
       <dl>
-    </li>
+    </a></a></a></a></li>
     
-    <li><code>silentmsg, silentImage, silentDocument, silentLocation, silentVoice , silentInline ...</code><br>Sends the given message silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the corresponding send/message command.
-    </li>
+    <li><a id="TelegramBot-set-silentmsg"><a id="TelegramBot-set-silentDocument"><a id="TelegramBot-set-silentLocation"><a id="TelegramBot-set-silentVoice"><a id="TelegramBot-set-silentInline"><code>silentmsg, silentImage, silentDocument, silentLocation, silentVoice , silentInline ...</code><br>Sends the given message silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the corresponding send/message command.
+    </a></a></a></a></a></li>
     
-    <li><code>msgForceReply [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;text&gt;</code><br>Sends the given message to the recipient(s) and requests (forces) a reply. Handling of peers is equal to the message command. Adding reply keyboards is currently not supported by telegram.
-    </li>
-    <li><code>reply &lt;msgid&gt; [ @&lt;peer1&gt; ] &lt;text&gt;</code><br>Sends the given message as a reply to the msgid (number) given to the given peer or if peer is ommitted to the defined default peer user. Only a single peer can be specified. Beside the handling of the message as a reply to a message received earlier, the peer and message handling is otherwise identical to the msg command. 
-    </li>
+    <li><a id="TelegramBot-set-msgForceReply"><code>msgForceReply [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;text&gt;</code><br>Sends the given message to the recipient(s) and requests (forces) a reply. Handling of peers is equal to the message command. Adding reply keyboards is currently not supported by telegram.
+    </a></li>
+    <li><a id="TelegramBot-set-reply"><code>reply &lt;msgid&gt; [ @&lt;peer1&gt; ] &lt;text&gt;</code><br>Sends the given message as a reply to the msgid (number) given to the given peer or if peer is ommitted to the defined default peer user. Only a single peer can be specified. Beside the handling of the message as a reply to a message received earlier, the peer and message handling is otherwise identical to the msg command. 
+    </a></li>
 
-    <li><code>msgEdit &lt;msgid&gt; [ @&lt;peer1&gt; ] &lt;text&gt;</code><br>Changes the given message on the recipients clients. The msgid of the message to be changed must match a valid msgId and the peers need to match the original recipient, so only a single peer can be given or if peer is ommitted the defined default peer user is used. Beside the handling of a change of an existing message, the peer and message handling is otherwise identical to the msg command. 
-    </li>
+    <li><a id="TelegramBot-set-msgEdit"><code>msgEdit &lt;msgid&gt; [ @&lt;peer1&gt; ] &lt;text&gt;</code><br>Changes the given message on the recipients clients. The msgid of the message to be changed must match a valid msgId and the peers need to match the original recipient, so only a single peer can be given or if peer is ommitted the defined default peer user is used. Beside the handling of a change of an existing message, the peer and message handling is otherwise identical to the msg command. 
+    </a></li>
 
-    <li><code>msgDelete &lt;msgid&gt; [ @&lt;peer1&gt; ] </code><br>Deletes the given message on the recipients clients. The msgid of the message to be changed must match a valid msgId and the peers need to match the original recipient, so only a single peer can be given or if peer is ommitted the defined default peer user is used. Restrictions apply for deleting messages in the Bot API as currently specified here (<a href=https://core.telegram.org/bots/api#deletemessage>deleteMessage</a>)
-    </li>
+    <li><a id="TelegramBot-set-msgDelete"><code>msgDelete &lt;msgid&gt; [ @&lt;peer1&gt; ] </code><br>Deletes the given message on the recipients clients. The msgid of the message to be changed must match a valid msgId and the peers need to match the original recipient, so only a single peer can be given or if peer is ommitted the defined default peer user is used. Restrictions apply for deleting messages in the Bot API as currently specified here (<a href=https://core.telegram.org/bots/api#deletemessage>deleteMessage</a>)
+    </a></li>
 
-    <li><code>favoritesMenu [ @&lt;peer&gt; ] </code><br>send the favorites menu to the corresponding peer if defined
-    </li>
+    <li><a id="TelegramBot-set-favoritesMenu"><code>favoritesMenu [ @&lt;peer&gt; ] </code><br>send the favorites menu to the corresponding peer if defined
+    </a></li>
 
-    <li><code>cmdSend|cmdSendSilent [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;fhem command&gt;</code><br>Executes the given fhem command and then sends the result to the given peers or the default peer (cmdSendSilent does the same as silent message).<br>
+    <li><a id="TelegramBot-set-cmdSend"><a id="TelegramBot-set-cmdSendSilent">
+    <code>cmdSend|cmdSendSilent [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] &lt;fhem command&gt;</code><br>Executes the given fhem command and then sends the result to the given peers or the default peer (cmdSendSilent does the same as silent message).<br>
     Example: The following command would sent the resulting SVG picture to the default peer: <br>
       <code>set tbot cmdSend { plotAsPng('SVG_FileLog_Aussen') }</code>
-    </li>
+    </a></a></li>
 
-    <li><code>queryInline [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) &lt;text&gt;</code><br>Sends the given message to the recipient(s) with an inline keyboard allowing direct response <br>
+    <li><a id="TelegramBot-set-queryInline"><code>queryInline [ @&lt;peer1&gt; ... @&lt;peerN&gt; ] (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) &lt;text&gt;</code><br>Sends the given message to the recipient(s) with an inline keyboard allowing direct response <br>
     IMPORTANT: The response coming from the keyboard will be provided in readings and a corresponding answer command with the query id is required, sicne the client is frozen otherwise waiting for the response from the bot!
     REMARK: inline queries are only accepted from contacts/peers that are authorized (i.e. as for executing commands, see cmdKeyword and cmdRestrictedPeer !)
-    </li>
-    <li><code>queryEditInline &lt;msgid&gt; [ @&lt;peer&gt; ] (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) &lt;text&gt;</code><br>Updates the original message specified with msgId with the given message to the recipient(s) with an inline keyboard allowing direct response <br>
+    </a></li>
+    <li><a id="TelegramBot-set-queryEditInline"><code>queryEditInline &lt;msgid&gt; [ @&lt;peer&gt; ] (&lt;keyrow1&gt;) ... (&lt;keyrowN&gt;) &lt;text&gt;</code><br>Updates the original message specified with msgId with the given message to the recipient(s) with an inline keyboard allowing direct response <br>
     With this method interactive inline dialogs are possible, since the edit of message or inline keyboard can be done multiple times.
-    </li>
+    </a></li>
     
 
-    <li><code>queryAnswer &lt;queryid&gt; [ &lt;text&gt; ] </code><br>Sends the response to the inline query button press. The message is optional, the query id can be collected from the reading "callbackID". This call is mandatory on reception of an inline query from the inline command above
-    </li>
+    <li><a id="TelegramBot-set-queryAnswer"><code>queryAnswer &lt;queryid&gt; [ &lt;text&gt; ] </code><br>Sends the response to the inline query button press. The message is optional, the query id can be collected from the reading "callbackID". This call is mandatory on reception of an inline query from the inline command above
+    </a></li>
 
-    <li><code>sendImage|image [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer(s) or if ommitted to the default peer. 
+    <li><a id="TelegramBot-set-sendImage"><a id="TelegramBot-set-image"><code>sendImage|image [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a photo to the given peer(s) or if ommitted to the default peer. 
     File is specifying a filename and path to the image file to be send. 
     Local paths should be given local to the root directory of fhem (the directory of fhem.pl e.g. /opt/fhem).
     Filenames with special characters (especially spaces) need to be given with url escaping (i.e. spaces need to be replaced by %20). 
     Rules for specifying peers are the same as for messages. Multiple peers are to be separated by space. Captions can also contain multiple words and do not need to be quoted.
-    </li>
-    <li><code>sendVideo [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a video (prefered mp4 format accordingt to Telegram) to the given peer(s) or if ommitted to the default peer. 
+    </a></a></li>
+    <li><a id="TelegramBot-set-sendVideo"><code>sendVideo [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt; [&lt;caption&gt;]</code><br>Sends a video (prefered mp4 format accordingt to Telegram) to the given peer(s) or if ommitted to the default peer. 
     File is specifying a filename and path to the video file to be send. Further description for sendImage also applies here.
-    </li>
-    <li><code>sendMedia|sendDocument [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt;</code><br>Sends a media file (video, audio, image or other file type) to the given peer(s) or if ommitted to the default peer. Handling for files and peers is as specified above.
-    </li>
-    <li><code>sendVoice [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt;</code><br>Sends a voice message for playing directly in the browser to the given peer(s) or if ommitted to the default peer. Handling for files and peers is as specified above.
-    </li>
+    </a></li>
+    <li><a id="TelegramBot-set-sendMedia"><a id="TelegramBot-set-sendDocument"><code>sendMedia|sendDocument [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt;</code><br>Sends a media file (video, audio, image or other file type) to the given peer(s) or if ommitted to the default peer. Handling for files and peers is as specified above.
+    </a></a></li>
+    <li><a id="TelegramBot-set-sendVoice"><code>sendVoice [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;file&gt;</code><br>Sends a voice message for playing directly in the browser to the given peer(s) or if ommitted to the default peer. Handling for files and peers is as specified above.
+    </a></li>
     
-    <li><code>silentImage|silentVideo ...</code><br>Sends the given image/video silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the send... command.
-    </li>
+    <li><a id="TelegramBot-set-silentImage"><a id="TelegramBot-set-silentVideo"><code>silentImage|silentVideo ...</code><br>Sends the given image/video silently (with disabled_notifications) to the recipients. Syntax and parameters are the same as in the send... command.
+    </a></a></li>
     
 
   <br>
-    <li><code>sendLocation [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;latitude&gt; &lt;longitude&gt;</code><br>Sends a location as pair of coordinates latitude and longitude as floating point numbers 
+    <li><a id="TelegramBot-set-sendLocation"><code>sendLocation [ @&lt;peer1&gt; ... @&lt;peerN&gt;] &lt;latitude&gt; &lt;longitude&gt;</code><br>Sends a location as pair of coordinates latitude and longitude as floating point numbers 
     <br>Example: <code>set aTelegramBotDevice sendLocation @@someusername 51.163375 10.447683</code> will send the coordinates of the geographical center of Germany as location.
-    </li>
+    </a></li>
 
   <br>
-    <li><code>replaceContacts &lt;text&gt;</code><br>Set the contacts newly from a string. Multiple contacts can be separated by a space. 
-    Each contact needs to be specified as a triple of contact id, full name and user name as explained above. </li>
-    <li><code>reset</code><br>Reset the internal state of the telegram bot. This is normally not needed, but can be used to reset the used URL, 
+    <li><a id="TelegramBot-set-replaceContacts"><code>replaceContacts &lt;text&gt;</code><br>Set the contacts newly from a string. Multiple contacts can be separated by a space. 
+    Each contact needs to be specified as a triple of contact id, full name and user name as explained above. 
+    </a></li>
+    <li><a id="TelegramBot-set-reset"><code>reset</code><br>Reset the internal state of the telegram bot. This is normally not needed, but can be used to reset the used URL, 
     internal contact handling, queue of send items and polling <br>
     ATTENTION: Messages that might be queued on the telegram server side (especially commands) might be then worked off afterwards immedately. 
-    If in doubt it is recommened to temporarily deactivate (delete) the cmdKeyword attribute before resetting.</li>
+    If in doubt it is recommened to temporarily deactivate (delete) the cmdKeyword attribute before resetting.
+    </a></li>
 
   <br>
-    <li><code>token &lt;apitoken&gt;</code><br>Specify a new APItoken to be stored for this bot
-    </li>
+    <li><a id="TelegramBot-set-token"><code>token &lt;apitoken&gt;</code><br>Specify a new APItoken to be stored for this bot
+    </a></li>
 
   </ul>
 
   <br><br>
 
-  <a name="TelegramBotget"></a>
+  <a id="TelegramBot-get"></a>
   <b>Get</b>
   <ul>
     <li><code>urlForFile &lt;fileid&gt;</code><br>Get a URL for a file id that was returned in a message
@@ -3993,24 +3997,25 @@ sub TelegramBot_BinaryFileWrite($$$) {
 
   <br><br>
 
-    <a name="TelegramBotattr"></a>
+    <a id="TelegramBot-attr"></a>
   <b>Attributes</b>
   <br><br>
   <ul>
-    <li><code>defaultPeer &lt;name&gt;</code><br>Specify contact id, user name or full name of the default peer to be used for sending messages. </li> 
-    <li><code>defaultPeerCopy &lt;1 (default) or 0&gt;</code><br>Copy all command results also to the defined defaultPeer. If set results are sent both to the requestor and the defaultPeer if they are different. 
-    </li> 
+    <li><a id="TelegramBot-attr-defaultPeer"><code>defaultPeer&lt;name&gt;</code><br>Specify contact id, user name or full name of the default peer to be used for sending messages. 
+    </a> </li> 
+    <li><a id="TelegramBot-attr-defaultPeerCopy"><code>defaultPeerCopy &lt;1 (default) or 0&gt;</code><br>Copy all command results also to the defined defaultPeer. If set results are sent both to the requestor and the defaultPeer if they are different. 
+    </a></li> 
 
-    <li><code>parseModeSend &lt;0_None or 1_Markdown or 2_HTML or 3_Inmsg &gt;</code><br>Specify the parse_mode (allowing formatting of text messages) for sent text messages. 0_None is the default where no formatting is used and plain text is sent. The different formatting options for markdown or HTML are described here <a href="https://core.telegram.org/bots/api/#formatting-options">https://core.telegram.org/bots/api/#formatting-options</a>. The option 3_Inmsg allows to specify the correct parse_mode at the beginning of the message (e.g. "Markdown*bold text*..." as message).
-    </li> 
+    <li><a id="TelegramBot-attr-parseModeSend"><code>parseModeSend &lt;0_None or 1_Markdown or 2_HTML or 3_Inmsg&gt;</code><br>Specify the parse_mode (allowing formatting of text messages) for sent text messages. 0_None is the default where no formatting is used and plain text is sent. The different formatting options for markdown or HTML are described here <a href="https://core.telegram.org/bots/api/#formatting-options">https://core.telegram.org/bots/api/#formatting-options</a>. The option 3_Inmsg allows to specify the correct parse_mode at the beginning of the message (e.g. "Markdown*bold text*..." as message).
+    </a></li> 
     
-    <li><code>webPagePreview &lt;1 or 0&gt;</code><br>Disable / Enable (Default = 1) web page preview on links in messages. See parameter https://core.telegram.org/bots/api/#sendmessage as described here: https://core.telegram.org/bots/api/#sendmessage
-    </li> 
+    <li><a id="TelegramBot-attr-webPagePreview"><code>webPagePreview &lt;1 or 0&gt;</code><br>Disable / Enable (Default = 1) web page preview on links in messages. See parameter https://core.telegram.org/bots/api/#sendmessage as described here: https://core.telegram.org/bots/api/#sendmessage
+    </a></li> 
     
     
     
   <br>
-    <li><code>cmdKeyword &lt;keyword&gt;</code><br>Specify a specific text that needs to be sent to make the rest of the message being executed as a command. 
+    <li><a id="TelegramBot-attr-cmdKeyword"><code>cmdKeyword &lt;keyword&gt;</code><br>Specify a specific text that needs to be sent to make the rest of the message being executed as a command. 
       So if for example cmdKeyword is set to <code>ok fhem</code> then a message starting with this string will be executed as fhem command 
         (see also cmdTriggerOnly).<br>
         NOTE: It is advised to set cmdRestrictedPeer for restricting access to this feature!<br>
@@ -4019,20 +4024,20 @@ sub TelegramBot_BinaryFileWrite($$$) {
         The result of the cmd is sent to the requestor and in addition (if different) sent also as message to the defaultPeer (This can be controlled with the attribute <code>defaultPeerCopy</code>). 
     <br>
         Note: <code>shutdown</code> is not supported as a command (also in favorites) and will be rejected. This is needed to avoid reexecution of the shutdown command directly after restart (endless loop !).
-    </li> 
-    <li><code>cmdSentCommands &lt;keyword&gt;</code><br>Specify a specific text that will trigger sending the last commands back to the sender<br>
+    </a></li> 
+    <li><a id="TelegramBot-attr-cmdSentCommands"><code>cmdSentCommands &lt;keyword&gt;</code><br>Specify a specific text that will trigger sending the last commands back to the sender<br>
         Example: If this attribute is set to a value of <code>last cmd</code> a message of <code>last cmd</code> 
         woud lead to a reply with the list of the last sent fhem commands will be sent back.<br>
         Please also consider cmdRestrictedPeer for restricting access to this feature!<br>
-    </li> 
+    </a></li> 
 
   <br>
-    <li><code>cmdFavorites &lt;keyword&gt;</code><br>Specify a specific text that will trigger sending the list of defined favorites or executes a given favorite by number (the favorites are defined in attribute <code>favorites</code>).
+    <li><a id="TelegramBot-attr-cmdFavorites"><code>cmdFavorites &lt;keyword&gt;</code><br>Specify a specific text that will trigger sending the list of defined favorites or executes a given favorite by number (the favorites are defined in attribute <code>favorites</code>).
     <br>
     NOTE: It is advised to set cmdRestrictedPeer for restricting access to this feature!<br>
         Example: If this attribute is set to a value of <code>favorite</code> a message of <code>favorite</code> to the bot will return a list of defined favorite commands and their index number. In the same case the message <code>favorite &lt;n&gt;</code> (with n being a number) would execute the command that is the n-th command in the favorites list. The result of the command will be returned as in other command executions. 
-    </li> 
-    <li><code>favorites &lt;list of commands&gt;</code><br>Specify a list of favorite commands for Fhem (without cmdKeyword). Multiple favorites  are separated by a single semicolon (;). A double semicolon can be used to specify multiple commands for a single favorite <br>
+    </a></li> 
+    <li><a id="TelegramBot-attr-favorites"><code>favorites &lt;list of commands&gt;</code><br>Specify a list of favorite commands for Fhem (without cmdKeyword). Multiple favorites  are separated by a single semicolon (;). A double semicolon can be used to specify multiple commands for a single favorite <br>
     <br>
     Favorite commands are fhem commands with an optional alias for the command given. The alias can be sent as message (instead of the favoriteCmd) to execute the command. Before the favorite command also an alias (other shortcut for the favorite) or/and a descriptive text (description enclosed in []) can be specifed. If alias or description is specified this needs to be prefixed with a '/' and the alias if given needs to be specified first.
     <br>
@@ -4068,97 +4073,98 @@ sub TelegramBot_BinaryFileWrite($$$) {
         Example: <code>get lights status; /blink=set lights on;; sleep 3;; set lights off; set heater;</code> <br>
     <br>
     Meaning the full format for a single favorite is <code>/alias[description]=commands</code> where the alias can be empty if the description is given or <code>/alias=command</code> or <code>/-alias=command</code> for a hidden favorite or just the <code>commands</code>. In any case the commands can be also prefixed with a '?' or a '!' (or both). The description also can be given as <code>[-description]</code> to remvoe the command or alias from the favorite menus in inline keyboard menus. Spaces are only allowed in the description and the commands, usage of spaces in other areas might lead to wrong interpretation of the definition. Spaces and also many other characters are not supported in the alias commands by telegram, so if you want to have your favorite/alias directly recognized in the telegram app, restriction to letters, digits and underscore is required. Double semicolon will be used for specifying mutliple fhem commands in a single favorites, while single semicolon is used to separate between different favorite definitions
-    </li> 
-    <li><code>favorites2Col &lt;1 or 0&gt;</code><br>Show favorites in 2 columns keyboard (instead of 1 column  - default)
-    </li> 
-    <li><code>favoritesInline &lt;1 or 0&gt;</code><br>When set to 1 it shows favorite dialog as inline keyboard and results will be also displayed inline (instead of as reply keyboards - default)
-    </li> 
+    </a></li> 
+    <li><a id="TelegramBot-attr-favorites2Col"><code>favorites2Col &lt;1 or 0&gt;</code><br>Show favorites in 2 columns keyboard (instead of 1 column  - default)
+    </a></li> 
+    <li><a id="TelegramBot-attr-favoritesInline"><code>favoritesInline &lt;1 or 0&gt;</code><br>When set to 1 it shows favorite dialog as inline keyboard and results will be also displayed inline (instead of as reply keyboards - default)
+    </a></li> 
 
   <br>
-    <li><code>cmdRestrictedPeer &lt;peer(s)&gt;</code><br>Restrict the execution of commands only to messages sent from the given peername or multiple peernames
+    <li><a id="TelegramBot-attr-cmdRestrictedPeer"><code>cmdRestrictedPeer &lt;peer(s)&gt;</code><br>Restrict the execution of commands only to messages sent from the given peername or multiple peernames
     (specified in the form of contact id, username or full name, multiple peers to be separated by a space). This applies to the internal machanisms for commands in the TelegramBot-Module (favorites, cmdKeyword etc) not for external methods to react on changes of readings.
     A message with the cmd and sender is sent to the default peer in case of another peer trying to sent messages<br>
     NOTE: It is recommended to use only peer ids for this restriction to reduce spoofing risk!
 
-    </li> 
-    <li><code>cmdRespondChat &lt;1 or 0&gt;</code><br>Results / Responses from Commands will be sent to a group chat (1 = default) if originating from this chat. Otherwise responses will be sent only to the person initiating the command (personal chat) if set to value 0. <br>
+    </a></li> 
+    <li><a id="TelegramBot-attr-cmdRespondChat"><code>cmdRespondChat &lt;1 or 0&gt;</code><br>Results / Responses from Commands will be sent to a group chat (1 = default) if originating from this chat. Otherwise responses will be sent only to the person initiating the command (personal chat) if set to value 0. <br>
     Note: Group chats also need to be allowed as restricted Peer in cmdRestrictedPeer if this is set. 
-    </li> 
-    <li><code>allowUnknownContacts &lt;1 or 0&gt;</code><br>Allow new contacts to be added automatically (1 - Default) or restrict message reception only to known contacts and unknwown contacts will be ignored (0).
-    </li> 
-    <li><code>saveStateOnContactChange &lt;1 or 0&gt;</code><br>Allow statefile being written on every new contact found, ensures new contacts not being lost on any loss of statefile. Default is on (1).
-    </li> 
-    <li><code>cmdReturnEmptyResult &lt;1 or 0&gt;</code><br>Return empty (success) message for commands (default). Otherwise return messages are only sent if a result text or error message is the result of the command execution.
-    </li> 
+    </a></li> 
+    <li><a id="TelegramBot-attr-allowUnknownContacts"><code>allowUnknownContacts &lt;1 or 0&gt;</code><br>Allow new contacts to be added automatically (1 - Default) or restrict message reception only to known contacts and unknwown contacts will be ignored (0).
+    </a></li> 
+    <li><a id="TelegramBot-attr-saveStateOnContactChange"><code>saveStateOnContactChange &lt;1 or 0&gt;</code><br>Allow statefile being written on every new contact found, ensures new contacts not being lost on any loss of statefile. Default is on (1).
+    </a></li> 
+    <li><a id="TelegramBot-attr-cmdReturnEmptyResult"><code>cmdReturnEmptyResult &lt;1 or 0&gt;</code><br>Return empty (success) message for commands (default). Otherwise return messages are only sent if a result text or error message is the result of the command execution.
+    </a></li> 
 
-    <li><code>allowedCommands &lt;list of command&gt;</code><br>Restrict the commands that can be executed through favorites and cmdKeyword to the listed commands (separated by space). Similar to the corresponding restriction in FHEMWEB. The allowedCommands will be set on the corresponding instance of an allowed device with the name "allowed_&lt;TelegrambotDeviceName&gt; and not on the telegramBotDevice! This allowed device is created and modified automatically.<br>
+    <li><a id="TelegramBot-attr-allowedCommands"><code>allowedCommands &lt;list of command&gt;</code><br>Restrict the commands that can be executed through favorites and cmdKeyword to the listed commands (separated by space). Similar to the corresponding restriction in FHEMWEB. The allowedCommands will be set on the corresponding instance of an allowed device with the name "allowed_&lt;TelegrambotDeviceName&gt; and not on the telegramBotDevice! This allowed device is created and modified automatically.<br>
     <b>ATTENTION: This is not a hardened secure blocking of command execution, there might be ways to break the restriction!</b>
-    </li> 
+    </a></li> 
 
-    <li><code>allowChannels &lt;0 or 1&gt;</code><br>Support also messages coming from channels to the bot. This must be explicitely activated, since channels contain anonymous messages (without a defined sender of the message)
-    </li> 
+    <li><a id="TelegramBot-attr-allowChannels"><code>allowChannels &lt;0 or 1&gt;</code><br>Support also messages coming from channels to the bot. This must be explicitely activated, since channels contain anonymous messages (without a defined sender of the message)
+    </a></li> 
 
-    <li><code>cmdTriggerOnly &lt;0 or 1&gt;</code><br>Restrict the execution of commands only to trigger command. If this attr is set (value 1), then only the name of the trigger even has to be given (i.e. without the preceding statement trigger). 
+    <li><a id="TelegramBot-attr-cmdTriggerOnly"><code>cmdTriggerOnly &lt;0 or 1&gt;</code><br>Restrict the execution of commands only to trigger command. If this attr is set (value 1), then only the name of the trigger even has to be given (i.e. without the preceding statement trigger). 
           So if for example cmdKeyword is set to <code>ok fhem</code> and cmdTriggerOnly is set, then a message of <code>ok fhem someMacro</code> would execute the fhem command  <code>trigger someMacro</code>.<br>
     Note: This is deprecated and will be removed in one of the next releases
-    </li> 
+    </a></li> 
 
-    <li><code>queryAnswerText &lt;text&gt;</code><br>Specify the automatic answering to buttons send through queryInline command. If this attribute is set an automatic answer is provided to the press of the inline button. The text in the attribute is evaluated through set-logic, so that readings and also perl code can be stored here. The result of the translation with set-logic will be sent as a text with the answer (this text is currently limited by telegram to 200 characters). <br>
+    <li><a id="TelegramBot-attr-queryAnswerText"><code>queryAnswerText &lt;text&gt;</code><br>Specify the automatic answering to buttons send through queryInline command. If this attribute is set an automatic answer is provided to the press of the inline button. The text in the attribute is evaluated through set-logic, so that readings and also perl code can be stored here. The result of the translation with set-logic will be sent as a text with the answer (this text is currently limited by telegram to 200 characters). <br>
     Note: A value of "0" in the attribute or as result of the evaluation will result in no text being sent with the answer.
     <br>
     Note: If the peer sending the button is not authorized an answer is always sent without any text.
-    </li> 
+    </a></li> 
 
 
 
   <br>
-    <li><code>pollingTimeout &lt;number&gt;</code><br>Used to specify the timeout for long polling of updates. A value of 0 is switching off any long poll. 
+    <li><a id="TelegramBot-attr-pollingTimeout"><code>pollingTimeout &lt;number&gt;</code><br>Used to specify the timeout for long polling of updates. A value of 0 is switching off any long poll. 
       In this case no updates are automatically received and therefore also no messages can be received. It is recommended to set the pollingtimeout to a reasonable time between 15 (not too short) and 60 (to avoid broken connections). See also attribute <code>disable</code>. 
-    </li> 
-    <li><code>pollingVerbose &lt;0_None 1_Digest 2_Log&gt;</code><br>Used to limit the amount of logging for errors of the polling connection. These errors are happening regularly and usually are not consider critical, since the polling restarts automatically and pauses in case of excess errors. With the default setting "1_Digest" once a day the number of errors on the last day is logged (log level 3). With "2_Log" every error is logged with log level 2. With the setting "0_None" no errors are logged. In any case the count of errors during the last day and the last error is stored in the readings <code>PollingErrCount</code> and <code>PollingLastError</code> </li> 
-    <li><code>disable &lt;0 or 1&gt;</code><br>Used to disable the polling if set to 1 (default is 0). 
-    </li> 
+    </a></li> 
+    <li><a id="TelegramBot-attr-pollingVerbose"><code>pollingVerbose &lt;0_None 1_Digest 2_Log&gt;</code><br>Used to limit the amount of logging for errors of the polling connection. These errors are happening regularly and usually are not consider critical, since the polling restarts automatically and pauses in case of excess errors. With the default setting "1_Digest" once a day the number of errors on the last day is logged (log level 3). With "2_Log" every error is logged with log level 2. With the setting "0_None" no errors are logged. In any case the count of errors during the last day and the last error is stored in the readings <code>PollingErrCount</code> and <code>PollingLastError</code> 
+    </a></li> 
+    <li><a id="TelegramBot-attr-disable"><code>disable &lt;0 or 1&gt;</code><br>Used to disable the polling if set to 1 (default is 0). 
+    </a></li> 
     
   <br>
-    <li><code>cmdTimeout &lt;number&gt;</code><br>Used to specify the timeout for sending commands. The default is a value of 30 seconds, which should be normally fine for most environments. In the case of slow or on-demand connections to the internet this parameter can be used to specify a longer time until a connection failure is considered.
-    </li> 
+    <li><a id="TelegramBot-attr-cmdTimeout"><code>cmdTimeout &lt;number&gt;</code><br>Used to specify the timeout for sending commands. The default is a value of 30 seconds, which should be normally fine for most environments. In the case of slow or on-demand connections to the internet this parameter can be used to specify a longer time until a connection failure is considered.
+    </a></li> 
 
   <br>
-    <li><code>maxFileSize &lt;number of bytes&gt;</code><br>Maximum file size in bytes for transfer of files (images). If not set the internal limit is specified as 10MB (10485760B).
-    </li> 
-    <li><code>filenameUrlEscape &lt;0 or 1&gt;</code><br>Specify if filenames can be specified using url escaping, so that special chanarcters as in URLs. This specifically allows to specify spaces in filenames as <code>%20</code>. Default is off (0).
-    </li> 
+    <li><a id="TelegramBot-attr-maxFileSize"><code>maxFileSize &lt;number of bytes&gt;</code><br>Maximum file size in bytes for transfer of files (images). If not set the internal limit is specified as 10MB (10485760B).
+    </a></li> 
+    <li><a id="TelegramBot-attr-filenameUrlEscape"><code>filenameUrlEscape &lt;0 or 1&gt;</code><br>Specify if filenames can be specified using url escaping, so that special chanarcters as in URLs. This specifically allows to specify spaces in filenames as <code>%20</code>. Default is off (0).
+    </a></li> 
 
-    <li><code>maxReturnSize &lt;number of chars&gt;</code><br>Maximum size of command result returned as a text message including header (Default is unlimited). The internal shown on the device is limited to 1000 chars.
-    </li> 
-    <li><code>maxRetries &lt;0,1,2,3,4,5&gt;</code><br>Specify the number of retries for sending a message in case of a failure. The first retry is sent after 10sec, the second after 100, then after 1000s (~16min), then after 10000s (~2.5h), then after approximately a day. Setting the value to 0 (default) will result in no retries.
-    </li> 
+    <li><a id="TelegramBot-attr-maxReturnSize"><code>maxReturnSize &lt;number of chars&gt;</code><br>Maximum size of command result returned as a text message including header (Default is unlimited). The internal shown on the device is limited to 1000 chars.
+    </a></li> 
+    <li><a id="TelegramBot-attr-maxRetries"><code>maxRetries &lt;0,1,2,3,4,5&gt;</code><br>Specify the number of retries for sending a message in case of a failure. The first retry is sent after 10sec, the second after 100, then after 1000s (~16min), then after 10000s (~2.5h), then after approximately a day. Setting the value to 0 (default) will result in no retries.
+    </a></li> 
 
   <br>
-    <li><code>textResponseConfirm &lt;TelegramBot FHEM : $peer\n Bestätigung \n&gt;</code><br>Text to be sent when a confirmation for a command is requested. Default is shown here and $peer will be replaced with the actual contact full name if added.
-    </li> 
-    <li><code>textResponseFavorites &lt;TelegramBot FHEM : $peer\n Favoriten \n&gt;</code><br>Text to be sent as starter for the list of favorites. Default is shown here and $peer will be replaced with the actual contact full name if added.
-    </li> 
-    <li><code>textResponseCommands &lt;TelegramBot FHEM : $peer\n Letzte Befehle \n&gt;</code><br>Text to be sent as starter for the list of last commands. Default is shown here and $peer will be replaced with the actual contact full name if added.
-    </li> 
-    <li><code>textResponseResult &lt;TelegramBot FHEM : $peer\n Befehl:$cmd:\n Ergebnis:\n$result\n&gt;</code><br>Text to be sent as result for a cmd execution. Default is shown here and $peer will be replaced with the actual contact full name if added. Similarly $cmd and $result will be replaced with the cmd and the execution result. If the result is a response with just spaces, or other separator characters the result will be not sent at all (i.e. a values of "\n") will result in no message at all.
-    </li> 
-    <li><code>textResponseUnauthorized &lt;UNAUTHORIZED: TelegramBot FHEM request from user :$peer\n  Msg: $msg&gt;</code><br>Text to be sent as warning for unauthorized command requests. Default is shown here and $peer will be replaced with the actual contact full name and id if added. $msg will be replaced with the sent message.
-    </li> 
+    <li><a id="TelegramBot-attr-textResponseConfirm"><code>textResponseConfirm &lt;TelegramBot FHEM : $peer\n Bestätigung \n&gt;</code><br>Text to be sent when a confirmation for a command is requested. Default is shown here and $peer will be replaced with the actual contact full name if added.
+    </a></li> 
+    <li><a id="TelegramBot-attr-textResponseFavorites"><code>textResponseFavorites &lt;TelegramBot FHEM : $peer\n Favoriten \n&gt;</code><br>Text to be sent as starter for the list of favorites. Default is shown here and $peer will be replaced with the actual contact full name if added.
+    </a></li> 
+    <li><a id="TelegramBot-attr-textResponseCommands"><code>textResponseCommands &lt;TelegramBot FHEM : $peer\n Letzte Befehle \n&gt;</code><br>Text to be sent as starter for the list of last commands. Default is shown here and $peer will be replaced with the actual contact full name if added.
+    </a></li> 
+    <li><a id="TelegramBot-attr-textResponseResult"><code>textResponseResult &lt;TelegramBot FHEM : $peer\n Befehl:$cmd:\n Ergebnis:\n$result\n&gt;</code><br>Text to be sent as result for a cmd execution. Default is shown here and $peer will be replaced with the actual contact full name if added. Similarly $cmd and $result will be replaced with the cmd and the execution result. If the result is a response with just spaces, or other separator characters the result will be not sent at all (i.e. a values of "\n") will result in no message at all.
+    </a></li> 
+    <li><a id="TelegramBot-attr-textResponseUnauthorized"><code>textResponseUnauthorized &lt;UNAUTHORIZED: TelegramBot FHEM request from user :$peer\n  Msg: $msg&gt;</code><br>Text to be sent as warning for unauthorized command requests. Default is shown here and $peer will be replaced with the actual contact full name and id if added. $msg will be replaced with the sent message.
+    </a></li> 
 
-    <li><code>deleteResponseMessage &lt;0 or 1&gt;</code><br>Delete final message on Favorites Dialog or cmd confirmation instead of sending static response text(default is off).
-    </li> 
+    <li><a id="TelegramBot-attr-deleteResponseMessage"><code>deleteResponseMessage &lt;0 or 1&gt;</code><br>Delete final message on Favorites Dialog or cmd confirmation instead of sending static response text(default is off).
+    </a></li> 
     
 
 
 
-    <li><code>utf8Special &lt;0 or 1&gt;</code><br>Specify if utf8 encodings will be resolved before sending to avoid issues with timeout on HTTP send (experimental ! / default is off).
-    </li> 
+    <li><a id="TelegramBot-attr-utf8Special"><code>utf8Special &lt;0 or 1&gt;</code><br>Specify if utf8 encodings will be resolved before sending to avoid issues with timeout on HTTP send (experimental ! / default is off).
+    </a></li> 
     
   </ul>
   <br><br>
   
-  <a name="TelegramBotreadings"></a>
+  <a id="TelegramBot-readings"></a>
   <b>Readings</b>
   <br><br>
   <ul>
@@ -4202,7 +4208,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
   </ul>
   <br><br>
   
-  <a name="TelegramBotexamples"></a>
+  <a id="TelegramBot-examples"></a>
   <b>Examples</b>
   <br><br>
   <ul>

@@ -201,8 +201,8 @@
 #   Attribute deleteResponseMessage to delete message at the end insteda of sending "-" / "Favoriten beendet" --> msg1133794
 
 #   change doc to allow inline help for set/attr
-#   
-#   
+#   add get commands id to ensure showin in UI
+#   add description of pollingtimeout - needing update
 #   
 #   
 ##############################################################################
@@ -3841,7 +3841,7 @@ sub TelegramBot_BinaryFileWrite($$$) {
   <ul>
     <li>This module requires the perl JSON module.<br>
         Please install the module (e.g. with <code>sudo apt-get install libjson-perl</code>) or the correct method for the underlying platform/system.</li>
-    <li>The attribute pollingTimeout needs to be set to a value greater than zero, to define the interval of receiving messages (if not set or set to 0, no messages will be received!)</li>
+    <li>The attribute pollingTimeout needs to be set to a value greater than zero, to define the interval of receiving messages (if not set or set to 0, no messages will be received! In this case also sending might not work after some time)</li>
     <li>Multiple infomations are stored in readings (esp contacts) and internals that are needed for the bot operation, so having an recent statefile will help in correct operation of the bot. Generally it is recommended to regularly store the statefile (see save command)</li>
   </ul>   
   <br><br>
@@ -3987,12 +3987,12 @@ sub TelegramBot_BinaryFileWrite($$$) {
   <a id="TelegramBot-get"></a>
   <b>Get</b>
   <ul>
-    <li><code>urlForFile &lt;fileid&gt;</code><br>Get a URL for a file id that was returned in a message
-    </li>
-    <li><code>update </code><br>Execute a single update (instead of automatic polling) - manual polling
-    </li>
-    <li><code>peerId &lt;peer&gt;</code><br>Ask for a peerId for a given peer, the peer can be specified in the same form as in a message without the initial '@'
-    </li>
+    <li><a id="TelegramBot-get-urlForFile"><code>urlForFile &lt;fileid&gt;</code><br>Get a URL for a file id that was returned in a message
+    </a></li>
+    <li><a id="TelegramBot-get-update"><code>update </code><br>Execute a single update (instead of automatic polling) - manual polling
+    </a></li>
+    <li><a id="TelegramBot-get-peerId"><code>peerId &lt;peer&gt;</code><br>Ask for a peerId for a given peer, the peer can be specified in the same form as in a message without the initial '@'
+    </a></li>
   </ul>
 
   <br><br>
@@ -4118,7 +4118,10 @@ sub TelegramBot_BinaryFileWrite($$$) {
 
   <br>
     <li><a id="TelegramBot-attr-pollingTimeout"><code>pollingTimeout &lt;number&gt;</code><br>Used to specify the timeout for long polling of updates. A value of 0 is switching off any long poll. 
-      In this case no updates are automatically received and therefore also no messages can be received. It is recommended to set the pollingtimeout to a reasonable time between 15 (not too short) and 60 (to avoid broken connections). See also attribute <code>disable</code>. 
+      <br>
+      Note: In this case no updates are automatically received and therefore also no messages can be received and the <code>get update</code> command needs to be invoked regularly since Telegram seems to block further sending after some time. 
+      <br>
+      It is recommended to set the pollingtimeout to a reasonable time between 15 (not too short) and 60 (to avoid broken connections). See also attribute <code>disable</code>. 
     </a></li> 
     <li><a id="TelegramBot-attr-pollingVerbose"><code>pollingVerbose &lt;0_None 1_Digest 2_Log&gt;</code><br>Used to limit the amount of logging for errors of the polling connection. These errors are happening regularly and usually are not consider critical, since the polling restarts automatically and pauses in case of excess errors. With the default setting "1_Digest" once a day the number of errors on the last day is logged (log level 3). With "2_Log" every error is logged with log level 2. With the setting "0_None" no errors are logged. In any case the count of errors during the last day and the last error is stored in the readings <code>PollingErrCount</code> and <code>PollingLastError</code> 
     </a></li> 

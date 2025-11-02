@@ -111,6 +111,9 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 24047 2021-03-21 20:57:48Z viegener $
 #   simplified header and agent generation
 #   store authtoken and refreshtoken in keyfile
 #   refresh (only once if atoken available but access denied) - to be checked
+# 2.11.25 final oauth adaptations
+#   arm/disarm tested
+#   refresh for authtoken completed
 #   
 #   
 #   
@@ -121,6 +124,7 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 24047 2021-03-21 20:57:48Z viegener $
 ##############################################################################
 # TASKS 
 #   
+#   camenable/disable not working
 #   check if oauth expired triggers refresh correctly
 #   allow custom attribute for user-agent <major.minor>IOS_<build number>
 #   
@@ -200,7 +204,7 @@ my $BlinkCamera_header = "agent: TelegramBot/1.0";
 
 my $BlinkCamera_oauthform = "username=q_email_q&password=q_password_q&grant_type=password&client_id=ios&scope=client";
 
-my $BlinkCamera_oauthformrefresh = "grant_type=refresh_token\r\n\'refresh_token=q_token_q\'\r\nclient_id=ios\r\nscope=client";
+my $BlinkCamera_oauthformrefresh = "grant_type=refresh_token&refresh_token=q_token_q&client_id=ios&scope=client";
 
 my $BlinkCamera_configCamAlertjson = "{ \"camera\" : \"q_id_q\", \"id\" : \"q_id_q\", \"network\" : \"q_network_q\", \"motion_alert\" : \"q_alert_q\" }";
 
@@ -264,7 +268,7 @@ sub BlinkCamera_Initialize($) {
           "pollingTimeout ".
           "homeScreenV3:0,1 ".
           $readingFnAttributes;           
-}
+  }
 
 
 ######################################
@@ -606,12 +610,12 @@ sub BlinkCamera_DoCmd($$;$$$)
     return;
   }  
 
-  #######################
-  # check for 2fa otherwise error
-  if ( ($cmd ne "authorize") && ($cmd ne "request2fa") && ( ! defined( $authtoken ) ) ) {
-    Log3 $name, 2, "BlinkCamera_DoCmd $name: failed due to 2factor authorize not yet done ".$cmdString;
-    return;
-  }
+  # #######################
+  # # check for 2fa otherwise error
+  # if ( ($cmd ne "authorize") && ($cmd ne "request2fa") && ( ! defined( $authtoken ) ) ) {
+    # Log3 $name, 2, "BlinkCamera_DoCmd $name: failed due to 2factor authorize not yet done ".$cmdString;
+    # return;
+  # }
   
   #######################
   # check authentication otherwise queue the current cmd and do refresh (means 2fa refresh) first
@@ -876,6 +880,56 @@ sub BlinkCamera_DoCmd($$;$$$)
 
       }
 
+    # #######################
+    # } elsif ( ($cmd eq "camEnable") || ($cmd eq "camDisable" ) ) {
+    
+      # my $ctype = "invalid";
+      
+      # if ( ! defined( $net ) ) {
+        # $ret = "BlinkCamera_DoCmd $name: no network identifier found for $cmd - set attribute";
+      # } else {
+        # $ctype =  BlinkCamera_GetCamType( $hash, $par1 );
+      # }
+
+      # if ( ! $ret ) {
+
+        # my $alert = ($cmd eq "camEnable")?"true":"false";
+      
+        # if ( $ctype eq "camera" ) {
+          # $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/network/".$net."/camera/".$par1."/update";
+        
+          # $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_configCamAlertjson;
+          # $hash->{HU_DO_PARAMS}->{data} =~ s/q_id_q/$par1/g;
+          # $hash->{HU_DO_PARAMS}->{data} =~ s/q_network_q/$net/g;
+          # $hash->{HU_DO_PARAMS}->{data} =~ s/q_alert_q/$alert/g;
+          # Log3 $name, 4, "BlinkCamera_DoCmd $name:   cam type: ".$ctype.":  - data :".$hash->{HU_DO_PARAMS}->{data}.":";
+        # } elsif ( $ctype eq "owl" ) {
+        
+          # $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$account."/networks/".$net."/owls/".$par1."/config";
+          
+          # $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_configOwljson;
+          # $hash->{HU_DO_PARAMS}->{data} =~ s/q_value_q/$alert/g;
+          # Log3 $name, 4, "BlinkCamera_DoCmd $name:   cam type: ".$ctype.":  - data :".$hash->{HU_DO_PARAMS}->{data}.":";
+        # } elsif ( $ctype eq "lotus" ) {
+# #          $ret = "BlinkCamera_DoCmd $name: camera type (".$ctype.") unsupported !!";
+        
+          # if ($cmd eq "camEnable") {
+            # $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$account.
+                    # "/networks/".$net."/doorbells/".$par1."/config";
+            # $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_configLotusjson;
+            # $hash->{HU_DO_PARAMS}->{data} =~ s/q_value_q/$alert/g;
+          # } else {
+            # $hash->{HU_DO_PARAMS}->{url} = $hash->{URL}."/api/v1/accounts/".$account.
+                    # "/networks/".$net."/doorbells/".$par1."/disable";
+            # $hash->{HU_DO_PARAMS}->{data} = "";
+          # }
+          # Log3 $name, 4, "BlinkCamera_DoCmd $name:   cam type: ".$ctype.":  - data :".$hash->{HU_DO_PARAMS}->{data}.":";
+        # } else {
+          # $ret = "BlinkCamera_DoCmd $name: camera type (".$ctype.") unknown !!";
+        # }
+
+      # }
+
     #######################
     } elsif ( ($cmd eq "arm") || ($cmd eq "disarm" ) ) {
 
@@ -1107,6 +1161,9 @@ sub BlinkCamera_DoCmd($$;$$$)
     $hash->{HU_DO_PARAMS}->{args} = \@args;
     
     Log3 $name, 4, "BlinkCamera_DoCmd $name: call url :".$hash->{HU_DO_PARAMS}->{url}.": ";
+    Log3 $name, 4, "BlinkCamera_DoCmd $name: header :".$hash->{HU_DO_PARAMS}->{header}.": ";
+    Log3 $name, 4, "BlinkCamera_DoCmd $name: data : ".$hash->{HU_DO_PARAMS}->{data}.": ";
+    
     HttpUtils_NonblockingGet( $hash->{HU_DO_PARAMS} );
 
   }
@@ -1700,6 +1757,8 @@ sub BlinkCamera_Callback($$$)
   my $polling = ( defined($par2) ) && ($par2 eq "POLLING" );
   my $hidden = ( ( defined($par2) ) && ($par2 eq "HIDDEN" ) ) || $polling;
   
+#  my $specialcase = 1;
+  
   my $fullurl;
   my $repfilename;
 
@@ -1767,7 +1826,7 @@ sub BlinkCamera_Callback($$$)
         $ret = "Callback returned no valid JSON !";
       } elsif ( ref( $jo ) ne "HASH" ) {
         $ret = "Callback returned no valid JSON (no hash: ".ref( $jo ).")!";
-      } elsif ( $jo->{message} ) {
+      } elsif ( ( $jo->{message} ) ) {
         $ret = "Callback returned error:".$jo->{message}.":";
         
         $ret = "SUCCESS" if ( $jo->{message} =~ /^Successfully / );
@@ -1776,7 +1835,7 @@ sub BlinkCamera_Callback($$$)
         $ret = "SUCCESS" if ( $jo->{message} =~ /^Client has been successfully / );
         
         my $fuuid = $hash->{FUUID};
-        if ( $jo->{message} eq "Unauthorized Access" ) {
+        if ( ( $jo->{message} eq "Unauthorized Access" ) ) {
           # reset authtoken if {"message":"Unauthorized Access"} --> will be re checked on next call
           setKeyValue(  "BlinkCamera_ATOKEN_".$fuuid, undef );
           # also clean refreshtoken if refresh did fail

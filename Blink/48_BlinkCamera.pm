@@ -113,9 +113,11 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 24047 2021-03-21 20:57:48Z viegener $
 #   refresh (only once if atoken available but access denied) - to be checked
 # 2.11.25 final oauth adaptations
 #   arm/disarm tested
-#   refresh for authtoken completed
-#   
-#   
+#   refresh for authtoken completed/fixed
+# 3.11.25 final oauth adaptations
+#   handle urlencoding for forms
+#   log changes for polling
+#   allow custom attribute for useragent <major.minor>IOS_<build number>
 #   
 #   
 ##############################################################################
@@ -124,9 +126,7 @@ my $repositoryID = '$Id: 48_BlinkCamera.pm 24047 2021-03-21 20:57:48Z viegener $
 ##############################################################################
 # TASKS 
 #   
-#   camenable/disable not working
-#   check if oauth expired triggers refresh correctly
-#   allow custom attribute for user-agent <major.minor>IOS_<build number>
+#   camenable/disable to be tested
 #   
 # --- old ---  
 #   subtype for syncmodule needed?
@@ -267,6 +267,7 @@ sub BlinkCamera_Initialize($) {
           "network ".
           "pollingTimeout ".
           "homeScreenV3:0,1 ".
+          "useragent:textField ".
           $readingFnAttributes;           
   }
 
@@ -585,6 +586,13 @@ sub BlinkCamera_DoCmd($$;$$$)
     $authtoken = undef;
   }
 
+  my ($trerr, $reftoken) = getKeyValue("BlinkCamera_RTOKEN_".$fuuid); 
+  if ( ( defined($trerr) ) || ( ! defined($reftoken) ) ) { 
+    # ignore error message here
+    $reftoken = undef;
+  }
+
+
   $retryCount = 0 if ( ! defined( $retryCount ) );
 
   # increase retrycount for next try
@@ -645,8 +653,15 @@ sub BlinkCamera_DoCmd($$;$$$)
   
   #######################
   # Check for invalid auth token and just remove cmds
-  if ( ($cmd ne "refresh") && ( defined( $hash->{AuthToken} ) )&& ( $hash->{AuthToken} eq "INVALID" ) ) {
+  if ( ($cmd ne "refresh") && ( defined( $authtoken ) )&& ( $authtoken eq "INVALID" ) ) {
     Log3 $name, 2, "BlinkCamera_DoCmd $name: failed due to invalid auth token ".$cmdString;
+    return;
+  } 
+
+  #######################
+  # Check for invalid ref token and just remove cmds
+  if ( ($cmd eq "refresh") && ( ! defined( $reftoken ) ) ) {
+    Log3 $name, 2, "BlinkCamera_DoCmd $name: failed due to missing refresh token ".$cmdString;
     return;
   } 
   
@@ -759,7 +774,9 @@ sub BlinkCamera_DoCmd($$;$$$)
       
     if ( ($cmd ne "authorize") && ($cmd ne "request2fa") && ($cmd ne "refresh") ) {
       
-      $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_UserAgentHeader." ".$BlinkCamera_useragent;
+      my $useragent = AttrVal( $name, "useragent", $BlinkCamera_useragent );
+      
+      $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_UserAgentHeader." ".$useragent;
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n".$BlinkCamera_AuthorizationHeader." ".$authtoken;
     } else {
       $hash->{HU_DO_PARAMS}->{header} .= "\r\n"."Content-Type: application/x-www-form-urlencoded";
@@ -796,11 +813,13 @@ sub BlinkCamera_DoCmd($$;$$$)
         }
       }
       if ( ! $ret ) {
+        $password = uri_escape( $password );
+        $email = uri_escape( $email );
+
         $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_oauthform;
 
         $hash->{HU_DO_PARAMS}->{data} =~ s/q_password_q/$password/g;
         $hash->{HU_DO_PARAMS}->{data} =~ s/q_email_q/$email/g;
-        $hash->{HU_DO_PARAMS}->{data} =~ s/q_name_q/$name/g;
 
         Log3 $name, 4, "BlinkCamera_DoCmd $name: oauthform  data :".$hash->{HU_DO_PARAMS}->{data}.":";
       }
@@ -808,14 +827,9 @@ sub BlinkCamera_DoCmd($$;$$$)
      #######################
      } elsif ( $cmd eq "refresh" ) {
 
-      my ($trerr, $reftoken) = getKeyValue("BlinkCamera_RTOKEN_".$fuuid); 
-      if ( ( defined($trerr) ) || ( ! defined($reftoken) ) ) { 
-        # ignore error message here
-        $reftoken = undef;
-      }
-      $ret = "BlinkCamera_DoCmd $name: no refresh token found for $cmd" if ( !defined( $reftoken ) );
-
       if ( ! $ret ) {
+        $reftoken = uri_escape( $reftoken );
+        
         $hash->{HU_DO_PARAMS}->{data} = $BlinkCamera_oauthformrefresh;
 
         $hash->{HU_DO_PARAMS}->{data} =~ s/q_token_q/$reftoken/g;
@@ -1162,7 +1176,7 @@ sub BlinkCamera_DoCmd($$;$$$)
     
     Log3 $name, 4, "BlinkCamera_DoCmd $name: call url :".$hash->{HU_DO_PARAMS}->{url}.": ";
     Log3 $name, 4, "BlinkCamera_DoCmd $name: header :".$hash->{HU_DO_PARAMS}->{header}.": ";
-    Log3 $name, 4, "BlinkCamera_DoCmd $name: data : ".$hash->{HU_DO_PARAMS}->{data}.": ";
+    Log3 $name, 4, "BlinkCamera_DoCmd $name: data : ".$hash->{HU_DO_PARAMS}->{data}.": " if ( defined( $hash->{HU_DO_PARAMS}->{data} ) );
     
     HttpUtils_NonblockingGet( $hash->{HU_DO_PARAMS} );
 
@@ -1838,8 +1852,12 @@ sub BlinkCamera_Callback($$$)
         if ( ( $jo->{message} eq "Unauthorized Access" ) ) {
           # reset authtoken if {"message":"Unauthorized Access"} --> will be re checked on next call
           setKeyValue(  "BlinkCamera_ATOKEN_".$fuuid, undef );
-          # also clean refreshtoken if refresh did fail
-          setKeyValue(  "BlinkCamera_RTOKEN_".$fuuid, undef ) if ( $cmd eq "refresh" );
+          if ( $cmd eq "refresh" ) {
+            Log3 $name, 4, "BlinkCamera_Callback $name: refresh failed (unauthorized) - remove refresh token";
+            # also clean refreshtoken if refresh did fail
+            setKeyValue(  "BlinkCamera_RTOKEN_".$fuuid, undef );
+          } else {
+          }
         }
       } else {
         $result = $jo;
@@ -1848,7 +1866,8 @@ sub BlinkCamera_Callback($$$)
     }
   }
 
-  $ll = 2 if ( $hidden );
+  $ll = 3 if ( $polling );
+  $ll = 2 if ( $hidden && ( ! $polling ) );
   $hash->{POLLING} = 0 if ( $polling );
  
   ##################################################
@@ -2870,6 +2889,9 @@ sub BlinkCamera_AnalyzeAlertResults( $$$ ) {
 
     <li><code>homeScreenV3 &lt;1 or 0&gt;</code><br>If set to 1 (default) the new version 3 of the blink API will be used. Unfortunately this includes different readings and settings <br>
     NOTE: This attribute is deprecated and not needed anymore, since the old API has been switched off by Blink (default is on = 1)
+    </li> 
+
+    <li><code>useragent &lt;text&gt;</code><br>This attribute can beu used to overwrite the default useragent used for communication with blink servers (default: 49.2IOS_2510241256). This might be relevant for newer app version to avoid warnings from blink. The format seems to be &lt;app version&gt;&lt;platform: e.g. IOS&gt;_&lt;buildnum&gt;. 
     </li> 
 
 
